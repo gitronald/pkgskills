@@ -22,5 +22,5 @@ dist/
 !.env.example
 
 # local working notes, not part of the package
-notes.md
-plan.md
+/notes.md
+/plan.md
