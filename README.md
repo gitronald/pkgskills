@@ -41,9 +41,9 @@ import typer
 from mli import Agent, Host, Rule, Skill, register
 
 HOST = Host(
-    dist="yourtool",              # distribution name, for the version lookup
-    cli="yourtool",               # bare command; local mode prefixes `uv run`
-    prompts="yourtool.prompts",   # package holding the prompt files
+    dist="yourtool",  # distribution name, for the version lookup
+    cli="yourtool",  # bare command; local mode prefixes `uv run`
+    prompts="yourtool.prompts",  # package holding the prompt files
     artifacts=(
         Skill(name="yourtool", sources=("skills/add.md", "skills/close.md")),
         Rule(name="yourtool", source="rules/yourtool.md", render_cli=True),
@@ -52,7 +52,7 @@ HOST = Host(
 )
 
 app = typer.Typer()
-register(app, HOST)   # adds skill, install, rule, agent
+register(app, HOST)  # adds skill, install, rule, agent
 ```
 
 A skill with one source lifts that file's frontmatter into the stub verbatim.
