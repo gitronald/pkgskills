@@ -53,3 +53,30 @@ worktree and merges into `dev` locally.
 `uv sync --all-groups`, `ruff check`, `ruff format --check`, `pyrefly check`,
 `pre-commit run --all-files`, and `pytest` must all pass before this lands —
 the Stop hook gates every future session on them.
+
+## Log
+
+- Applied every sync-decision row. The template-owned files that diverged only
+  by carrying an older template revision (pre-commit ruff rev, the Stop hook
+  `command`, `lint-typecheck.sh`, the workflow action pins) were replaced
+  outright — nothing repo-specific was lost.
+- Asked about the two `.claude/CLAUDE.md` spots the repo had customized:
+  - Tests bullet -> **merge**: kept the fixtures/`pythonpath` note and added
+    the template's coverage-gate wording.
+  - "Before finishing a task" -> **add `ruff format --check .`**, so the
+    documented list matches what the upgraded Stop hook and CI actually run.
+- `fail_under` set to **96** (current total coverage 96.34%), holding the line
+  rather than the template's default 50.
+- The action SHAs were re-resolved from the GitHub API rather than trusted from
+  the template; all five matched the template's pins.
+- `uv run ruff format --check .` failed on `README.md` — a pre-existing failure
+  on `dev`, not caused by this upgrade (the old Stop hook ran lint only, so it
+  never surfaced). Ran the formatter; it collapsed the aligned trailing
+  comments in the README's `Host(...)` example. Fixed here because the new hook
+  gates every future session on it.
+- No git remote on this repo, so the PR step and the GitHub-side Dependabot
+  alert/security toggles were skipped; the branch merged into `dev` locally
+  with `--no-ff`.
+- `.claude/` is gitignored here, so `settings.json`, `hooks/lint-typecheck.sh`,
+  and `CLAUDE.md` were updated on disk in the main checkout, outside this
+  branch.
