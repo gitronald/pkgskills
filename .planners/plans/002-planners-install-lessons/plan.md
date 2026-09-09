@@ -1,11 +1,11 @@
 ---
 id: 2
 slug: planners-install-lessons
-status: active
+status: done
 branch: feature/planners-install-lessons
 created: 2026-09-09T11:28:41-07:00
-concluded:
-pr:
+concluded: 2026-09-09T12:26:29-07:00
+pr: null
 ---
 
 # Backport planners install and release lessons
@@ -210,3 +210,126 @@ and nothing about the solution is host-specific except the rule list. Add
 Items 2–6 each need tests and a `CHANGELOG.md` entry. Coverage must stay above
 the `fail_under` floor, and `ruff check` / `ruff format --check` / `pyrefly
 check` must pass before each commit.
+
+## Log
+
+**2026-09-09** — Implemented all six items on `feature/planners-install-lessons`,
+in the planned order. Five commits, each gated on `ruff check`, `ruff format
+--check`, `pyrefly check`, and the suite; coverage ended at 97.2% against the
+96% floor.
+
+- `d0bc3a5` **item 1**. `target-branch: dev` on both dependabot ecosystems.
+  The machine's planners copy was 0.6.1 by then, so `planners install --force`
+  wrote the `.gitattributes` `merge=union` line for the plan index (`install
+  --check` now prints `gitattr: ok`); it also regenerated the drifted global
+  holder and rule, which were still on 0.6.0. Note the dependabot half only
+  takes effect once it reaches the default branch, since that is where
+  Dependabot reads its config.
+- `20a7621` **items 2 and 5**. `mli/proc.py` with `run`/`pinned_env`/
+  `LOCATION_ENV`, re-exported from `mli`. `find_repo_root`'s docstring now
+  names the matching read-side posture, so the two are documented together.
+  Item 5 landed as the note beside `classify` — no code change while every
+  write is wholesale.
+- `58f4d02` **item 4**. New `stale` status, gating. The loading discipline
+  went onto `Harness` as `shadowed_kinds` with `shadows()`/`both_load()`;
+  `CLAUDE_CODE` declares `{Kind.SKILL}`. The verdict lives in
+  `artifacts.stale_local`, guarded on a local row, a *resolved* global install,
+  and the two paths differing.
+- `bf8eb54` **item 3**. `ExtraCheck` and `Host.extra_checks`, rendered in the
+  same table with a blank mode column.
+- `b1de5ea` **item 6**. `mli/permissions.py` plus a `permissions` command
+  mounted only when a host declares `Host.permissions`.
+
+### Decisions worth recording
+
+- **The stale row's reason omits the path.** The plan asked for the path in the
+  reason; the table row already prints it, so including it would print the path
+  twice on one line. The reason carries the remedy instead ("superseded by the
+  global copy but still loaded; remove it"), and `run_check` prints a dedicated
+  `remove: <path>` line rather than the `repair: ... --force` hint — rewriting
+  the file is not the fix. A global reinstall *would* also clear it (via
+  `remove_stale_local`), but naming the removal is the honest instruction.
+- **`installed_mode` now falls back to a host's non-skill artifacts.** The stale
+  guard needs "is this repo pinned to global?", and the old skill-only scan
+  answered `None` forever for a host that ships no skills. Skills still decide
+  it whenever the host ships any, so the printing-prefix behavior is unchanged.
+- **`ExtraCheck.gates` is a per-row verdict, not a standing policy.** `mli`
+  cannot interpret a host's free-form status string, so only the host can say
+  whether a given row is a failure. Documented explicitly on the dataclass,
+  since the field name reads either way.
+- **The invocation grant is derived, not declared.** `permissions.rules_for`
+  computes `Bash(<cli>:*)` for global and `Bash(<local_prefix>:*)` for local
+  from `Host.invocation`'s inputs, and joins it at the lowest level the host
+  grants anything at. A host that grants nothing gets no way to be called
+  unattended either. Deduplication makes the local case collapse into the
+  host's own `Bash(uv run:*)`.
+- **`permissions` is mounted conditionally**, like `rule` and `agent`: a host
+  with no declared profile has no command to run. `Host.validate` rejects rules
+  declared at level `none`, which would make the ladder's floor a lie.
+
+### Not done here
+
+This repo has no git remote configured, so there is no PR, and `pr` is `null`
+rather than empty. The `install --check` docs live
+in `README.md` and were updated alongside the code; the module map in the
+repo's ignored `.claude/CLAUDE.md` was updated in the main checkout, since it is
+not tracked.
+
+### Review follow-up
+
+**2026-09-09** — Close-gate review of the branch diff (correctness plus
+reuse/simplification, findings verified adversarially). Five findings, four
+actioned in `e61de4f`, each with a paired regression test; the gate re-ran
+clean (118 passed, coverage 97.2%).
+
+- **`stale` was skipped whenever the copy had also drifted.** `check_artifact`
+  only consulted `stale_local` on an `ok` row, so a superseded local copy that
+  had *also* been hand-edited reported `drifted` — and `run_check` then printed
+  `repair: ... install --local --force`, the reinstall that recreates the very
+  file the design wants removed. The verdict now covers `ok` and `drifted`
+  alike (`foreign` and `missing` are still left alone: someone else's file is
+  not our leftover). This is the item worth remembering — the plan argued the
+  point in prose ("content correctness is not the question there") and the code
+  still gated on content.
+- **`_read_settings` did not catch `UnicodeDecodeError`.** It is a `ValueError`,
+  not an `OSError`, so a settings file with non-UTF-8 bytes produced a traceback
+  instead of the clean refusal beside it.
+- **A non-object `permissions` key was silently overwritten** on `--apply`,
+  while a non-object *top level* was refused. Now both refuse; replacing a
+  malformed block loses whatever the user had.
+- **`installed_mode` was re-derived per check row.** It is one fact per run, so
+  `check` resolves it once and passes it down through an `installed=` keyword
+  on `check_artifact`/`stale_local` (default `"auto"` keeps a lone call
+  working).
+
+Conscious no-op: `Harness.both_load()` has no production caller (`stale_local`
+uses `shadows()` directly, and the inverse would read as a double negative).
+Kept as the documented half of a public pair, exercised by its own test.
+
+## Retrospective
+
+- **Six items, six landed, in the planned order.** The ordering held up: the
+  cheap additive work (hygiene, `proc`, the `classify` note) cleared the deck,
+  and settling `ExtraCheck` before `permissions` meant the largest surface was
+  the only thing in flight at the end. Nothing had to be reworked because of a
+  later item.
+- **The one real bug was in the item the plan reasoned about most.** `stale` got
+  the longest argument in the spec and still shipped gated on `status == "ok"`,
+  because "content is not the question" was written in prose and then encoded as
+  a content test. Prose about an invariant is not the invariant; the review
+  caught it, not the 111 passing tests, because the tests only exercised the
+  clean-content case the spec described.
+- **Backporting is not copying.** Two of the six items came across as
+  *documentation* rather than code — item 5 is a note beside `classify`, and
+  parts of item 3 are rules recorded on `ExtraCheck` — because the general
+  library is ahead of the originating package in places (version masking) and
+  behind it in others. Deciding which shape a lesson takes was most of the work.
+- **`--check` gained two orthogonal axes at once** (host-supplied rows that may
+  not gate, and a library status that always does). Keeping them separate —
+  `gates` as a per-row verdict the host owns, `stale` as `mli`'s own — is what
+  let both fold into one table without an overloaded status enum.
+- **Next time: write the adversarial test first for a status whose whole point
+  is that it outranks another.** A single test asserting `stale` beats `drifted`
+  would have failed on the original commit.
+- No remote, so no PR: the branch merged locally with `--no-ff` and `pr` is
+  `null` rather than empty.

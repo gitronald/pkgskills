@@ -99,3 +99,15 @@ def test_claude_code_layout() -> None:
     )
     with pytest.raises(ValueError):
         Harness(name="h", config_dir=".h").relative_path(Kind.SKILL, "x")
+
+
+def test_claude_code_loading_discipline_per_kind() -> None:
+    # A global skill wins by name; rules and agents are auto-loaded from both.
+    assert CLAUDE_CODE.shadows(Kind.SKILL)
+    assert not CLAUDE_CODE.both_load(Kind.SKILL)
+    for kind in (Kind.RULE, Kind.AGENT):
+        assert CLAUDE_CODE.both_load(kind)
+        assert not CLAUDE_CODE.shadows(kind)
+    # A harness that says nothing loads every kind from both bases.
+    bare = Harness(name="bare", config_dir=".bare")
+    assert all(bare.both_load(kind) for kind in Kind)

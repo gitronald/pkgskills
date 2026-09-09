@@ -16,15 +16,19 @@ text off disk with no model in the loop.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from importlib import metadata, resources
 from pathlib import PurePosixPath
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Literal
 
 from mli.harness import CLAUDE_CODE, Harness, Kind
+from mli.permissions import LEVELS, Level
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from mli.artifacts import InstallReport
 
 Mode = Literal["global", "local"]
@@ -108,6 +112,42 @@ Artifact = Skill | Rule | Agent
 
 
 @dataclass(frozen=True)
+class ExtraCheck:
+    """A host-specific row in the check table, over state ``mli`` cannot see.
+
+    Some of what a host must surface is per-clone, and a correct consumer may
+    legitimately lack it — a registered pre-commit hook is the canonical case.
+    A hook that never fires looks exactly like a hook that fires and finds
+    nothing wrong, so it earns a line; failing the check over it would call a
+    correctly installed consumer broken. Hence ``gates``, which lets a row
+    report without gating.
+
+    ``status`` is the host's own vocabulary, not :data:`mli.artifacts.Status`.
+    Two rules earned the hard way:
+
+    * **Check the artifact, not a proxy for it.** Ask whether *this* host's
+      thing is wired, not whether the mechanism that would run it exists — a
+      hook runner present in the clone says nothing about whether the config
+      names your hook.
+    * **Keep "what an attempt did" and "what is" apart.** The status set for a
+      write-time follow-up is not the status set for a read-only report;
+      collapsing them into one overloaded vocabulary forces a caller to
+      overpromise. That applies to anything :attr:`Host.after_install` reports
+      too.
+
+    ``gates`` is *this row's verdict*, not a standing policy: only the host
+    knows which of its own statuses are failures, so it decides per row. A
+    ``True`` row fails the check; a ``False`` row is reported and nothing more.
+    ``note`` goes to stderr, for the sentence a one-word status cannot carry.
+    """
+
+    label: str
+    status: str
+    gates: bool
+    note: str = ""
+
+
+@dataclass(frozen=True)
 class Host:
     """A package's declaration of its prompts and CLI.
 
@@ -120,6 +160,14 @@ class Host:
     * ``version`` overrides the metadata lookup; leave it unset in real hosts.
     * ``after_install`` runs once an install has written every artifact, for
       host-specific follow-up such as wiring a pre-commit hook.
+    * ``extra_checks`` is its symmetric counterpart on the read side: called
+      with ``(host, root, mode)`` during ``install --check``, it returns the
+      rows for state ``mli`` cannot derive, so a host with extra state keeps
+      the shared table instead of writing its own ``install`` command.
+    * ``permissions`` maps each :class:`~mli.permissions.Level` to the Bash
+      allow-rules that level *adds* over the one below it; declaring any of
+      them mounts the ``permissions`` command. See :mod:`mli.permissions` for
+      what the ladder's rungs mean.
     """
 
     dist: str
@@ -130,6 +178,10 @@ class Host:
     harness: Harness = CLAUDE_CODE
     version: str | None = None
     after_install: Callable[[InstallReport], None] | None = None
+    extra_checks: Callable[[Host, Path, Mode | None], Sequence[ExtraCheck]] | None = (
+        None
+    )
+    permissions: Mapping[Level, tuple[str, ...]] = MappingProxyType({})
 
     def __post_init__(self) -> None:
         self.validate()
@@ -157,6 +209,13 @@ class Host:
                     raise ValueError(
                         f"skill {art.name!r} has sources with duplicate stems"
                     )
+        for level in self.permissions:
+            if level not in LEVELS:
+                raise ValueError(f"unknown permission level {level!r}")
+        # `none` is the rung that grants nothing; rules there would make the
+        # ladder's floor a lie, since every higher level inherits it.
+        if self.permissions.get(Level.none):
+            raise ValueError("permission level 'none' must grant nothing")
 
     # -- identity ----------------------------------------------------------
 

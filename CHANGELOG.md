@@ -33,8 +33,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `mli.testing.sandbox` and `mli.testing.wheel_files` for host test suites.
 - Claude Code as the first harness adapter, with the layout kept in one
   `Harness` value.
+- A shared `permissions` command, mounted when a host declares
+  `Host.permissions`: an escalating, superset ladder of automation levels
+  (`none`/`assist`/`confirm`/`full`, or `0`-`3`) where the host supplies only
+  its own per-level increments and `mli` derives the grant for calling the CLI
+  from the host's invocation. Prints a paste-ready block by default; `--apply`
+  merges additively into `.claude/settings.local.json` (or
+  `~/.claude/settings.json` with `--global`), never downgrading a rule already
+  on `deny` or `ask`.
+- `Host.extra_checks`, the read-side counterpart to `after_install`: a host
+  returns `ExtraCheck(label, status, gates, note)` rows for per-clone state
+  `mli` cannot derive (a registered pre-commit hook, say), they print in the
+  shared `install --check` table, and only the rows that say they gate fold
+  into the exit code — so a host with extra state keeps the shared table
+  instead of writing its own `install` command.
+- `mli.run` (and `mli.LOCATION_ENV`): a subprocess helper pinned to an explicit
+  repo root with git's location variables (`GIT_DIR` and friends) stripped, so
+  a host's `after_install` hook cannot have its shell-outs redirected at another
+  repository by an inherited environment variable.
 
 ### Changed
+
+- `install --check` reports a new `stale` status and gates on it: a per-repo
+  copy of a kind the harness loads from *both* bases (rules and agents under
+  Claude Code) is drift once a resolved global install serves the repo,
+  whatever its content says — it is an extra file live in context, so the
+  verdict outranks both `ok` and `drifted` and the remedy printed is `remove:`,
+  never a reinstall that would recreate the file. Skills
+  are unaffected, since a global skill shadows the local stub rather than
+  loading alongside it, and a global copy is never flagged during a local
+  install.
+- `Harness` declares that discipline per kind (`shadowed_kinds`, with
+  `shadows()` / `both_load()`), so it is a property of the harness rather than
+  something hardcoded at the call site.
+- `installed_mode` falls back to a host's other artifacts when it ships no
+  skills, instead of always answering `None`.
 
 ### Deprecated
 

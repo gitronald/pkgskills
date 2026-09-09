@@ -29,7 +29,7 @@ from mli.host import MODES, Artifact, Host, Mode, Skill
 from mli.rendering import render
 from mli.stamp import is_stamped, mask_versions, stamped_by, stamped_mode
 
-Status = Literal["ok", "drifted", "missing", "foreign"]
+Status = Literal["ok", "drifted", "stale", "missing", "foreign"]
 
 
 class ForeignArtifactError(Exception):
@@ -86,6 +86,10 @@ def find_repo_root(start: Path | None = None, harness: Harness | None = None) ->
     A repo root holds ``.git`` or the harness's config directory. A local
     install must target the root the harness loads from, not whatever
     subdirectory the command ran in. Falls back to ``start`` itself.
+
+    Deliberately a filesystem walk, never a question put to git: an ambient
+    ``GIT_DIR`` would otherwise name a repository the user is not looking at.
+    :mod:`mli.proc` keeps the same posture on the write side.
     """
     base = (start or Path.cwd()).resolve()
     marker = harness.config_dir if harness else None
@@ -128,7 +132,18 @@ def is_generated(path: Path, host: Host) -> bool:
 
 
 def classify(path: Path, host: Host, expected: str, mode: Mode) -> tuple[Status, str]:
-    """Judge what sits at ``path`` against ``expected``, the current render."""
+    """Judge what sits at ``path`` against ``expected``, the current render.
+
+    A file that cannot be read (bad permissions, not UTF-8) folds into
+    ``foreign``, and the CLI points at ``--force``. That is honest only because
+    every write here is wholesale: ``--force`` genuinely fixes it. The rule the
+    status set obeys is that **a status must not imply a remedy the tool cannot
+    perform** — so an artifact kind that is *edited in place* rather than
+    rewritten (appending or amending one line of a file the host does not own)
+    needs its own ``unreadable`` status from the start. There, an installer that
+    cannot read the file refuses to write it, and both ``foreign`` and
+    ``missing`` would send the user in a circle.
+    """
     if not occupied(path):
         return "missing", "not installed"
     if path.is_symlink():
@@ -151,10 +166,38 @@ def classify(path: Path, host: Host, expected: str, mode: Mode) -> tuple[Status,
     return "drifted", "content differs from the current render"
 
 
-def check_artifact(host: Host, art: Artifact, mode: Mode, root: Path) -> Check:
-    """The drift verdict for ``art`` at its ``mode`` location."""
+def check_artifact(
+    host: Host,
+    art: Artifact,
+    mode: Mode,
+    root: Path,
+    *,
+    installed: Mode | None | Literal["auto"] = "auto",
+) -> Check:
+    """The drift verdict for ``art`` at its ``mode`` location.
+
+    A copy is ``stale`` when a resolved global install has superseded it and the
+    harness loads both — see :func:`stale_local`. Content correctness is not the
+    question there; the file's continued existence is, so the verdict outranks
+    both ``ok`` *and* ``drifted``. Rewriting a drifted leftover would only
+    recreate the file the remedy asks the user to remove.
+
+    ``installed`` is :func:`installed_mode`'s answer, which is one fact per
+    check run rather than per row; :func:`check` computes it once and passes it
+    down. The default re-derives it, so a lone call still works.
+    """
     path = artifact_path(host, art, mode, root)
     status, reason = classify(path, host, render(host, art, mode), mode)
+    if status in ("ok", "drifted") and stale_local(
+        host, art, mode, root, installed=installed
+    ):
+        return Check(
+            art,
+            mode,
+            path,
+            "stale",
+            "superseded by the global copy but still loaded; remove it",
+        )
     return Check(art, mode, path, status, reason)
 
 
@@ -167,31 +210,82 @@ def check(host: Host, root: Path, mode: Mode | None = None) -> list[Check]:
     real drift. An artifact present at neither location reports ``missing``
     once, against its global path.
     """
+    # One fact for the whole run: which mode an existing install resolves to.
+    # Re-deriving it per row would re-walk the filesystem for every artifact.
+    installed = installed_mode(host, root)
     results: list[Check] = []
     for art in host.artifacts:
         if mode is not None:
-            results.append(check_artifact(host, art, mode, root))
+            results.append(check_artifact(host, art, mode, root, installed=installed))
             continue
         found = [
-            check_artifact(host, art, m, root)
+            check_artifact(host, art, m, root, installed=installed)
             for m in MODES
             if occupied(artifact_path(host, art, m, root))
         ]
-        results.extend(found or [check_artifact(host, art, "global", root)])
+        results.extend(
+            found or [check_artifact(host, art, "global", root, installed=installed)]
+        )
     return results
 
 
 def installed_mode(host: Host, root: Path) -> Mode | None:
-    """The mode of the installed skill stub, global first, or ``None``.
+    """The mode an existing install resolves to, global first, or ``None``.
 
     Used to render printed bodies with the prefix the installed stub uses, so
-    what the model reads agrees with the commands it was told to run.
+    what the model reads agrees with the commands it was told to run. Skills
+    decide it whenever the host ships any, because the stub is what carries
+    those commands; a host that ships none falls back to its other artifacts so
+    the answer stays grounded in what is actually on disk.
+
+    ``None`` means *nothing is installed* and is deliberately not folded into a
+    default here: callers that need a mode to print with substitute ``global``
+    themselves, while callers asking "has this repo been pinned to global?"
+    need the difference.
     """
-    for skill in host.skills:
+    for art in host.skills or host.artifacts:
         for mode in MODES:
-            if occupied(artifact_path(host, skill, mode, root)):
+            if occupied(artifact_path(host, art, mode, root)):
                 return mode
     return None
+
+
+def stale_local(
+    host: Host,
+    art: Artifact,
+    mode: Mode,
+    root: Path,
+    *,
+    installed: Mode | None | Literal["auto"] = "auto",
+) -> bool:
+    """True when a local copy of ``art`` is live leftovers from before a switch.
+
+    A resolved global install serves this repo, yet a per-repo copy of a kind
+    the harness loads from *both* bases is still sitting there — so it is in
+    context right now, matching content or not. The remedy is to remove it, not
+    to regenerate it.
+
+    Three guards keep the verdict honest:
+
+    * Only ``local`` rows. The asymmetry is deliberate: a *global* copy present
+      during a local install is shared infrastructure serving every other
+      repository, never this repo's leftover, and is never flagged.
+    * Only a genuinely resolved global install counts, so a local-only copy in
+      a repo with no global install still reads ``ok``.
+    * Only when the two paths differ, which they do not when the repo root is
+      ``$HOME`` — there is one file there, not a leftover second one.
+
+    ``installed`` lets a caller judging many artifacts hand in
+    :func:`installed_mode`'s answer instead of paying for it once per row.
+    """
+    if mode != "local" or host.harness.shadows(art.kind):
+        return False
+    resolved = installed_mode(host, root) if installed == "auto" else installed
+    if resolved != "global":
+        return False
+    return artifact_path(host, art, "local", root) != artifact_path(
+        host, art, "global", root
+    )
 
 
 def shadowed_skills(host: Host, root: Path) -> list[Path]:

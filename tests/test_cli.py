@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+import json
 import os
 import subprocess
 import sys
@@ -10,10 +12,15 @@ from pathlib import Path
 import pytest
 from examplehost.cli import HOST as EXAMPLE
 from examplehost.cli import app as example_app
+from solohost.cli import HOST as SOLO
 from solohost.cli import app as solo_app
 from typer.testing import CliRunner
 
 from mli import artifacts as inst
+from mli.cli import typer_app
+from mli.host import ExtraCheck, Host, Mode
+from mli.permissions import Level
+from mli.rendering import render
 from mli.testing import Sandbox
 
 runner = CliRunner()
@@ -125,6 +132,59 @@ def test_check_reports_each_status_and_exit_codes(box: Sandbox) -> None:
     assert "repair: uv run solohost install --local --force" in drifted.output
 
 
+def test_check_gates_on_a_stale_local_copy_and_points_at_removal(
+    box: Sandbox,
+) -> None:
+    inst.install(EXAMPLE, box.repo, "global")
+    rule = inst.artifact_path(EXAMPLE, EXAMPLE.rules[0], "local", box.repo)
+    rule.parent.mkdir(parents=True)
+    rule.write_text(render(EXAMPLE, EXAMPLE.rules[0], "local"), encoding="utf-8")
+
+    result = runner.invoke(example_app, ["install", "--check"])
+    assert result.exit_code == 1
+    assert "stale   local  .claude/rules/examplehost.md" in result.output
+    assert "remove: .claude/rules/examplehost.md" in result.output
+    # Rewriting the file is not the repair, so no local reinstall is suggested.
+    assert "install --local --force" not in result.output
+
+    rule.unlink()
+    assert runner.invoke(example_app, ["install", "--check"]).exit_code == 0
+
+
+def test_extra_checks_share_the_table_and_only_gate_when_they_say_so(
+    box: Sandbox,
+) -> None:
+    seen: list[tuple[Path, str | None]] = []
+
+    def extras(host: Host, root: Path, mode: Mode | None) -> list[ExtraCheck]:
+        seen.append((root, mode))
+        return [
+            ExtraCheck("hook", "active", gates=False),
+            ExtraCheck("gitattr", "missing", gates=True, note="run the wiring step"),
+        ]
+
+    host = dataclasses.replace(SOLO, extra_checks=extras)
+    inst.install(host, box.repo, "local")
+    app = typer_app(host)
+
+    result = runner.invoke(app, ["install", "--check"])
+    assert seen == [(box.repo, None)]
+    assert "ok      local  .claude/skills/use-solo/SKILL.md" in result.output
+    assert "active         hook" in result.output
+    assert "missing        gitattr" in result.output
+    assert "note: run the wiring step" in result.output
+    assert result.exit_code == 1
+
+    # The same rows, none of them gating: reported, and the check still passes.
+    quiet = dataclasses.replace(
+        SOLO,
+        extra_checks=lambda h, r, m: [ExtraCheck("hook", "absent", gates=False)],
+    )
+    passing = runner.invoke(typer_app(quiet), ["install", "--check"])
+    assert "absent         hook" in passing.output
+    assert passing.exit_code == 0
+
+
 def test_check_writes_nothing(box: Sandbox) -> None:
     runner.invoke(solo_app, ["install", "--check"])
     assert not (box.repo / ".claude").exists()
@@ -177,6 +237,151 @@ def test_squatting_file_in_the_parent_path_is_reported_cleanly(box: Sandbox) -> 
     result = runner.invoke(solo_app, ["install", "--local"])
     assert result.exit_code == 1
     assert "cannot write" in result.output
+
+
+PERMS = dataclasses.replace(
+    SOLO,
+    permissions={
+        Level.assist: ("Bash(git commit:*)", "Bash(uv run:*)"),
+        Level.full: ("Bash(gh pr merge:*)",),
+    },
+)
+
+
+def test_permissions_command_is_mounted_only_when_a_profile_is_declared(
+    box: Sandbox,
+) -> None:
+    assert runner.invoke(solo_app, ["permissions"]).exit_code != 0
+    assert runner.invoke(typer_app(PERMS), ["permissions"]).exit_code == 0
+
+
+def test_permissions_prints_a_paste_ready_block_and_writes_nothing(
+    box: Sandbox,
+) -> None:
+    result = runner.invoke(typer_app(PERMS), ["permissions", "--level", "full"])
+    assert result.exit_code == 0
+    assert "# automation level: full (local)" in result.output
+    assert "# target: .claude/settings.local.json" in result.output
+    body = result.output[result.output.index("{") :]
+    assert json.loads(body)["permissions"]["allow"] == [
+        "Bash(git commit:*)",
+        "Bash(uv run:*)",
+        "Bash(gh pr merge:*)",
+    ]
+    assert not (box.repo / ".claude/settings.local.json").exists()
+
+
+def test_permissions_level_none_prints_an_empty_grant(box: Sandbox) -> None:
+    result = runner.invoke(typer_app(PERMS), ["permissions", "--level", "0"])
+    assert "# no rules — everything falls to the classifier" in result.output
+
+
+def test_unknown_permission_level_is_an_error(box: Sandbox) -> None:
+    result = runner.invoke(typer_app(PERMS), ["permissions", "--level", "nope"])
+    assert result.exit_code == 1
+    assert "unknown level: 'nope'" in result.output
+
+
+def test_permissions_apply_merges_additively_without_downgrading(box: Sandbox) -> None:
+    path = box.repo / ".claude/settings.local.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        json.dumps(
+            {
+                "model": "keep-me",
+                "permissions": {
+                    "allow": ["Bash(uv run:*)"],
+                    "deny": ["Bash(gh pr merge:*)"],
+                },
+            }
+        )
+    )
+    app = typer_app(PERMS)
+    result = runner.invoke(app, ["permissions", "--level", "full", "--apply"])
+    assert result.exit_code == 0
+    assert "wrote .claude/settings.local.json (level full, local)" in result.output
+    assert "+ Bash(git commit:*)" in result.output
+    assert "= Bash(uv run:*) (already allowed)" in result.output
+    assert "! Bash(gh pr merge:*) skipped (already on deny)" in result.output
+
+    saved = json.loads(path.read_text())
+    assert saved["model"] == "keep-me"
+    assert saved["permissions"]["allow"] == ["Bash(uv run:*)", "Bash(git commit:*)"]
+    assert saved["permissions"]["deny"] == ["Bash(gh pr merge:*)"]
+
+    # A second apply has nothing to add and leaves the file byte-identical.
+    before = path.read_text()
+    again = runner.invoke(app, ["permissions", "--level", "full", "--apply"])
+    assert "no new rules to add at level full (local)" in again.output
+    assert path.read_text() == before
+
+
+def test_permissions_apply_global_targets_home_and_grants_the_bare_cli(
+    box: Sandbox,
+) -> None:
+    result = runner.invoke(
+        typer_app(PERMS), ["permissions", "--global", "--apply", "--level", "assist"]
+    )
+    assert result.exit_code == 0
+    saved = json.loads((box.home / ".claude/settings.json").read_text())
+    assert "Bash(solohost:*)" in saved["permissions"]["allow"]
+    assert not (box.repo / ".claude/settings.local.json").exists()
+
+
+def test_permissions_refuses_a_settings_file_it_cannot_read(box: Sandbox) -> None:
+    path = box.repo / ".claude/settings.local.json"
+    path.parent.mkdir(parents=True)
+    path.write_text('["an", "array", "not", "an", "object"]')
+    result = runner.invoke(typer_app(PERMS), ["permissions", "--apply"])
+    assert result.exit_code == 1
+    assert "is not a JSON object" in result.output
+
+    path.write_text("{ broken")
+    broken = runner.invoke(typer_app(PERMS), ["permissions", "--apply"])
+    assert broken.exit_code == 1
+    assert "could not read" in broken.output
+    assert path.read_text() == "{ broken"
+
+
+def test_permissions_refuses_a_settings_file_that_is_not_utf8(box: Sandbox) -> None:
+    path = box.repo / ".claude/settings.local.json"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b'{"permissions": {"allow": ["Bash(\xff\xfe:*)"]}}')
+    result = runner.invoke(typer_app(PERMS), ["permissions", "--apply"])
+    assert result.exit_code == 1
+    assert "could not read" in result.output
+    assert path.read_bytes().startswith(b'{"permissions"')
+
+
+def test_permissions_refuses_a_non_object_permissions_key(box: Sandbox) -> None:
+    path = box.repo / ".claude/settings.local.json"
+    path.parent.mkdir(parents=True)
+    before = json.dumps({"permissions": ["stray", "array"]})
+    path.write_text(before)
+    result = runner.invoke(typer_app(PERMS), ["permissions", "--apply"])
+    assert result.exit_code == 1
+    assert "'permissions' is not a JSON object" in result.output
+    # Refusing beats replacing: whatever was there is still there.
+    assert path.read_text() == before
+
+
+def test_check_reports_a_drifted_stale_copy_as_stale_and_says_remove(
+    box: Sandbox,
+) -> None:
+    inst.install(EXAMPLE, box.repo, "global")
+    rule = inst.artifact_path(EXAMPLE, EXAMPLE.rules[0], "local", box.repo)
+    rule.parent.mkdir(parents=True)
+    rule.write_text(
+        render(EXAMPLE, EXAMPLE.rules[0], "local") + "\nhand-edited\n",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(example_app, ["install", "--check"])
+    assert result.exit_code == 1
+    assert "stale   local  .claude/rules/examplehost.md" in result.output
+    assert "remove: .claude/rules/examplehost.md" in result.output
+    # The reinstall would recreate the file, so it is not offered as the repair.
+    assert "install --local --force" not in result.output
 
 
 def test_skill_survives_a_non_utf8_stdout(box: Sandbox) -> None:

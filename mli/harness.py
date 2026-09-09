@@ -36,11 +36,25 @@ class Harness:
     (``$HOME`` or the repo root) with a ``{name}`` placeholder. ``config_dir``
     is the directory whose presence marks a repository root for that harness,
     used alongside ``.git`` when walking up from a working directory.
+
+    ``shadowed_kinds`` names the kinds whose global copy *hides* the local one.
+    Every other kind loads from both bases at once, which is what makes a
+    leftover per-repo copy a live extra file rather than an inert one. It is a
+    property of the harness, not of any host, so it is declared here.
     """
 
     name: str
     config_dir: str
     layout: Mapping[Kind, str] = field(default_factory=dict)
+    shadowed_kinds: frozenset[Kind] = frozenset()
+
+    def shadows(self, kind: Kind) -> bool:
+        """True when a global artifact of ``kind`` hides the local copy."""
+        return kind in self.shadowed_kinds
+
+    def both_load(self, kind: Kind) -> bool:
+        """True when global and local copies of ``kind`` are loaded together."""
+        return kind not in self.shadowed_kinds
 
     def relative_path(self, kind: Kind, name: str) -> Path:
         """The artifact's path for ``kind`` and ``name``, relative to its base."""
@@ -67,4 +81,7 @@ CLAUDE_CODE = Harness(
             Kind.AGENT: ".claude/agents/{name}.md",
         }
     ),
+    # Claude Code resolves a skill by name with the global one winning, but
+    # auto-loads rules and agents from both bases at once.
+    shadowed_kinds=frozenset({Kind.SKILL}),
 )

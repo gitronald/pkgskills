@@ -217,6 +217,114 @@ def test_check_without_mode_reports_both_locations(box: Sandbox) -> None:
     assert all(row.ok for row in rows)
 
 
+def test_local_copies_of_both_loading_kinds_go_stale_under_a_global_install(
+    box: Sandbox,
+) -> None:
+    inst.install(EXAMPLE, box.repo, "local")
+    # A global install of a *different* host leaves this one's local copies
+    # alone, so install globally with the guard force-free: the local copies
+    # this host generated are removed, then put back to model the leftover.
+    written = inst.install(EXAMPLE, box.repo, "global").written
+    assert written  # global copies now serve the repo
+    for art in EXAMPLE.artifacts:
+        local = inst.artifact_path(EXAMPLE, art, "local", box.repo)
+        local.parent.mkdir(parents=True, exist_ok=True)
+        local.write_text(render(EXAMPLE, art, "local"), encoding="utf-8")
+
+    found = inst.check(EXAMPLE, box.repo)
+    rows = {(row.artifact.kind.value, row.mode): row for row in found}
+    assert rows[("rule", "local")].status == "stale"
+    assert rows[("agent", "local")].status == "stale"
+    assert "remove it" in rows[("rule", "local")].reason
+    # A skill's global copy shadows the local one, so the leftover is inert.
+    assert rows[("skill", "local")].status == "ok"
+    # Global copies are shared infrastructure and are never flagged.
+    assert all(rows[(kind, "global")].status == "ok" for kind in ("skill", "rule"))
+
+
+def test_a_superseded_local_copy_is_stale_even_when_its_content_drifted(
+    box: Sandbox,
+) -> None:
+    # Removal is the remedy either way, so the leftover's content is beside the
+    # point: reporting `drifted` would send the user to a reinstall that
+    # recreates the very file they were told to delete.
+    inst.install(EXAMPLE, box.repo, "global")
+    rule = EXAMPLE.rules[0]
+    local = inst.artifact_path(EXAMPLE, rule, "local", box.repo)
+    local.parent.mkdir(parents=True, exist_ok=True)
+    local.write_text(
+        render(EXAMPLE, rule, "local") + "\nhand-edited\n", encoding="utf-8"
+    )
+
+    row = inst.check_artifact(EXAMPLE, rule, "local", box.repo)
+    assert row.status == "stale"
+    assert "remove it" in row.reason
+
+
+def test_a_foreign_local_file_is_never_called_stale(box: Sandbox) -> None:
+    inst.install(EXAMPLE, box.repo, "global")
+    rule = EXAMPLE.rules[0]
+    local = inst.artifact_path(EXAMPLE, rule, "local", box.repo)
+    local.parent.mkdir(parents=True, exist_ok=True)
+    local.write_text("someone else's file\n", encoding="utf-8")
+    assert inst.check_artifact(EXAMPLE, rule, "local", box.repo).status == "foreign"
+
+
+def test_check_resolves_the_installed_mode_once_for_the_whole_run(
+    box: Sandbox, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    inst.install(EXAMPLE, box.repo, "global")
+    calls: list[Path] = []
+    real = inst.installed_mode
+
+    def counted(host: Host, root: Path) -> str | None:
+        calls.append(root)
+        return real(host, root)
+
+    monkeypatch.setattr(inst, "installed_mode", counted)
+    inst.check(EXAMPLE, box.repo)
+    assert calls == [box.repo]
+
+
+def test_stale_local_accepts_a_precomputed_installed_mode(box: Sandbox) -> None:
+    rule = EXAMPLE.rules[0]
+    # Nothing is on disk, so the honest answer is False; the caller's handed-in
+    # verdict is what decides, and "auto" re-derives it.
+    assert inst.stale_local(EXAMPLE, rule, "local", box.repo, installed="global")
+    assert not inst.stale_local(EXAMPLE, rule, "local", box.repo, installed=None)
+    assert not inst.stale_local(EXAMPLE, rule, "local", box.repo)
+
+
+def test_local_only_copies_are_not_stale(box: Sandbox) -> None:
+    inst.install(EXAMPLE, box.repo, "local")
+    assert set(_statuses(EXAMPLE, box.repo).values()) == {"ok"}
+    assert not inst.stale_local(EXAMPLE, EXAMPLE.rules[0], "local", box.repo)
+
+
+def test_stale_needs_a_resolved_global_install_not_a_default(box: Sandbox) -> None:
+    # Nothing installed anywhere: `installed_mode` is None, not "global".
+    assert inst.installed_mode(EXAMPLE, box.repo) is None
+    assert not inst.stale_local(EXAMPLE, EXAMPLE.rules[0], "local", box.repo)
+
+
+def test_no_stale_verdict_when_repo_root_is_home(box: Sandbox) -> None:
+    os.chdir(box.home)
+    (box.home / ".git").mkdir()
+    inst.install(EXAMPLE, box.home, "global")
+    # The two paths coincide, so there is one file, not a leftover second one.
+    for art in EXAMPLE.artifacts:
+        assert not inst.stale_local(EXAMPLE, art, "local", box.home)
+
+
+def test_installed_mode_falls_back_to_other_kinds_for_a_skill_less_host(
+    box: Sandbox,
+) -> None:
+    rules_only = dataclasses.replace(EXAMPLE, artifacts=(EXAMPLE.rules[0],))
+    assert inst.installed_mode(rules_only, box.repo) is None
+    inst.install(rules_only, box.repo, "global")
+    assert inst.installed_mode(rules_only, box.repo) == "global"
+
+
 def test_after_install_hook_receives_the_report(box: Sandbox) -> None:
     seen: list[inst.InstallReport] = []
     host = dataclasses.replace(SOLO, after_install=seen.append)

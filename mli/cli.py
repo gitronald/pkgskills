@@ -1,7 +1,8 @@
 """The shared command grammar, mounted onto a host's own typer app.
 
 A host calls :func:`register` once and gains ``skill``, ``install``, and, when
-it ships them, ``rule`` and ``agent``. Hosts with extra needs keep writing
+it declares them, ``rule``, ``agent``, and ``permissions``. Hosts with extra
+needs keep writing
 their own commands on top of :mod:`mli.artifacts`; the grammar here is the part
 that should read the same across every tool.
 
@@ -11,6 +12,7 @@ hosts through the ``mli.hosts`` entry-point group and checks them all.
 
 from __future__ import annotations
 
+import json
 import shutil
 import sys
 from pathlib import Path
@@ -18,6 +20,7 @@ from pathlib import Path
 import typer
 
 from mli import artifacts as install_mod
+from mli import permissions as perms
 from mli.harness import Kind
 from mli.host import Agent, Host, Mode, Rule
 from mli.rendering import render_copy, skill_body
@@ -126,7 +129,12 @@ def _relative(path: Path, root: Path) -> Path:
 
 
 def run_check(host: Host, root: Path, mode: Mode | None) -> bool:
-    """Print the drift table for ``host`` and return whether all rows are ok."""
+    """Print the drift table for ``host`` and return whether all rows are ok.
+
+    The host's own :attr:`Host.extra_checks <mli.host.Host.extra_checks>` rows
+    print in the same table; only the ones that say they gate fold into the
+    verdict.
+    """
     typer.echo(
         f"{host.dist} {host.resolved_version()} via mli {mli_version()}, "
         f"harness {host.harness.name}"
@@ -137,17 +145,29 @@ def run_check(host: Host, root: Path, mode: Mode | None) -> bool:
         if row.reason:
             line += f"  ({row.reason})"
         typer.echo(line)
+    extras = tuple(host.extra_checks(host, root, mode)) if host.extra_checks else ()
+    for extra in extras:
+        # The mode column is blank: these rows are about the clone, not about a
+        # file that exists once per mode.
+        typer.echo(f"{extra.status:<8}{'':<7}{extra.label}")
+    for extra in extras:
+        if extra.note:
+            _err(f"note: {extra.note}")
     for path in install_mod.shadowed_skills(host, root):
         _err(
             f"note: a global copy shadows the per-repo stub at "
             f"{_relative(path, root)}; the global one is what loads"
         )
     bad = [row for row in rows if not row.ok]
-    if bad:
-        hinted = {row.mode for row in bad}
-        for m in sorted(hinted):
-            _err(f"repair: {host.install_command(m, force=True)}")
-    return not bad
+    # A stale row is not repaired by rewriting the file — the file is the
+    # problem. Point at the removal instead of the reinstall that recreates it.
+    for row in bad:
+        if row.status == "stale":
+            _err(f"remove: {_relative(row.path, root)}")
+    hinted = {row.mode for row in bad if row.status != "stale"}
+    for m in sorted(hinted):
+        _err(f"repair: {host.install_command(m, force=True)}")
+    return not bad and not any(extra.gates for extra in extras)
 
 
 def run_install(host: Host, root: Path, mode: Mode, *, force: bool) -> None:
@@ -204,6 +224,116 @@ def _install_command(host: Host) -> typer.Typer:
     return app
 
 
+def _read_settings(path: Path) -> dict[str, object]:
+    """Load a settings.json object (empty dict if absent); exit on malformed JSON.
+
+    A missing file is a fresh, empty settings object. A present file must parse
+    as a JSON object — a syntax error or a top-level array is a hard error
+    rather than a silent overwrite of whatever the user had there. Bytes that
+    are not UTF-8 land in the same place: ``UnicodeDecodeError`` is a
+    ``ValueError``, not an ``OSError``, so it has to be named to be caught.
+    """
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
+        _err(f"could not read {path}: {exc}")
+        raise typer.Exit(1) from None
+    if not isinstance(data, dict):
+        _err(f"{path} is not a JSON object; refusing to overwrite it.")
+        raise typer.Exit(1)
+    return data
+
+
+def _report_merge(result: perms.MergeResult) -> None:
+    for rule in result.added:
+        typer.echo(f"  + {rule}")
+    for rule in result.already:
+        typer.echo(f"  = {rule} (already allowed)")
+    for rule, reason in result.skipped:
+        _err(f"  ! {rule} skipped ({reason})")
+
+
+def _permissions_command(host: Host) -> typer.Typer:
+    def permissions(
+        level: str = typer.Option(
+            "assist",
+            "--level",
+            help="Automation level, lowest to highest: "
+            + "|".join(perms.levels())
+            + " (or 0-3).",
+        ),
+        local_: bool = typer.Option(
+            True,
+            "--local/--global",
+            help="Target the repo's .claude/settings.local.json (default) or the "
+            "user-wide ~/.claude/settings.json.",
+        ),
+        apply: bool = typer.Option(
+            False,
+            "--apply",
+            help="Merge the rules into settings.json (default: print them only).",
+        ),
+    ) -> None:
+        """Print or apply an automation-level permission profile.
+
+        Higher levels pre-authorize more of what this tool's skills run, so
+        fewer commands prompt. The default prints a paste-ready block; `--apply`
+        merges it additively into settings.json, never downgrading an existing
+        deny/ask rule.
+        """
+        try:
+            lvl = perms.parse_level(level)
+        except ValueError:
+            _err(
+                f"unknown level: {level!r}; choose from "
+                f"{', '.join(perms.levels())} (or 0-3)"
+            )
+            raise typer.Exit(1) from None
+
+        mode: Mode = "local" if local_ else "global"
+        root = install_mod.find_repo_root(harness=host.harness)
+        rules = perms.rules_for(host, lvl, mode)
+        path = perms.settings_path(root, mode)
+
+        if not apply:
+            typer.echo(f"# automation level: {lvl.value} ({mode})")
+            typer.echo(f"# target: {_relative(path, root)}")
+            if not rules:
+                typer.echo("# no rules — everything falls to the classifier")
+            typer.echo(perms.render_block(rules), nl=False)
+            return
+
+        settings = _read_settings(path)
+        existing = settings.get("permissions", {})
+        if not isinstance(existing, dict):
+            # Same posture as a non-object top level: refuse rather than
+            # replace. Merging into `{}` here would drop whatever was there.
+            _err(
+                f"{path}: 'permissions' is not a JSON object; refusing to overwrite it."
+            )
+            raise typer.Exit(1)
+        result = perms.merge_allow(existing, rules)
+
+        if not result.added:
+            # Nothing new to grant: leave the file untouched rather than create
+            # or reformat it for a no-op write.
+            typer.echo(f"no new rules to add at level {lvl.value} ({mode})")
+            _report_merge(result)
+            return
+
+        settings["permissions"] = result.permissions
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+        typer.echo(f"wrote {_relative(path, root)} (level {lvl.value}, {mode})")
+        _report_merge(result)
+
+    app = typer.Typer()
+    app.command("permissions")(permissions)
+    return app
+
+
 def register(app: typer.Typer, host: Host) -> None:
     """Add the shared commands for ``host`` to ``app``."""
     for sub in _commands(host):
@@ -216,6 +346,8 @@ def _commands(host: Host) -> list[typer.Typer]:
         apps.append(_copy_command(host, Kind.RULE))
     if host.agents:
         apps.append(_copy_command(host, Kind.AGENT))
+    if host.permissions:
+        apps.append(_permissions_command(host))
     return apps
 
 
