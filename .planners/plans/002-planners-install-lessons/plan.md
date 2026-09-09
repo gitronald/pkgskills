@@ -1,8 +1,8 @@
 ---
 id: 2
 slug: planners-install-lessons
-status: draft
-branch:
+status: active
+branch: feature/planners-install-lessons
 created: 2026-09-09T11:28:41-07:00
 concluded:
 pr:
