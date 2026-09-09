@@ -39,7 +39,7 @@ dev = [
     "hatchling",
     "pre-commit",
     "pyrefly>=1.0.0",
-    "pytest>=9.0.2",
+    "pytest>=9.0.3",
     "pytest-cov",
     "ruff>=0.15",
 ]
@@ -75,3 +75,18 @@ implicit-any = false
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["tests/fixtures"]
+addopts = "--cov --cov-report=term-missing"
+
+[tool.coverage.run]
+source = ["mli"]
+branch = true
+
+[tool.coverage.report]
+skip_empty = true
+fail_under = 96
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]
