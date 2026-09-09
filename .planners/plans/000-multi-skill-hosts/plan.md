@@ -22,6 +22,14 @@ repository**, so global mode is meaningless for it. None of the three fixture-de
 (one dispatcher, one solo skill) exercise that combination, which is why the two defects in
 Part 1 sit behind passing tests.
 
+Reviewed 2026-09-09 against that host's now-written adoption plan and against plans 001 and
+002, which landed in the meantime. Every part below still holds — none of the four code parts
+has been implemented — and the review's changes are recorded inline: a note on the fixture in
+Part 1, sequencing in Part 2, a named consumer in Part 3, a widened scanner in Part 4, a git-pin
+stopgap and a scrub gate in Part 5, and a reordered Order. Plans 001 and 002 do not conflict,
+but Part 3 now has more surface to touch: 002 made a stale local copy a gating status, so
+skipping `remove_stale_local` and `shadowed_skills` for a local-only host has to fit that.
+
 ### Part 1: two defects in multi-skill hosts
 
 **The stub names a command that fails.** `render_stub` renders the load instruction for a
@@ -37,6 +45,11 @@ enforces the defect.
 - Test: a third fixture host, `multihost`, with two single-source skills and no dispatcher;
   assert each stub carries `<cli> skill <name>` and that running the printed command through
   `CliRunner` succeeds. Update the solo-host assertion to the named form.
+
+The fixture has to carry the second defect deliberately. The host that surfaced these lays
+its bodies out as `skills/<skill>.md`, so every stem already equals its skill name and only
+the first defect bites there — a fixture modelled on it would leave the keying fix unproven.
+`multihost` names one source file differently from its skill for exactly that reason.
 
 **Bodies are keyed by file stem, not skill name.** `Host.skill_sources()` keys every body by
 the source file's stem. For a dispatcher that is right: the stems are the subcommands. For a
@@ -81,6 +94,13 @@ Doc(name="tidy/fields", source="references/tidy/fields.md", render_cli=True)
 - Export `installed_mode` (or a `printing_mode(host, root)` wrapper) from the package so a
   host that still wants a print command of its own renders `{cli}` consistently.
 
+**Sequencing.** This part is worth most before the adopting host rewrites its skill bodies,
+not after. That host is shipping its own print command and rewriting every body to name it;
+once those bodies are written, adopting `Doc` is a second rewrite of all of them plus a
+command rename. If Part 2 cannot land first, weigh letting the host choose the command's
+name rather than hardcoding `doc`, so adoption is a declaration change instead of a
+body-wide substitution.
+
 ### Part 3: a local-only host
 
 A host whose skills only make sense inside one repository has no use for global mode, and
@@ -102,11 +122,17 @@ per-repo ones for that repository. Today the host has to document "always pass `
 This is distinct from the design doc's "project-level declaration of expected mode": that is
 a per-repository setting for CI; this is a per-host constraint.
 
+This is the cheapest part with a consumer already waiting on it: the adopting host's plan
+leaves open whether to document always passing `--local` or to ask `mli` for a per-host
+flag, which this closes.
+
 ### Part 4: a "commands in prompts are real" test helper
 
 The reason the pattern exists is that prose about a CLI goes stale. `mli` renders `{cli}`
-but nothing checks that what follows it is a command the host actually has. The host wrote
-that check itself; it is host-independent and belongs in `mli.testing`.
+but nothing checks that what follows it is a command the host actually has. The adopting
+host has this check in its own plan rather than in code, with a note that it could move into
+`mli.testing` if it proves useful — so this is a chance to ship it once, upstream, before it
+is written host-side at all.
 
 - `mli.testing.prompt_commands(host) -> list[PromptCommand]`: scan every skill body, doc,
   rule, and agent the host ships for `{cli} <tokens>` and yield the source, line, and token
@@ -116,6 +142,12 @@ that check itself; it is host-independent and belongs in `mli.testing`.
   with the source and line of every mention that does not reach a real command. The
   shared grammar's own commands (`skill`, `doc`, `rule`, `agent`, `install`) resolve like
   any other.
+- A token that names a declared thing is not an argument to stop at. `{cli} doc
+  tidy/fields` and `{cli} skill <name>` are the mentions most likely to go stale, and a
+  scanner that stops at the first path-shaped token never checks either. So resolve the
+  argument to `doc`, `skill`, `rule`, and `agent` against the host's declarations, and fail
+  the same way when it names nothing declared. The adopting host's own version of this check
+  validates exactly those forms; a helper that skips them would not replace it.
 - Tests: `examplehost` bodies mention `{cli} validate` (real) and gain one deliberate
   `{cli} nonexistent` in a doc fixture used only by the negative test.
 
@@ -125,10 +157,19 @@ No host can `uv add mli` today: the repository has no remote and nothing is rele
 
 - Push the repository and run `stanza init`; release `0.1.0a1` to PyPI (the name was free on
   2026-09-04) so hosts pin `mli>=0.1.0a1,<0.2` per the design doc's version-coupling note.
-- `notes.md` and `plan.md` are untracked working notes (gitignored), so nothing in them
-  reaches a push; fold what is still useful into `docs/design.md` before they go stale. Their
-  ignore patterns were bare filenames, which match at every depth and silently ignored
-  `.planners/plans/*/plan.md` as well; they are now anchored to the root (`/plan.md`).
+- **A git pin is an accepted stopgap.** The first adopting host takes either the released
+  alpha or a git dependency pinned at a commit, so the push alone unblocks it and the release
+  can follow. Do the push first for that reason: it is the whole prerequisite, and it costs
+  no version decision.
+- **Scrub before the fold, not just before the push.** `notes.md` and `plan.md` are untracked
+  working notes (gitignored), so nothing in them reaches a push as they stand — but they name
+  a private consumer repo and a sibling data repo, and folding what is still useful into
+  `docs/design.md` moves that text into a tracked file in a repo meant to be public. Generalize
+  those names as part of the fold (see the no-local-specifics convention), and grep the tracked
+  tree for them before pushing. Tracked files are clean today: they name only the sibling tool
+  packages, which are the pattern's own lineage. Their ignore patterns were bare filenames,
+  which match at every depth and silently ignored `.planners/plans/*/plan.md` as well; they are
+  now anchored to the root (`/plan.md`).
 - Add a "Drift gate" snippet to the README: a local pre-commit hook running
   `<cli> install --local --check` with `pass_filenames: false`, scoped to the host's prompt
   package and the harness config directory. Hosts keep asking for this and it needs no code.
@@ -137,15 +178,22 @@ No host can `uv add mli` today: the repository has no remote and nothing is rele
 
 - `Host.render_cli: bool = False` as a default for artifacts and docs that leave their own
   `render_cli` unset. A host whose every body uses `{cli}` currently repeats the flag on each
-  declaration.
+  declaration — the first adopting host writes `render_cli=True` on every skill and rule it
+  declares, because every body it ships carries the token.
 - `skill --list` on a solo host prints the stem, which may differ from the skill's name;
   Part 1's keying fixes it for free.
 
 ### Order
 
-1. Part 1 with the `multihost` fixture (a bug fix; ship as `0.1.0a1` with Part 5).
-2. Part 5, so the host can pin the fix.
-3. Part 2, then Part 3, then Part 4, each its own PR and alpha.
+Reordered after reading the first adopting host's plan. Part 5 moves to the front: that host
+cannot resolve `mli` as a dependency at all, so nothing else here reaches it, and a git pin
+at a pushed commit satisfies it without a release. Part 3 moves ahead of Part 2 because it
+closes an open question in that plan for very little code, while Part 2's window is tied to
+when the host's bodies get rewritten.
+
+1. Part 5's push, so the host can pin `mli` at a commit and start. The release follows.
+2. Part 1 with the `multihost` fixture (a bug fix; ship as `0.1.0a1`).
+3. Part 3, then Part 2, then Part 4, each its own PR and alpha.
 4. Smaller items ride along with whichever part touches the same code.
 
 ### Out of scope
