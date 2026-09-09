@@ -1,11 +1,11 @@
 ---
 id: 2
 slug: planners-install-lessons
-status: active
+status: done
 branch: feature/planners-install-lessons
 created: 2026-09-09T11:28:41-07:00
-concluded:
-pr:
+concluded: 2026-09-09T12:26:29-07:00
+pr: null
 ---
 
 # Backport planners install and release lessons
@@ -274,3 +274,62 @@ rather than empty. The `install --check` docs live
 in `README.md` and were updated alongside the code; the module map in the
 repo's ignored `.claude/CLAUDE.md` was updated in the main checkout, since it is
 not tracked.
+
+### Review follow-up
+
+**2026-09-09** — Close-gate review of the branch diff (correctness plus
+reuse/simplification, findings verified adversarially). Five findings, four
+actioned in `e61de4f`, each with a paired regression test; the gate re-ran
+clean (118 passed, coverage 97.2%).
+
+- **`stale` was skipped whenever the copy had also drifted.** `check_artifact`
+  only consulted `stale_local` on an `ok` row, so a superseded local copy that
+  had *also* been hand-edited reported `drifted` — and `run_check` then printed
+  `repair: ... install --local --force`, the reinstall that recreates the very
+  file the design wants removed. The verdict now covers `ok` and `drifted`
+  alike (`foreign` and `missing` are still left alone: someone else's file is
+  not our leftover). This is the item worth remembering — the plan argued the
+  point in prose ("content correctness is not the question there") and the code
+  still gated on content.
+- **`_read_settings` did not catch `UnicodeDecodeError`.** It is a `ValueError`,
+  not an `OSError`, so a settings file with non-UTF-8 bytes produced a traceback
+  instead of the clean refusal beside it.
+- **A non-object `permissions` key was silently overwritten** on `--apply`,
+  while a non-object *top level* was refused. Now both refuse; replacing a
+  malformed block loses whatever the user had.
+- **`installed_mode` was re-derived per check row.** It is one fact per run, so
+  `check` resolves it once and passes it down through an `installed=` keyword
+  on `check_artifact`/`stale_local` (default `"auto"` keeps a lone call
+  working).
+
+Conscious no-op: `Harness.both_load()` has no production caller (`stale_local`
+uses `shadows()` directly, and the inverse would read as a double negative).
+Kept as the documented half of a public pair, exercised by its own test.
+
+## Retrospective
+
+- **Six items, six landed, in the planned order.** The ordering held up: the
+  cheap additive work (hygiene, `proc`, the `classify` note) cleared the deck,
+  and settling `ExtraCheck` before `permissions` meant the largest surface was
+  the only thing in flight at the end. Nothing had to be reworked because of a
+  later item.
+- **The one real bug was in the item the plan reasoned about most.** `stale` got
+  the longest argument in the spec and still shipped gated on `status == "ok"`,
+  because "content is not the question" was written in prose and then encoded as
+  a content test. Prose about an invariant is not the invariant; the review
+  caught it, not the 111 passing tests, because the tests only exercised the
+  clean-content case the spec described.
+- **Backporting is not copying.** Two of the six items came across as
+  *documentation* rather than code — item 5 is a note beside `classify`, and
+  parts of item 3 are rules recorded on `ExtraCheck` — because the general
+  library is ahead of the originating package in places (version masking) and
+  behind it in others. Deciding which shape a lesson takes was most of the work.
+- **`--check` gained two orthogonal axes at once** (host-supplied rows that may
+  not gate, and a library status that always does). Keeping them separate —
+  `gates` as a per-row verdict the host owns, `stale` as `mli`'s own — is what
+  let both fold into one table without an overloaded status enum.
+- **Next time: write the adversarial test first for a status whose whole point
+  is that it outranks another.** A single test asserting `stale` beats `drifted`
+  would have failed on the original commit.
+- No remote, so no PR: the branch merged locally with `--no-ff` and `pr` is
+  `null` rather than empty.

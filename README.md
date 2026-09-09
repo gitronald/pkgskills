@@ -142,9 +142,10 @@ copy that serves other repositories.
 
 `stale` is the asymmetric case. The harness auto-loads rules and agents from
 the global *and* the local location at once, so a per-repo copy left behind
-after a switch to global is an extra file live in context even when its content
-matches the render exactly. The check gates on it and says `remove:`, not
-`repair:` — rewriting the file is not the fix. Skills are exempt, because a
+after a switch to global is an extra file live in context whatever its content
+says. The verdict therefore outranks both `ok` and `drifted`: the check gates on
+it and says `remove:`, not `repair:` — rewriting the file is not the fix, and a
+reinstall would only recreate it. Skills are exempt, because a
 global skill shadows the local stub rather than loading alongside it; which
 kinds load from both bases is declared on the `Harness`. A *global* copy during
 a local install is never flagged: it is shared infrastructure serving every
