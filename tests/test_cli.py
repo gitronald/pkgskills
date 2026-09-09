@@ -343,6 +343,47 @@ def test_permissions_refuses_a_settings_file_it_cannot_read(box: Sandbox) -> Non
     assert path.read_text() == "{ broken"
 
 
+def test_permissions_refuses_a_settings_file_that_is_not_utf8(box: Sandbox) -> None:
+    path = box.repo / ".claude/settings.local.json"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b'{"permissions": {"allow": ["Bash(\xff\xfe:*)"]}}')
+    result = runner.invoke(typer_app(PERMS), ["permissions", "--apply"])
+    assert result.exit_code == 1
+    assert "could not read" in result.output
+    assert path.read_bytes().startswith(b'{"permissions"')
+
+
+def test_permissions_refuses_a_non_object_permissions_key(box: Sandbox) -> None:
+    path = box.repo / ".claude/settings.local.json"
+    path.parent.mkdir(parents=True)
+    before = json.dumps({"permissions": ["stray", "array"]})
+    path.write_text(before)
+    result = runner.invoke(typer_app(PERMS), ["permissions", "--apply"])
+    assert result.exit_code == 1
+    assert "'permissions' is not a JSON object" in result.output
+    # Refusing beats replacing: whatever was there is still there.
+    assert path.read_text() == before
+
+
+def test_check_reports_a_drifted_stale_copy_as_stale_and_says_remove(
+    box: Sandbox,
+) -> None:
+    inst.install(EXAMPLE, box.repo, "global")
+    rule = inst.artifact_path(EXAMPLE, EXAMPLE.rules[0], "local", box.repo)
+    rule.parent.mkdir(parents=True)
+    rule.write_text(
+        render(EXAMPLE, EXAMPLE.rules[0], "local") + "\nhand-edited\n",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(example_app, ["install", "--check"])
+    assert result.exit_code == 1
+    assert "stale   local  .claude/rules/examplehost.md" in result.output
+    assert "remove: .claude/rules/examplehost.md" in result.output
+    # The reinstall would recreate the file, so it is not offered as the repair.
+    assert "install --local --force" not in result.output
+
+
 def test_skill_survives_a_non_utf8_stdout(box: Sandbox) -> None:
     env = dict(os.environ)
     env["PYTHONIOENCODING"] = "cp1252"

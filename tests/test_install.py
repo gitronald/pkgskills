@@ -242,6 +242,59 @@ def test_local_copies_of_both_loading_kinds_go_stale_under_a_global_install(
     assert all(rows[(kind, "global")].status == "ok" for kind in ("skill", "rule"))
 
 
+def test_a_superseded_local_copy_is_stale_even_when_its_content_drifted(
+    box: Sandbox,
+) -> None:
+    # Removal is the remedy either way, so the leftover's content is beside the
+    # point: reporting `drifted` would send the user to a reinstall that
+    # recreates the very file they were told to delete.
+    inst.install(EXAMPLE, box.repo, "global")
+    rule = EXAMPLE.rules[0]
+    local = inst.artifact_path(EXAMPLE, rule, "local", box.repo)
+    local.parent.mkdir(parents=True, exist_ok=True)
+    local.write_text(
+        render(EXAMPLE, rule, "local") + "\nhand-edited\n", encoding="utf-8"
+    )
+
+    row = inst.check_artifact(EXAMPLE, rule, "local", box.repo)
+    assert row.status == "stale"
+    assert "remove it" in row.reason
+
+
+def test_a_foreign_local_file_is_never_called_stale(box: Sandbox) -> None:
+    inst.install(EXAMPLE, box.repo, "global")
+    rule = EXAMPLE.rules[0]
+    local = inst.artifact_path(EXAMPLE, rule, "local", box.repo)
+    local.parent.mkdir(parents=True, exist_ok=True)
+    local.write_text("someone else's file\n", encoding="utf-8")
+    assert inst.check_artifact(EXAMPLE, rule, "local", box.repo).status == "foreign"
+
+
+def test_check_resolves_the_installed_mode_once_for_the_whole_run(
+    box: Sandbox, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    inst.install(EXAMPLE, box.repo, "global")
+    calls: list[Path] = []
+    real = inst.installed_mode
+
+    def counted(host: Host, root: Path) -> str | None:
+        calls.append(root)
+        return real(host, root)
+
+    monkeypatch.setattr(inst, "installed_mode", counted)
+    inst.check(EXAMPLE, box.repo)
+    assert calls == [box.repo]
+
+
+def test_stale_local_accepts_a_precomputed_installed_mode(box: Sandbox) -> None:
+    rule = EXAMPLE.rules[0]
+    # Nothing is on disk, so the honest answer is False; the caller's handed-in
+    # verdict is what decides, and "auto" re-derives it.
+    assert inst.stale_local(EXAMPLE, rule, "local", box.repo, installed="global")
+    assert not inst.stale_local(EXAMPLE, rule, "local", box.repo, installed=None)
+    assert not inst.stale_local(EXAMPLE, rule, "local", box.repo)
+
+
 def test_local_only_copies_are_not_stale(box: Sandbox) -> None:
     inst.install(EXAMPLE, box.repo, "local")
     assert set(_statuses(EXAMPLE, box.repo).values()) == {"ok"}

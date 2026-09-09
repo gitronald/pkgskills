@@ -229,13 +229,15 @@ def _read_settings(path: Path) -> dict[str, object]:
 
     A missing file is a fresh, empty settings object. A present file must parse
     as a JSON object — a syntax error or a top-level array is a hard error
-    rather than a silent overwrite of whatever the user had there.
+    rather than a silent overwrite of whatever the user had there. Bytes that
+    are not UTF-8 land in the same place: ``UnicodeDecodeError`` is a
+    ``ValueError``, not an ``OSError``, so it has to be named to be caught.
     """
     if not path.exists():
         return {}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
         _err(f"could not read {path}: {exc}")
         raise typer.Exit(1) from None
     if not isinstance(data, dict):
@@ -304,9 +306,15 @@ def _permissions_command(host: Host) -> typer.Typer:
             return
 
         settings = _read_settings(path)
-        existing = settings.get("permissions")
-        block = existing if isinstance(existing, dict) else {}
-        result = perms.merge_allow(block, rules)
+        existing = settings.get("permissions", {})
+        if not isinstance(existing, dict):
+            # Same posture as a non-object top level: refuse rather than
+            # replace. Merging into `{}` here would drop whatever was there.
+            _err(
+                f"{path}: 'permissions' is not a JSON object; refusing to overwrite it."
+            )
+            raise typer.Exit(1)
+        result = perms.merge_allow(existing, rules)
 
         if not result.added:
             # Nothing new to grant: leave the file untouched rather than create

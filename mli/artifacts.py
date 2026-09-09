@@ -166,17 +166,31 @@ def classify(path: Path, host: Host, expected: str, mode: Mode) -> tuple[Status,
     return "drifted", "content differs from the current render"
 
 
-def check_artifact(host: Host, art: Artifact, mode: Mode, root: Path) -> Check:
+def check_artifact(
+    host: Host,
+    art: Artifact,
+    mode: Mode,
+    root: Path,
+    *,
+    installed: Mode | None | Literal["auto"] = "auto",
+) -> Check:
     """The drift verdict for ``art`` at its ``mode`` location.
 
-    A copy whose content matches its render is still ``stale`` when a resolved
-    global install has superseded it and the harness loads both — see
-    :func:`stale_local`. Content correctness is not the question there; the
-    file's continued existence is.
+    A copy is ``stale`` when a resolved global install has superseded it and the
+    harness loads both — see :func:`stale_local`. Content correctness is not the
+    question there; the file's continued existence is, so the verdict outranks
+    both ``ok`` *and* ``drifted``. Rewriting a drifted leftover would only
+    recreate the file the remedy asks the user to remove.
+
+    ``installed`` is :func:`installed_mode`'s answer, which is one fact per
+    check run rather than per row; :func:`check` computes it once and passes it
+    down. The default re-derives it, so a lone call still works.
     """
     path = artifact_path(host, art, mode, root)
     status, reason = classify(path, host, render(host, art, mode), mode)
-    if status == "ok" and stale_local(host, art, mode, root):
+    if status in ("ok", "drifted") and stale_local(
+        host, art, mode, root, installed=installed
+    ):
         return Check(
             art,
             mode,
@@ -196,17 +210,22 @@ def check(host: Host, root: Path, mode: Mode | None = None) -> list[Check]:
     real drift. An artifact present at neither location reports ``missing``
     once, against its global path.
     """
+    # One fact for the whole run: which mode an existing install resolves to.
+    # Re-deriving it per row would re-walk the filesystem for every artifact.
+    installed = installed_mode(host, root)
     results: list[Check] = []
     for art in host.artifacts:
         if mode is not None:
-            results.append(check_artifact(host, art, mode, root))
+            results.append(check_artifact(host, art, mode, root, installed=installed))
             continue
         found = [
-            check_artifact(host, art, m, root)
+            check_artifact(host, art, m, root, installed=installed)
             for m in MODES
             if occupied(artifact_path(host, art, m, root))
         ]
-        results.extend(found or [check_artifact(host, art, "global", root)])
+        results.extend(
+            found or [check_artifact(host, art, "global", root, installed=installed)]
+        )
     return results
 
 
@@ -231,7 +250,14 @@ def installed_mode(host: Host, root: Path) -> Mode | None:
     return None
 
 
-def stale_local(host: Host, art: Artifact, mode: Mode, root: Path) -> bool:
+def stale_local(
+    host: Host,
+    art: Artifact,
+    mode: Mode,
+    root: Path,
+    *,
+    installed: Mode | None | Literal["auto"] = "auto",
+) -> bool:
     """True when a local copy of ``art`` is live leftovers from before a switch.
 
     A resolved global install serves this repo, yet a per-repo copy of a kind
@@ -248,10 +274,14 @@ def stale_local(host: Host, art: Artifact, mode: Mode, root: Path) -> bool:
       a repo with no global install still reads ``ok``.
     * Only when the two paths differ, which they do not when the repo root is
       ``$HOME`` — there is one file there, not a leftover second one.
+
+    ``installed`` lets a caller judging many artifacts hand in
+    :func:`installed_mode`'s answer instead of paying for it once per row.
     """
     if mode != "local" or host.harness.shadows(art.kind):
         return False
-    if installed_mode(host, root) != "global":
+    resolved = installed_mode(host, root) if installed == "auto" else installed
+    if resolved != "global":
         return False
     return artifact_path(host, art, "local", root) != artifact_path(
         host, art, "global", root
