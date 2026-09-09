@@ -33,6 +33,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `mli.testing.sandbox` and `mli.testing.wheel_files` for host test suites.
 - Claude Code as the first harness adapter, with the layout kept in one
   `Harness` value.
+- `Host.extra_checks`, the read-side counterpart to `after_install`: a host
+  returns `ExtraCheck(label, status, gates, note)` rows for per-clone state
+  `mli` cannot derive (a registered pre-commit hook, say), they print in the
+  shared `install --check` table, and only the rows that say they gate fold
+  into the exit code — so a host with extra state keeps the shared table
+  instead of writing its own `install` command.
 - `mli.run` (and `mli.LOCATION_ENV`): a subprocess helper pinned to an explicit
   repo root with git's location variables (`GIT_DIR` and friends) stripped, so
   a host's `after_install` hook cannot have its shell-outs redirected at another

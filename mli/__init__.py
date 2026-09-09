@@ -19,7 +19,7 @@ from mli.artifacts import (
 from mli.cli import register, typer_app
 from mli.frontmatter import Frontmatter, split_frontmatter
 from mli.harness import CLAUDE_CODE, Harness, Kind
-from mli.host import Agent, Artifact, Host, Mode, Rule, Skill
+from mli.host import Agent, Artifact, ExtraCheck, Host, Mode, Rule, Skill
 from mli.proc import LOCATION_ENV, run
 from mli.rendering import render, render_prompt
 
@@ -29,6 +29,7 @@ __all__ = [
     "Agent",
     "Artifact",
     "Check",
+    "ExtraCheck",
     "ForeignArtifactError",
     "Frontmatter",
     "Harness",

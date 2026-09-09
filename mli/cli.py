@@ -126,7 +126,12 @@ def _relative(path: Path, root: Path) -> Path:
 
 
 def run_check(host: Host, root: Path, mode: Mode | None) -> bool:
-    """Print the drift table for ``host`` and return whether all rows are ok."""
+    """Print the drift table for ``host`` and return whether all rows are ok.
+
+    The host's own :attr:`Host.extra_checks <mli.host.Host.extra_checks>` rows
+    print in the same table; only the ones that say they gate fold into the
+    verdict.
+    """
     typer.echo(
         f"{host.dist} {host.resolved_version()} via mli {mli_version()}, "
         f"harness {host.harness.name}"
@@ -137,6 +142,14 @@ def run_check(host: Host, root: Path, mode: Mode | None) -> bool:
         if row.reason:
             line += f"  ({row.reason})"
         typer.echo(line)
+    extras = tuple(host.extra_checks(host, root, mode)) if host.extra_checks else ()
+    for extra in extras:
+        # The mode column is blank: these rows are about the clone, not about a
+        # file that exists once per mode.
+        typer.echo(f"{extra.status:<8}{'':<7}{extra.label}")
+    for extra in extras:
+        if extra.note:
+            _err(f"note: {extra.note}")
     for path in install_mod.shadowed_skills(host, root):
         _err(
             f"note: a global copy shadows the per-repo stub at "
@@ -151,7 +164,7 @@ def run_check(host: Host, root: Path, mode: Mode | None) -> bool:
     hinted = {row.mode for row in bad if row.status != "stale"}
     for m in sorted(hinted):
         _err(f"repair: {host.install_command(m, force=True)}")
-    return not bad
+    return not bad and not any(extra.gates for extra in extras)
 
 
 def run_install(host: Host, root: Path, mode: Mode, *, force: bool) -> None:

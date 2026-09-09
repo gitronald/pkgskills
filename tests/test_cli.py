@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import subprocess
 import sys
@@ -10,10 +11,13 @@ from pathlib import Path
 import pytest
 from examplehost.cli import HOST as EXAMPLE
 from examplehost.cli import app as example_app
+from solohost.cli import HOST as SOLO
 from solohost.cli import app as solo_app
 from typer.testing import CliRunner
 
 from mli import artifacts as inst
+from mli.cli import typer_app
+from mli.host import ExtraCheck, Host, Mode
 from mli.rendering import render
 from mli.testing import Sandbox
 
@@ -143,6 +147,40 @@ def test_check_gates_on_a_stale_local_copy_and_points_at_removal(
 
     rule.unlink()
     assert runner.invoke(example_app, ["install", "--check"]).exit_code == 0
+
+
+def test_extra_checks_share_the_table_and_only_gate_when_they_say_so(
+    box: Sandbox,
+) -> None:
+    seen: list[tuple[Path, str | None]] = []
+
+    def extras(host: Host, root: Path, mode: Mode | None) -> list[ExtraCheck]:
+        seen.append((root, mode))
+        return [
+            ExtraCheck("hook", "active", gates=False),
+            ExtraCheck("gitattr", "missing", gates=True, note="run the wiring step"),
+        ]
+
+    host = dataclasses.replace(SOLO, extra_checks=extras)
+    inst.install(host, box.repo, "local")
+    app = typer_app(host)
+
+    result = runner.invoke(app, ["install", "--check"])
+    assert seen == [(box.repo, None)]
+    assert "ok      local  .claude/skills/use-solo/SKILL.md" in result.output
+    assert "active         hook" in result.output
+    assert "missing        gitattr" in result.output
+    assert "note: run the wiring step" in result.output
+    assert result.exit_code == 1
+
+    # The same rows, none of them gating: reported, and the check still passes.
+    quiet = dataclasses.replace(
+        SOLO,
+        extra_checks=lambda h, r, m: [ExtraCheck("hook", "absent", gates=False)],
+    )
+    passing = runner.invoke(typer_app(quiet), ["install", "--check"])
+    assert "absent         hook" in passing.output
+    assert passing.exit_code == 0
 
 
 def test_check_writes_nothing(box: Sandbox) -> None:
