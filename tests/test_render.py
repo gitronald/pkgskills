@@ -16,15 +16,63 @@ from mli.rendering import (
     render_prompt,
     render_stub,
     stub_frontmatter,
+    with_metadata,
 )
-from mli.stamp import mask_versions, render_stamp, stamped_by, stamped_mode
+from mli.stamp import (
+    mask_versions,
+    mli_version,
+    render_stamp,
+    stamped_by,
+    stamped_mode,
+)
 
 
 def test_single_skill_stub_lifts_frontmatter_verbatim() -> None:
     front, _ = split_frontmatter(SOLO.read("skill.md"))
     assert front is not None
     stub = render_stub(SOLO, SOLO.skills[0], "global")
-    assert stub.startswith(front.raw)
+    source_lines = front.raw.splitlines()[:-1]  # every line but the closing fence
+    assert stub.startswith("\n".join(source_lines) + "\n")
+
+
+def test_stub_declares_both_versions_as_metadata() -> None:
+    stub = render_stub(SOLO, SOLO.skills[0], "global")
+    front, _ = split_frontmatter(stub)
+    assert front is not None
+    assert front.get("name") == "use-solo"  # the source keys still parse
+    assert '\nmetadata:\n  version: "0.9.0"\n  mli-version: "' in front.raw
+    assert front.raw.endswith('"\n---\n')
+
+
+def test_dispatcher_stub_declares_metadata_too() -> None:
+    front, _ = split_frontmatter(render_stub(EXAMPLE, EXAMPLE.skills[0], "local"))
+    assert front is not None
+    assert 'metadata:\n  version: "1.2.3"\n' in front.raw
+
+
+def test_stub_metadata_joins_a_metadata_block_the_source_declares() -> None:
+    raw = "---\nname: x\nmetadata:\n  author: example-org\n---\n"
+    out = with_metadata(raw, SOLO, SOLO.skills[0])
+    assert out == (
+        "---\nname: x\nmetadata:\n"
+        f'  version: "0.9.0"\n  mli-version: "{mli_version()}"\n'
+        "  author: example-org\n---\n"
+    )
+
+
+def test_stub_metadata_stops_scanning_at_the_next_top_level_key() -> None:
+    raw = '---\nname: x\nmetadata:\n  author: example-org\nversion: "2.0"\n---\n'
+    out = with_metadata(raw, SOLO, SOLO.skills[0])
+    # A top-level `version` is a different key from `metadata.version`, so it
+    # is neither a conflict nor moved.
+    assert out.endswith('  author: example-org\nversion: "2.0"\n---\n')
+    assert '  version: "0.9.0"\n' in out
+
+
+def test_stub_metadata_rejects_a_source_that_claims_a_managed_key() -> None:
+    raw = '---\nname: x\nmetadata:\n  version: "2.0"\n---\n'
+    with pytest.raises(ValueError, match="already declares metadata.version"):
+        with_metadata(raw, SOLO, SOLO.skills[0])
 
 
 def test_single_skill_stub_holds_no_instructions() -> None:
@@ -91,6 +139,15 @@ def test_mask_versions_ignores_a_version_bump_but_not_a_mode_change() -> None:
     assert mask_versions(one, EXAMPLE) == mask_versions(two, EXAMPLE)
     other_mode = render(EXAMPLE, EXAMPLE.rules[0], "local")
     assert mask_versions(one, EXAMPLE) != mask_versions(other_mode, EXAMPLE)
+
+
+def test_mask_versions_covers_the_stubs_metadata_versions() -> None:
+    one = render(EXAMPLE, EXAMPLE.skills[0], "global")
+    bumped = dataclasses.replace(EXAMPLE, version="9.9.9")
+    two = render(bumped, bumped.skills[0], "global")
+    assert 'version: "9.9.9"' in two
+    assert one != two
+    assert mask_versions(one, EXAMPLE) == mask_versions(two, EXAMPLE)
 
 
 def test_render_prompt_strips_frontmatter_and_renders_cli_on_request() -> None:

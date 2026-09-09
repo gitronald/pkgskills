@@ -18,8 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   as stamped copies.
 - Global (`~/.claude/`) and local (repository) install modes, with the
   repository root found by walking up to `.git` or `.claude/`.
+- Skill stubs declare the host and `mli` versions as frontmatter `metadata`
+  (`version`, `mli-version`), the field the [Agent Skills
+  specification](https://agentskills.io/specification#frontmatter-required)
+  reserves for client properties; `docs/frontmatter.md` covers the shape.
 - One stamp format naming the host version, the `mli` version, the mode, and
-  the regenerate command; `install --check` masks both versions and reports
+  the regenerate command; `install --check` masks every version and reports
   `ok`, `drifted`, `missing`, or `foreign` with a reason per file.
 - Foreign files (unstamped, another package's stamp, symlinks, directories,
   undecodable bytes) are never replaced without `--force`, and every target
