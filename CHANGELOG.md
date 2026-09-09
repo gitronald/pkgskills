@@ -33,6 +33,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `mli.testing.sandbox` and `mli.testing.wheel_files` for host test suites.
 - Claude Code as the first harness adapter, with the layout kept in one
   `Harness` value.
+- A shared `permissions` command, mounted when a host declares
+  `Host.permissions`: an escalating, superset ladder of automation levels
+  (`none`/`assist`/`confirm`/`full`, or `0`-`3`) where the host supplies only
+  its own per-level increments and `mli` derives the grant for calling the CLI
+  from the host's invocation. Prints a paste-ready block by default; `--apply`
+  merges additively into `.claude/settings.local.json` (or
+  `~/.claude/settings.json` with `--global`), never downgrading a rule already
+  on `deny` or `ask`.
 - `Host.extra_checks`, the read-side counterpart to `after_install`: a host
   returns `ExtraCheck(label, status, gates, note)` rows for per-clone state
   `mli` cannot derive (a registered pre-commit hook, say), they print in the

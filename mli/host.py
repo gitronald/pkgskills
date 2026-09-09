@@ -16,13 +16,15 @@ text off disk with no model in the loop.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from importlib import metadata, resources
 from pathlib import PurePosixPath
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Literal
 
 from mli.harness import CLAUDE_CODE, Harness, Kind
+from mli.permissions import LEVELS, Level
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -162,6 +164,10 @@ class Host:
       with ``(host, root, mode)`` during ``install --check``, it returns the
       rows for state ``mli`` cannot derive, so a host with extra state keeps
       the shared table instead of writing its own ``install`` command.
+    * ``permissions`` maps each :class:`~mli.permissions.Level` to the Bash
+      allow-rules that level *adds* over the one below it; declaring any of
+      them mounts the ``permissions`` command. See :mod:`mli.permissions` for
+      what the ladder's rungs mean.
     """
 
     dist: str
@@ -175,6 +181,7 @@ class Host:
     extra_checks: Callable[[Host, Path, Mode | None], Sequence[ExtraCheck]] | None = (
         None
     )
+    permissions: Mapping[Level, tuple[str, ...]] = MappingProxyType({})
 
     def __post_init__(self) -> None:
         self.validate()
@@ -202,6 +209,13 @@ class Host:
                     raise ValueError(
                         f"skill {art.name!r} has sources with duplicate stems"
                     )
+        for level in self.permissions:
+            if level not in LEVELS:
+                raise ValueError(f"unknown permission level {level!r}")
+        # `none` is the rung that grants nothing; rules there would make the
+        # ladder's floor a lie, since every higher level inherits it.
+        if self.permissions.get(Level.none):
+            raise ValueError("permission level 'none' must grant nothing")
 
     # -- identity ----------------------------------------------------------
 
