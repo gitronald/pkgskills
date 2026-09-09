@@ -29,7 +29,7 @@ from mli.host import MODES, Artifact, Host, Mode, Skill
 from mli.rendering import render
 from mli.stamp import is_stamped, mask_versions, stamped_by, stamped_mode
 
-Status = Literal["ok", "drifted", "missing", "foreign"]
+Status = Literal["ok", "drifted", "stale", "missing", "foreign"]
 
 
 class ForeignArtifactError(Exception):
@@ -167,9 +167,23 @@ def classify(path: Path, host: Host, expected: str, mode: Mode) -> tuple[Status,
 
 
 def check_artifact(host: Host, art: Artifact, mode: Mode, root: Path) -> Check:
-    """The drift verdict for ``art`` at its ``mode`` location."""
+    """The drift verdict for ``art`` at its ``mode`` location.
+
+    A copy whose content matches its render is still ``stale`` when a resolved
+    global install has superseded it and the harness loads both — see
+    :func:`stale_local`. Content correctness is not the question there; the
+    file's continued existence is.
+    """
     path = artifact_path(host, art, mode, root)
     status, reason = classify(path, host, render(host, art, mode), mode)
+    if status == "ok" and stale_local(host, art, mode, root):
+        return Check(
+            art,
+            mode,
+            path,
+            "stale",
+            "superseded by the global copy but still loaded; remove it",
+        )
     return Check(art, mode, path, status, reason)
 
 
@@ -197,16 +211,51 @@ def check(host: Host, root: Path, mode: Mode | None = None) -> list[Check]:
 
 
 def installed_mode(host: Host, root: Path) -> Mode | None:
-    """The mode of the installed skill stub, global first, or ``None``.
+    """The mode an existing install resolves to, global first, or ``None``.
 
     Used to render printed bodies with the prefix the installed stub uses, so
-    what the model reads agrees with the commands it was told to run.
+    what the model reads agrees with the commands it was told to run. Skills
+    decide it whenever the host ships any, because the stub is what carries
+    those commands; a host that ships none falls back to its other artifacts so
+    the answer stays grounded in what is actually on disk.
+
+    ``None`` means *nothing is installed* and is deliberately not folded into a
+    default here: callers that need a mode to print with substitute ``global``
+    themselves, while callers asking "has this repo been pinned to global?"
+    need the difference.
     """
-    for skill in host.skills:
+    for art in host.skills or host.artifacts:
         for mode in MODES:
-            if occupied(artifact_path(host, skill, mode, root)):
+            if occupied(artifact_path(host, art, mode, root)):
                 return mode
     return None
+
+
+def stale_local(host: Host, art: Artifact, mode: Mode, root: Path) -> bool:
+    """True when a local copy of ``art`` is live leftovers from before a switch.
+
+    A resolved global install serves this repo, yet a per-repo copy of a kind
+    the harness loads from *both* bases is still sitting there — so it is in
+    context right now, matching content or not. The remedy is to remove it, not
+    to regenerate it.
+
+    Three guards keep the verdict honest:
+
+    * Only ``local`` rows. The asymmetry is deliberate: a *global* copy present
+      during a local install is shared infrastructure serving every other
+      repository, never this repo's leftover, and is never flagged.
+    * Only a genuinely resolved global install counts, so a local-only copy in
+      a repo with no global install still reads ``ok``.
+    * Only when the two paths differ, which they do not when the repo root is
+      ``$HOME`` — there is one file there, not a leftover second one.
+    """
+    if mode != "local" or host.harness.shadows(art.kind):
+        return False
+    if installed_mode(host, root) != "global":
+        return False
+    return artifact_path(host, art, "local", root) != artifact_path(
+        host, art, "global", root
+    )
 
 
 def shadowed_skills(host: Host, root: Path) -> list[Path]:

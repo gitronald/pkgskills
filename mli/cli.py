@@ -143,10 +143,14 @@ def run_check(host: Host, root: Path, mode: Mode | None) -> bool:
             f"{_relative(path, root)}; the global one is what loads"
         )
     bad = [row for row in rows if not row.ok]
-    if bad:
-        hinted = {row.mode for row in bad}
-        for m in sorted(hinted):
-            _err(f"repair: {host.install_command(m, force=True)}")
+    # A stale row is not repaired by rewriting the file — the file is the
+    # problem. Point at the removal instead of the reinstall that recreates it.
+    for row in bad:
+        if row.status == "stale":
+            _err(f"remove: {_relative(row.path, root)}")
+    hinted = {row.mode for row in bad if row.status != "stale"}
+    for m in sorted(hinted):
+        _err(f"repair: {host.install_command(m, force=True)}")
     return not bad
 
 

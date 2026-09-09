@@ -14,6 +14,7 @@ from solohost.cli import app as solo_app
 from typer.testing import CliRunner
 
 from mli import artifacts as inst
+from mli.rendering import render
 from mli.testing import Sandbox
 
 runner = CliRunner()
@@ -123,6 +124,25 @@ def test_check_reports_each_status_and_exit_codes(box: Sandbox) -> None:
     assert drifted.exit_code == 1
     assert "drifted" in drifted.output
     assert "repair: uv run solohost install --local --force" in drifted.output
+
+
+def test_check_gates_on_a_stale_local_copy_and_points_at_removal(
+    box: Sandbox,
+) -> None:
+    inst.install(EXAMPLE, box.repo, "global")
+    rule = inst.artifact_path(EXAMPLE, EXAMPLE.rules[0], "local", box.repo)
+    rule.parent.mkdir(parents=True)
+    rule.write_text(render(EXAMPLE, EXAMPLE.rules[0], "local"), encoding="utf-8")
+
+    result = runner.invoke(example_app, ["install", "--check"])
+    assert result.exit_code == 1
+    assert "stale   local  .claude/rules/examplehost.md" in result.output
+    assert "remove: .claude/rules/examplehost.md" in result.output
+    # Rewriting the file is not the repair, so no local reinstall is suggested.
+    assert "install --local --force" not in result.output
+
+    rule.unlink()
+    assert runner.invoke(example_app, ["install", "--check"]).exit_code == 0
 
 
 def test_check_writes_nothing(box: Sandbox) -> None:

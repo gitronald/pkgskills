@@ -40,6 +40,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- `install --check` reports a new `stale` status and gates on it: a per-repo
+  copy of a kind the harness loads from *both* bases (rules and agents under
+  Claude Code) is drift once a resolved global install serves the repo, even
+  when its content matches the current render exactly — it is an extra file
+  live in context, and the remedy printed is `remove:`, not a reinstall. Skills
+  are unaffected, since a global skill shadows the local stub rather than
+  loading alongside it, and a global copy is never flagged during a local
+  install.
+- `Harness` declares that discipline per kind (`shadowed_kinds`, with
+  `shadows()` / `both_load()`), so it is a property of the harness rather than
+  something hardcoded at the call site.
+- `installed_mode` falls back to a host's other artifacts when it ships no
+  skills, instead of always answering `None`.
+
 ### Deprecated
 
 ### Removed
