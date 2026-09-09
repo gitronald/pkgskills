@@ -1,11 +1,11 @@
 ---
 id: 1
 slug: template-upgrade
-status: active
+status: done
 branch: feature/template-upgrade
 created: 2026-09-09T09:35:39-07:00
-concluded:
-pr:
+concluded: 2026-09-09T09:37:47-07:00
+pr: null
 ---
 
 # Sync repo tooling to the current project template
