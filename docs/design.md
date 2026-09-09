@@ -26,6 +26,15 @@ disagreed on details: an HTML-comment stamp versus a frontmatter `version:`
 key, masked versus byte-for-byte drift, refuse-foreign versus skip-existing,
 and local-only versus global-and-local modes. `mli` picks one answer to each.
 
+Between them the three carried roughly 1,800 lines of delivery machinery and a
+similar weight of tests, all of it hand-kept in parallel. That number alone did
+not justify a package: the extraction was conditioned on a fourth host or a
+second harness actually appearing, on the reasoning that three hand-kept copies
+are cheaper than a library nothing new exercises, with a written contract plus a
+conformance suite as the fallback if the shared code stayed thin and every host
+still needed overrides. A fourth host has since adopted it, which is the
+condition being met.
+
 ## Decisions
 
 **Cut line.** `mli` owns the artifact layer (stamp, path by mode, drift
@@ -67,7 +76,14 @@ subdirectory ends up where the harness loads from.
 **Version coupling.** A change to `mli`'s rendered text would flip every
 host's files to drifted with no host change. Masking both versions removes
 the common case; hosts should pin a compatible range so patches flow without
-host releases.
+host releases. A stub also has two producers now, the host and `mli`; the stamp
+names both versions so a bad render is attributable to one of them.
+
+**Two hosts before an option.** Some of the divergences the three hosts had were
+deliberate and some were accidents, and the difference is not visible from one
+host's side. So a behavior difference is a per-artifact or per-host declaration
+only once a second host needs it — never a per-host code path, and never an
+option added on the strength of a single caller.
 
 ## What was borrowed from where
 
@@ -94,3 +110,16 @@ CLI prints, and each has a test.
   needs no flags.
 - Reserving `<host>.md` for generated rules and steering hand-written repo
   rules to another name.
+- A provenance command, in the shape of the `config` command one of the three
+  hosts grew: print the resolved install state — host and `mli` versions,
+  harness, mode, path, stamp versions, status — with the source of each value
+  tagged `flag`, `project`, `location`, or `default`. The note about a global
+  copy shadowing a per-repo one becomes one row of that table rather than a
+  line on stderr.
+- A fingerprint test over the rendered text, so a change to what `mli` writes
+  cannot land without a deliberate version bump. Masking makes such a change
+  cheap for hosts; it should still be a decision rather than a side effect.
+- Recording the harness adapter's name in the stamp, so an artifact installed
+  for one harness cannot pass a check against another.
+- `mli` shipping a skill of its own, dogfooding the pattern on the package that
+  defines it.

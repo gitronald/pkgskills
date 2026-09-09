@@ -170,6 +170,13 @@ No host can `uv add mli` today: the repository has no remote and nothing is rele
   packages, which are the pattern's own lineage. Their ignore patterns were bare filenames,
   which match at every depth and silently ignored `.planners/plans/*/plan.md` as well; they are
   now anchored to the root (`/plan.md`).
+  **Scrub done 2026-09-09.** The survey note held nothing the design doc did not already state in
+  public-safe form, so it was retired unabsorbed. From the proposal, four things had no other
+  home and moved into `docs/design.md`: the cost and exit criterion the extraction was
+  conditioned on, the two-hosts-before-an-option rule, the two-producers note under version
+  coupling, and four open items appended to "Not yet" (a provenance command, a render
+  fingerprint test, the harness name in the stamp, and `mli` dogfooding a skill of its own).
+  Everything named in the fold is generalized; both files are archived out of the tree.
 - Add a "Drift gate" snippet to the README: a local pre-commit hook running
   `<cli> install --local --check` with `pass_filenames: false`, scoped to the host's prompt
   package and the harness config directory. Hosts keep asking for this and it needs no code.
