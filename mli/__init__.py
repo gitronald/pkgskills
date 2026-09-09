@@ -20,10 +20,12 @@ from mli.cli import register, typer_app
 from mli.frontmatter import Frontmatter, split_frontmatter
 from mli.harness import CLAUDE_CODE, Harness, Kind
 from mli.host import Agent, Artifact, Host, Mode, Rule, Skill
+from mli.proc import LOCATION_ENV, run
 from mli.rendering import render, render_prompt
 
 __all__ = [
     "CLAUDE_CODE",
+    "LOCATION_ENV",
     "Agent",
     "Artifact",
     "Check",
@@ -43,6 +45,7 @@ __all__ = [
     "register",
     "render",
     "render_prompt",
+    "run",
     "split_frontmatter",
     "typer_app",
 ]

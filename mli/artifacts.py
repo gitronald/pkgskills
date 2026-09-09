@@ -86,6 +86,10 @@ def find_repo_root(start: Path | None = None, harness: Harness | None = None) ->
     A repo root holds ``.git`` or the harness's config directory. A local
     install must target the root the harness loads from, not whatever
     subdirectory the command ran in. Falls back to ``start`` itself.
+
+    Deliberately a filesystem walk, never a question put to git: an ambient
+    ``GIT_DIR`` would otherwise name a repository the user is not looking at.
+    :mod:`mli.proc` keeps the same posture on the write side.
     """
     base = (start or Path.cwd()).resolve()
     marker = harness.config_dir if harness else None
@@ -128,7 +132,18 @@ def is_generated(path: Path, host: Host) -> bool:
 
 
 def classify(path: Path, host: Host, expected: str, mode: Mode) -> tuple[Status, str]:
-    """Judge what sits at ``path`` against ``expected``, the current render."""
+    """Judge what sits at ``path`` against ``expected``, the current render.
+
+    A file that cannot be read (bad permissions, not UTF-8) folds into
+    ``foreign``, and the CLI points at ``--force``. That is honest only because
+    every write here is wholesale: ``--force`` genuinely fixes it. The rule the
+    status set obeys is that **a status must not imply a remedy the tool cannot
+    perform** — so an artifact kind that is *edited in place* rather than
+    rewritten (appending or amending one line of a file the host does not own)
+    needs its own ``unreadable`` status from the start. There, an installer that
+    cannot read the file refuses to write it, and both ``foreign`` and
+    ``missing`` would send the user in a circle.
+    """
     if not occupied(path):
         return "missing", "not installed"
     if path.is_symlink():

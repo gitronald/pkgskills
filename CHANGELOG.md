@@ -33,6 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `mli.testing.sandbox` and `mli.testing.wheel_files` for host test suites.
 - Claude Code as the first harness adapter, with the layout kept in one
   `Harness` value.
+- `mli.run` (and `mli.LOCATION_ENV`): a subprocess helper pinned to an explicit
+  repo root with git's location variables (`GIT_DIR` and friends) stripped, so
+  a host's `after_install` hook cannot have its shell-outs redirected at another
+  repository by an inherited environment variable.
 
 ### Changed
 
