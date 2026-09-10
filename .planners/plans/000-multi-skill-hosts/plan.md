@@ -318,3 +318,41 @@ item, which the previous two parts had parked here; Parts 4 and 5 untouched.
 
 **Not pushed**, same as Parts 1 and 3: the repository still has no remote (Part 5), so
 there is no upstream and no PR.
+
+### 2026-09-09 — Part 4 implemented
+
+`feature/multi-skill-hosts`, commit `558ef99`. Part 4 as specced, with one rule the spec
+did not anticipate; Part 5 is all that remains.
+
+- `mli.testing.prompt_commands(host)` returns a `PromptCommand` per `{cli} ...` mention
+  (source, line, command path, declared argument) across every skill body, doc, rule, and
+  agent the host declares. `assert_prompt_commands(host, app)` resolves each path through
+  the typer app's click groups and fails with the source and line of every mention that
+  reaches nothing.
+- **Not in the spec: a mention counts only where it is written as code.** A bare `{cli}` in
+  prose is common in these bodies — both `solohost` and `multihost` have one explaining what
+  the placeholder is — and a scanner that reads the next words as a command path invents a
+  command to fail on ("no such command 'like any other body'"). So mentions are taken from
+  backticked spans and fenced blocks only. This is the one rule that makes the helper usable
+  on real prose rather than on prose written for it.
+- The declared-argument case is what makes this more than a subcommand walk: the argument to
+  `skill`, `doc`, `rule`, and `agent` resolves against the host's declarations
+  (`skill_sources()` keys, doc names, artifact names), so a renamed doc fails. An
+  option (`--list`) or a placeholder (`<id>`) after those commands is not an argument to
+  check, and neither is a path.
+- Fixtures had to become honest. `examplehost` gained real `validate` and `close` commands —
+  its bodies had always named them and nothing had ever resolved them — and its rule body now
+  names one argument of each declaring kind. `multihost`'s bodies pointed at a `validate` its
+  `typer_app` never had; they now say `{cli} install --check`, and the three tests asserting
+  the old rendered text moved with them.
+- Negative fixture: `examplehost/prompts/references/broken.md`, undeclared on `HOST` and read
+  only by the negative test, which builds a docs-only host from it via `dataclasses.replace`
+  and its own `typer_app` — so `doc` is mounted and the failure is the undeclared *name*, not
+  a missing command. It also carries the same words in prose, asserted absent from the report.
+- 12 new tests, 156 passing, coverage 97.7%; ruff and pyrefly clean.
+- Docs: a "Testing a host" addition in the README with the one-line assertion and the
+  code-span rule, a "Commands in prompts are checked, not trusted" decision in
+  `docs/design.md`, a CHANGELOG bullet, and the fixture/module lines in `.claude/CLAUDE.md`
+  (untracked here, so the same edit was applied in the main checkout).
+
+**Not pushed**, same as Parts 1, 2, and 3: the repository still has no remote (Part 5).
