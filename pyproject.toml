@@ -1,6 +1,6 @@
 [project]
 name = "mli"
-version = "0.1.0a0"
+version = "0.1.0"
 description = "Model line interface: ship prompts inside a CLI package and install thin, version-stamped stubs where the harness reads them."
 authors = [
     {name = "gitronald", email = "gitronald@users.noreply.github.com"}
