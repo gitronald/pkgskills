@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 from examplehost.cli import HOST as EXAMPLE
+from multihost.cli import HOST as MULTI
 from solohost.cli import HOST as SOLO
 
 from mli.harness import CLAUDE_CODE, Harness, Kind
@@ -22,7 +23,7 @@ def test_invocation_and_commands_per_mode() -> None:
         EXAMPLE.check_command("local") == "uv run examplehost install --local --check"
     )
     assert EXAMPLE.skill_command("global", "add") == "examplehost skill add"
-    assert SOLO.skill_command("local") == "uv run solohost skill"
+    assert SOLO.skill_command("local", "use-solo") == "uv run solohost skill use-solo"
 
 
 def test_skill_shape() -> None:
@@ -40,6 +41,17 @@ def test_lookup_by_kind_and_name() -> None:
     with pytest.raises(KeyError):
         EXAMPLE.artifact(Kind.SKILL, "nope")
     assert set(EXAMPLE.skill_sources()) == {"add", "close"}
+
+
+def test_skill_bodies_are_keyed_by_stem_only_when_dispatching() -> None:
+    # A dispatcher's bodies answer to their stems, which are its subcommands.
+    assert EXAMPLE.skills[0].body_names == ("add", "close")
+    # A single-source skill answers to the skill's name, whatever the file is
+    # called: `skill.md` is not what the model knows `use-solo` as.
+    assert SOLO.skills[0].body_names == ("use-solo",)
+    assert set(SOLO.skill_sources()) == {"use-solo"}
+    assert set(MULTI.skill_sources()) == {"tidy", "audit"}
+    assert MULTI.skill_sources()["audit"][1] == "skills/audit-body.md"
 
 
 def test_version_falls_back_when_no_distribution_is_installed() -> None:
@@ -77,15 +89,31 @@ def test_validation_rejects_bad_declarations() -> None:
         )
 
 
-def test_ambiguous_skill_bodies_are_rejected_on_lookup() -> None:
-    host = Host(
-        dist="d",
-        cli="c",
-        prompts="p",
-        artifacts=(Skill("one", ("x/add.md",)), Skill("two", ("y/add.md",))),
-    )
+def test_ambiguous_skill_bodies_are_rejected_at_construction() -> None:
+    # Two dispatchers whose stems overlap.
     with pytest.raises(ValueError, match="more than one skill"):
-        host.skill_sources()
+        Host(
+            dist="d",
+            cli="c",
+            prompts="p",
+            artifacts=(
+                Skill("one", ("x/add.md", "x/close.md")),
+                Skill("two", ("y/add.md", "y/drop.md")),
+            ),
+        )
+    # A dispatcher stem that collides with a single-source skill's own name:
+    # the two namespaces share one `skill <name>` argument, so this is
+    # ambiguous even though neither declaration repeats itself.
+    with pytest.raises(ValueError, match="more than one skill"):
+        Host(
+            dist="d",
+            cli="c",
+            prompts="p",
+            artifacts=(
+                Skill("one", ("x/audit.md", "x/close.md")),
+                Skill("audit", ("y/audit-body.md",)),
+            ),
+        )
 
 
 def test_claude_code_layout() -> None:

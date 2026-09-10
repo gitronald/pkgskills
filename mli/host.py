@@ -8,7 +8,7 @@ version, so nothing about the host is restated anywhere else.
 
 Artifacts come in three kinds. A :class:`Skill` is materialized as a thin
 *stub* that tells the model to print the real instructions with
-``<cli> skill``; a skill with several sources becomes a dispatcher whose
+``<cli> skill <name>``; a skill with several sources becomes a dispatcher whose
 subcommands are the source file stems. A :class:`Rule` and an :class:`Agent`
 are materialized as stamped *copies*, because the harness reads their full
 text off disk with no model in the loop.
@@ -73,6 +73,18 @@ class Skill:
     def subcommands(self) -> tuple[str, ...]:
         """The subcommand names, one per source, in declaration order."""
         return tuple(_stem(source) for source in self.sources)
+
+    @property
+    def body_names(self) -> tuple[str, ...]:
+        """The names ``<cli> skill <name>`` accepts, one per source.
+
+        A dispatcher's bodies are addressed by their source stems, which are
+        the subcommands the stub advertises. A single-source skill is addressed
+        by the *skill's* name: that is what the model has — it is in the stub's
+        frontmatter and in the slash command — and the source file need not be
+        named after it.
+        """
+        return self.subcommands if self.dispatches else (self.name,)
 
     def source_for(self, subcommand: str) -> str:
         """The source behind ``subcommand``. Raises ``KeyError`` if unknown."""
@@ -209,6 +221,8 @@ class Host:
                     raise ValueError(
                         f"skill {art.name!r} has sources with duplicate stems"
                     )
+        # Raises when two bodies would answer to the same `skill <name>`.
+        self.skill_sources()
         for level in self.permissions:
             if level not in LEVELS:
                 raise ValueError(f"unknown permission level {level!r}")
@@ -292,20 +306,22 @@ class Host:
         raise KeyError(f"{kind.value} {name!r}")
 
     def skill_sources(self) -> dict[str, tuple[Skill, str]]:
-        """Every skill body by its subcommand name, across all skills.
+        """Every skill body by the name ``skill`` prints it under.
 
-        A name that two skills both use is ambiguous and is rejected here
-        rather than silently resolved to one of them.
+        Two namespaces share this mapping: a dispatcher contributes its source
+        stems, a single-source skill contributes its own name. A name claimed
+        twice — by either namespace — is ambiguous and is rejected here rather
+        than silently resolved to one of them. :meth:`validate` calls this, so
+        a colliding host fails at construction, not at print time.
         """
         out: dict[str, tuple[Skill, str]] = {}
         for skill in self.skills:
-            for source in skill.sources:
-                stem = _stem(source)
-                if stem in out:
+            for name, source in zip(skill.body_names, skill.sources, strict=True):
+                if name in out:
                     raise ValueError(
-                        f"skill body {stem!r} is declared by more than one skill"
+                        f"skill body {name!r} is declared by more than one skill"
                     )
-                out[stem] = (skill, source)
+                out[name] = (skill, source)
         return out
 
 

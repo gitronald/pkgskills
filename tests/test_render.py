@@ -6,6 +6,7 @@ import dataclasses
 
 import pytest
 from examplehost.cli import HOST as EXAMPLE
+from multihost.cli import HOST as MULTI
 from solohost.cli import HOST as SOLO
 
 from mli.frontmatter import split_frontmatter
@@ -86,10 +87,20 @@ def test_single_skill_stub_holds_no_instructions() -> None:
 )
 def test_single_skill_stub_names_mode_correct_commands(mode: str, prefix: str) -> None:
     stub = render_stub(SOLO, SOLO.skills[0], mode)  # type: ignore[arg-type]
-    assert f"\n{prefix} skill\n" in stub
+    assert f"\n{prefix} skill use-solo\n" in stub
     local = " --local" if mode == "local" else ""
     assert f"{prefix} install{local} --check" in stub
     assert f"{prefix} install{local} --force" in stub
+
+
+def test_every_stub_on_a_multi_skill_host_names_its_own_body() -> None:
+    # The nameless `<cli> skill` a solo host could get away with exits 1 here,
+    # so each stub has to name the body it stands for. `audit` proves the name
+    # comes from the skill, not from the source file's stem.
+    stubs = {skill.name: render_stub(MULTI, skill, "global") for skill in MULTI.skills}
+    assert "\nmultihost skill tidy\n" in stubs["tidy"]
+    assert "\nmultihost skill audit\n" in stubs["audit"]
+    assert "audit-body" not in stubs["audit"]
 
 
 def test_dispatcher_stub_lists_subcommands_with_descriptions() -> None:

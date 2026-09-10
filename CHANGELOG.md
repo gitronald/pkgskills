@@ -13,9 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   skills, rules, and agents a package ships, with an `after_install` hook.
 - `register(app, host)` mounts the shared grammar on a host's typer app:
   `skill`, `install`, and, when declared, `rule` and `agent`.
-- Skills install as print-on-demand stubs; a multi-source skill becomes a
-  dispatcher whose subcommands are the source stems. Rules and agents install
-  as stamped copies.
+- Skills install as print-on-demand stubs, each naming the body it prints
+  (`<cli> skill <name>`); a multi-source skill becomes a dispatcher whose
+  subcommands are the source stems, while a single-source skill is addressed
+  by the skill's own name, whatever its source file is called. Rules and
+  agents install as stamped copies.
 - Global (`~/.claude/`) and local (repository) install modes, with the
   repository root found by walking up to `.git` or `.claude/`.
 - Skill stubs declare the host and `mli` versions as frontmatter `metadata`

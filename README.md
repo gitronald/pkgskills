@@ -16,7 +16,8 @@ subagent definitions as package data. `mli` gives that package three things:
   foreign one and exits non-zero unless everything is `ok`.
 
 Skills are installed as *stubs*: the frontmatter the harness needs to know
-when to fire, plus an instruction to run `<cli> skill` and follow the output.
+when to fire, plus an instruction to run `<cli> skill <name>` and follow the
+output.
 Rules and agents are installed as *copies*, because the harness reads their
 full text with no model in the loop. Both carry the same stamp and the same
 drift check.
@@ -57,9 +58,13 @@ register(app, HOST)  # adds skill, install, rule, agent
 
 A skill with one source lifts that file's frontmatter into the stub, adding
 the host and `mli` versions under `metadata` (see
-[docs/frontmatter.md](docs/frontmatter.md)). A skill with several sources
-becomes a dispatcher: each source's stem is a subcommand, and the stub tells
-the agent to run `<cli> skill <subcommand>`.
+[docs/frontmatter.md](docs/frontmatter.md)). Its body is addressed by the
+*skill's* name — `<cli> skill use-solo` — so the source file need not be named
+after it. A skill with several sources becomes a dispatcher: each source's
+stem is a subcommand, and the stub tells the agent to run
+`<cli> skill <subcommand>`. The two namespaces share one argument, so a
+dispatcher stem may not collide with another skill's name; `Host` rejects that
+at construction.
 
 Set `render_cli=True` on an artifact whose body uses the `{cli}` placeholder;
 it is rendered as `yourtool` for a global install and `uv run yourtool` for a
@@ -77,7 +82,7 @@ yourtool = "yourtool.cli:HOST"
 
 | Command | Does |
 |---|---|
-| `yourtool skill [NAME] [--list]` | Print a skill body, frontmatter stripped. `NAME` is optional when the host ships exactly one. |
+| `yourtool skill [NAME] [--list]` | Print a skill body, frontmatter stripped. `NAME` is a skill's name, or a dispatcher's subcommand; it is optional when the host ships exactly one body. |
 | `yourtool rule [NAME] [--list]` | Print a rule (only when the host ships rules). |
 | `yourtool agent [NAME] [--list]` | Print an agent definition (only when the host ships agents). |
 | `yourtool install` | Write every artifact under `~/.claude/` (global mode). |
@@ -224,5 +229,6 @@ uv run ruff check . && uv run ruff format --check .
 uv run pyrefly check
 ```
 
-`tests/fixtures/` holds two throwaway hosts, one with every artifact kind and
-one with a single skill body, that the suite drives end to end.
+`tests/fixtures/` holds three throwaway hosts that the suite drives end to
+end: one with every artifact kind, one with a single skill body, and one with
+several single-source skills (whose bodies do not all match their file stems).

@@ -12,12 +12,15 @@ from pathlib import Path
 import pytest
 from examplehost.cli import HOST as EXAMPLE
 from examplehost.cli import app as example_app
+from multihost.cli import HOST as MULTI
+from multihost.cli import app as multi_app
 from solohost.cli import HOST as SOLO
 from solohost.cli import app as solo_app
 from typer.testing import CliRunner
 
 from mli import artifacts as inst
 from mli.cli import typer_app
+from mli.harness import Kind
 from mli.host import ExtraCheck, Host, Mode
 from mli.permissions import Level
 from mli.rendering import render
@@ -74,6 +77,35 @@ def test_single_skill_host_prints_without_a_name_and_leaves_cli_alone(
     assert result.exit_code == 0
     assert "SOLO-BODY-SENTINEL" in result.output
     assert "{cli}" in result.output
+
+
+def _load_command(stub: str) -> list[str]:
+    """The argv from the stub's 'load the instructions' bash block."""
+    _, _, after = stub.partition("**Load the instructions and follow them exactly:**")
+    line = after.split("```bash\n", 1)[1].splitlines()[0]
+    argv = line.split()
+    assert argv[0] == "multihost"
+    return argv[1:]
+
+
+@pytest.mark.parametrize(("name", "sentinel"), [("tidy", "TIDY"), ("audit", "AUDIT")])
+def test_stub_command_on_a_multi_skill_host_actually_runs(
+    box: Sandbox, name: str, sentinel: str
+) -> None:
+    # The whole point of the stub is that a model can run what it prints, so
+    # run it: a nameless `multihost skill` would exit 1 here.
+    stub = render(MULTI, MULTI.artifact(Kind.SKILL, name), "global")
+    result = runner.invoke(multi_app, _load_command(stub))
+    assert result.exit_code == 0
+    assert f"{sentinel}-BODY-SENTINEL" in result.output
+
+
+def test_skill_list_prints_skill_names_not_source_stems(box: Sandbox) -> None:
+    result = runner.invoke(multi_app, ["skill", "--list"])
+    assert result.exit_code == 0
+    assert result.output.split() == ["tidy", "audit"]
+    solo = runner.invoke(solo_app, ["skill", "--list"])
+    assert solo.output.split() == ["use-solo"]
 
 
 def test_rule_and_agent_print_without_a_stamp(box: Sandbox) -> None:

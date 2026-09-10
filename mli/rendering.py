@@ -149,7 +149,7 @@ These map to {slash}. If the subcommand is missing or unrecognized, run
 **Load the instructions and follow them exactly:**
 
 ```bash
-{host.skill_command(mode)}
+{host.skill_command(mode, skill.body_names[0])}
 ```
 
 If that command is not found, `{host.dist}` is not installed in this
