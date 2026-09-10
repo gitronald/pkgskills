@@ -1,8 +1,8 @@
 ---
 id: 3
 slug: spec-conformant-skill-sources
-status: draft
-branch:
+status: active
+branch: feature/spec-conformant-skill-sources
 created: 2026-09-09T21:51:26-07:00
 concluded:
 pr:
