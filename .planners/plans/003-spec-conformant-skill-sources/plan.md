@@ -273,10 +273,11 @@ reason. `stub_frontmatter`'s three ad-hoc `ValueError`s were replaced by the
 spec check, so a bad source now reports every problem it has instead of the
 first one that function tripped over.
 
-Not checked, and said so in the module docstring: the shape of `metadata`. The
-spec makes it a map of string to string and `mli.frontmatter` parses flat
-scalars only, so there is nothing to inspect from here. `skills-ref validate`
-remains the full check; this is the subset `mli` can enforce from inside a host.
+~~Not checked, and said so in the module docstring: the shape of `metadata`.
+The spec makes it a map of string to string and `mli.frontmatter` parses flat
+scalars only, so there is nothing to inspect from here.~~ **Wrong — corrected
+in the pass below.** `skills-ref validate` remains the fuller check; this is
+the subset `mli` can enforce from inside a host.
 
 **Tests.** New `tests/test_spec.py` (31 tests, `mli/spec.py` at 100%) covering
 the spec-as-data, the layout and name predicates, each frontmatter rule, the
@@ -292,3 +293,66 @@ Two more `[Unreleased]` changelog entries.
 
 **Checks.** `uv run pytest` (196 passed, 98.15% coverage), ruff check, ruff
 format --check, and pyrefly (0 errors) all pass.
+
+### 2026-09-09 — metadata: a claim that did not survive checking
+
+The pass above declared `metadata`'s shape unenforceable, on the reasoning that
+`frontmatter.parse_fields` flattens a nested mapping to an empty string. That
+was wrong, and re-reading the spec against the code showed why:
+`rendering.with_metadata` **already** walked `Frontmatter.raw` line by line to
+detect a source declaring one of mli's own version keys. The block was
+inspectable the whole time; the parser's flat view was never the only view.
+
+The lesson worth keeping is the shape of the error. "The parser cannot see it"
+was a claim about `parse_fields` that got stated as a claim about the package,
+and it went unchallenged because the conclusion was convenient — it closed a
+check rather than opening one. A capability claim is worth tracing to the
+consumer that would use it, not settled from the nearest module.
+
+**What the spec actually requires.** `metadata` is *a map from string keys to
+string values*. Three checkable things follow, all now in
+`SkillSpec.check_metadata`:
+
+| shape | rule |
+| --- | --- |
+| `metadata: scalar`, or a `- item` sequence, or nothing at all | `metadata-not-a-mapping` |
+| a key whose value is a nested mapping, or empty | `metadata-value-not-a-string` |
+| a value YAML resolves to a non-string | `metadata-value-not-a-string` |
+
+The third is the one that bites, and it is why the spec's own example writes
+`version: "1.0"` with quotes: unquoted it is a float, `3` an integer, `true` a
+boolean, `null`/`~` a null. `mli` has always quoted the two keys it writes
+there for exactly this reason — `docs/frontmatter.md` says so — so the check
+now enforces on sources what the renderer already did for itself. A plain
+unquoted scalar like `author: example-org` is still a string and is not
+flagged.
+
+**`frontmatter.find_block(raw, key)`** was added rather than a third raw walk:
+it returns a `Block` carrying the `key:` line index, any inline value, and the
+continuation lines, with `entries()` yielding `(indent, key, value)` per line.
+`with_metadata` now uses it too, which incidentally fixes a latent bug — its
+hand-rolled walk stopped at the first blank line inside the mapping, so keys
+after a gap were never examined for a collision with mli's own.
+
+**Two bugs the new tests caught, fixed at the source rather than in the test:**
+
+- `Block.entries()` dropped the text of a line with no colon, so a `- item`
+  was reported as an empty pair naming nothing. It now returns the whole line
+  as the value.
+- A sequence under `metadata` produced one violation per item. `- a` and `- b`
+  say the same thing about the block, so they now collapse into a single
+  `metadata-not-a-mapping` naming up to three of the loose entries.
+
+**Also now explicit, in the module docstring and in `docs/source-layout.md`:**
+what is *not* checked is the spec's **recommendations** as against its
+constraints — that a description say what a skill does *and* when to use it,
+that `SKILL.md` stay under 500 lines, that references sit one level deep.
+Failing a host over those would assert a house style the specification does
+not. That is a defensible boundary in a way "the parser cannot see it" was not.
+
+`brokenhost` gained `bad-metadata/SKILL.md` carrying a float, an integer, a
+boolean, a nested mapping, and one correct plain string, so the negative case
+is real files rather than a hand-built string.
+
+**Checks.** `uv run pytest` (218 passed, 98.13% coverage; `mli/spec.py` still
+at 100%), ruff check, ruff format --check, and pyrefly (0 errors) all pass.
