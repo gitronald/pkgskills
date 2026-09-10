@@ -12,27 +12,50 @@ side: the sources inside the host package.
 
 ## The conformant layout
 
-Give each skill source its own directory, named for the skill:
+Store each skill as the spec stores one: a directory named for the skill,
+holding its `SKILL.md` **and** whatever else belongs to it — `references/`,
+`scripts/`, `assets/`.
 
 ```
 yourtool/
 └── prompts/
     ├── skills/
     │   ├── add/
-    │   │   └── SKILL.md      # frontmatter: name: add
+    │   │   ├── SKILL.md              # frontmatter: name: add
+    │   │   └── references/fields.md
     │   └── close/
-    │       └── SKILL.md      # frontmatter: name: close
-    ├── references/
-    │   └── add/fields.md
-    └── rules/yourtool.md
+    │       └── SKILL.md              # frontmatter: name: close
+    ├── rules/yourtool.md
+    └── agents/reviewer.md
 ```
 
 ```python
-Skill(name="yourtool", sources=("skills/add/SKILL.md", "skills/close/SKILL.md"))
+HOST = Host(
+    ...,
+    artifacts=(
+        Skill(
+            name="yourtool",
+            sources=("skills/add/SKILL.md", "skills/close/SKILL.md"),
+        ),
+    ),
+    docs=(Doc(name="add/fields", source="skills/add/references/fields.md"),),
+)
 ```
 
 A `prompts/` tree in this shape passes a skills linter as it stands, because
-every source is a skill directory with a matching `name`.
+every skill is a directory with a matching `name` and nothing of a skill's
+sits outside it.
+
+A `Doc`'s **name** and its **source** are independent, which is what lets this
+work: the name is the argument a body writes (`{cli} doc add/fields`), while
+the source is where the file is stored. Namespacing the name by the owning
+skill and storing the file inside that skill's directory are the same
+convention seen from the two ends.
+
+Rules and agents are not skills — the harness reads their full text off disk
+with no model in the loop, and the spec's directory rule does not reach them —
+so they stay flat files under `rules/` and `agents/`. A reference that belongs
+to no skill has nowhere to live either, and stays wherever the host puts it.
 
 ## How a source gets its name
 
@@ -54,7 +77,10 @@ skill's own name.
 Nothing forces the migration. A host that ships `skills/tidy.md` keeps working
 exactly as before — the stem names it — and a host may mix the two layouts.
 The only thing the flat layout costs is spec conformance of the source tree
-itself, which matters when a linter is pointed at the package.
+itself, which matters when a linter is pointed at the package. The bundled
+fixture hosts are all conformant, since what they ship is what a host author
+copies; the flat layout is held open by `mli`'s own tests rather than by a
+fixture stored that way.
 
 The name a source contributes is not the name a *single-source* skill is
 addressed by. That one answers to `Skill.name` — what the stub's frontmatter

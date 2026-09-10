@@ -55,7 +55,7 @@ HOST = Host(
         Rule(name="yourtool", source="rules/yourtool.md", render_cli=True),
         Agent(name="yourtool-reviewer", source="agents/reviewer.md"),
     ),
-    docs=(Doc(name="add/fields", source="references/add/fields.md"),),
+    docs=(Doc(name="add/fields", source="skills/add/references/fields.md"),),
 )
 
 app = typer.Typer()
@@ -162,7 +162,7 @@ and the path resolves to nothing. A `Doc` is that sidecar, declared:
 ```python
 HOST = Host(
     ...,
-    docs=(Doc(name="add/fields", source="references/add/fields.md"),),
+    docs=(Doc(name="add/fields", source="skills/add/references/fields.md"),),
 )
 ```
 
@@ -175,7 +175,10 @@ A doc is not an artifact. It is never written, stamped, checked, or removed;
 `install`, `install --check`, and `mli check` do not know it exists, and the
 only place it has to ship is the wheel. Names may contain `/` so a host can
 namespace its documents by the skill that owns them; that is a convention, not
-something `mli` interprets. Since nothing else ever reads a doc's `source`, a
+something `mli` interprets. A doc's name and its source are independent, which
+is what lets the file live inside that skill's own directory —
+`skills/add/references/fields.md` — so the shipped tree matches the spec's
+skill layout while the body still writes `{cli} doc add/fields`. Since nothing else ever reads a doc's `source`, a
 missing one is rejected when the `Host` is constructed rather than when a model
 runs the command.
 
@@ -329,6 +332,7 @@ uv run pyrefly check
 
 `tests/fixtures/` holds three throwaway hosts that the suite drives end to
 end: one with every artifact kind, one with a single skill body, and one with
-several single-source skills (one under the conformant `<name>/SKILL.md`
-layout, one a flat file matching neither) that is also local-only, ships
-reference documents, and declares `render_cli` once on the host.
+several single-source skills that is also local-only, ships reference
+documents inside their own skill directories, and declares `render_cli` once on
+the host. All three store their skills the way the spec does, so the tree a
+host author copies is conformant as it stands.

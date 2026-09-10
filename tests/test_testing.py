@@ -80,7 +80,7 @@ def test_reads_a_declared_argument() -> None:
 
 
 def test_reads_an_option_as_the_end_of_the_path() -> None:
-    cmds = found(MULTI, "skills/audit-body.md")
+    cmds = found(MULTI, "skills/audit/SKILL.md")
     assert ("install",) in {cmd.tokens for cmd in cmds}
 
 
@@ -113,7 +113,7 @@ def test_prose_mention_is_not_a_command() -> None:
 
 
 def test_prose_mention_in_a_doc_is_not_a_command() -> None:
-    lines = {cmd.line for cmd in found(MULTI, "references/tidy/fields.md")}
+    lines = {cmd.line for cmd in found(MULTI, "skills/tidy/references/fields.md")}
     assert lines == {5}
 
 

@@ -105,7 +105,7 @@ def test_every_stub_on_a_multi_skill_host_names_its_own_body() -> None:
     }
     assert "\nuv run multihost skill tidy\n" in stubs["tidy"]
     assert "\nuv run multihost skill audit\n" in stubs["audit"]
-    assert "audit-body" not in stubs["audit"]
+    assert "SKILL.md" not in stubs["audit"]
 
 
 def test_dispatcher_stub_lists_subcommands_with_descriptions() -> None:

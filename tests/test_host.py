@@ -85,12 +85,26 @@ def test_skill_bodies_are_keyed_by_source_name_only_when_dispatching() -> None:
     # A dispatcher's bodies answer to their source names, which are its
     # subcommands.
     assert EXAMPLE.skills[0].body_names == ("add", "close")
-    # A single-source skill answers to the skill's name, whatever the file is
-    # called: `skills/audit-body.md` is not what the model knows `audit` as.
     assert SOLO.skills[0].body_names == ("use-solo",)
     assert set(SOLO.skill_sources()) == {"use-solo"}
     assert set(MULTI.skill_sources()) == {"tidy", "audit"}
-    assert MULTI.skill_sources()["audit"][1] == "skills/audit-body.md"
+    # A single-source skill answers to the skill's name whatever its source is
+    # called, so a host that has not moved to `<name>/SKILL.md` keeps working.
+    # Every fixture is conformant now, so the unmigrated shape is declared here
+    # rather than shipped on disk.
+    flat = Host(
+        dist="d",
+        cli="c",
+        prompts="p",
+        artifacts=(
+            Skill("audit", ("skills/audit-body.md",)),
+            Skill("two", ("x/add.md", "x/drop.md")),
+        ),
+    )
+    assert flat.skills[0].body_names == ("audit",)
+    assert flat.skill_sources()["audit"][1] == "skills/audit-body.md"
+    # A flat dispatcher still takes its subcommands from the stems.
+    assert flat.skills[1].body_names == ("add", "drop")
 
 
 def test_version_falls_back_when_no_distribution_is_installed() -> None:
@@ -190,7 +204,7 @@ def test_docs_are_declared_apart_from_artifacts() -> None:
     # `artifacts` — the install, the check, or the harness's layout.
     assert [d.name for d in MULTI.docs] == ["tidy/fields", "audit/severity"]
     assert all(not isinstance(art, Doc) for art in MULTI.artifacts)
-    assert MULTI.doc("tidy/fields").source == "references/tidy/fields.md"
+    assert MULTI.doc("tidy/fields").source == "skills/tidy/references/fields.md"
     with pytest.raises(KeyError):
         MULTI.doc("nope")
     assert MULTI.doc_command("local", "tidy/fields") == (
@@ -206,8 +220,8 @@ def test_validation_rejects_bad_docs() -> None:
             cli="c",
             prompts="multihost.prompts",
             docs=(
-                Doc("x", "references/tidy/fields.md"),
-                Doc("x", "references/audit/severity.md"),
+                Doc("x", "skills/tidy/references/fields.md"),
+                Doc("x", "skills/audit/references/severity.md"),
             ),
         )
     # Nothing else ever reads a doc's source, so a typo would surface only when
@@ -238,7 +252,7 @@ def test_render_cli_defaults_to_the_hosts_setting() -> None:
         cli="c",
         prompts="multihost.prompts",
         render_cli=True,
-        docs=(Doc("x", "references/tidy/fields.md", render_cli=False),),
+        docs=(Doc("x", "skills/tidy/references/fields.md", render_cli=False),),
     )
     assert not opted_out.renders_cli(opted_out.docs[0])
 
@@ -270,27 +284,46 @@ def test_claude_code_loading_discipline_per_kind() -> None:
 
 @pytest.mark.parametrize("host", [EXAMPLE, SOLO, MULTI], ids=lambda h: h.dist)
 def test_conformant_sources_match_the_spec_layout(host: Host) -> None:
-    """Every `SKILL.md` source is `<name>/SKILL.md` with matching frontmatter.
+    """Every skill source is `<name>/SKILL.md` with matching frontmatter.
 
     The spec ties a skill's frontmatter `name` to its parent directory, and
-    `mli` derives the source's name from that directory — so a fixture that
+    `mli` derives the source's name from that directory — so a source that
     drifted apart would key a body under one name while a skills linter read
-    another. Sources not named `SKILL.md` are the unmigrated flat layout and
-    carry no directory constraint.
+    another. `mli` still accepts a flat source, but no fixture ships one: the
+    tree these hosts bundle is what a host author copies, and it has to pass a
+    linter as it stands.
     """
-    conformant = [
-        source
-        for skill in host.skills
-        for source in skill.sources
-        if source.endswith("/" + SKILL_FILE)
-    ]
-    assert conformant, f"{host.dist} ships no spec-conformant skill source"
-    for source in conformant:
-        front, _ = split_frontmatter(host.read(source))
-        assert front is not None, f"{source} has no frontmatter"
-        declared = front.get("name")
-        assert declared == source_name(source), (
-            f"{source}: frontmatter names {declared!r}, "
-            f"directory names {source_name(source)!r}"
+    for skill in host.skills:
+        for source in skill.sources:
+            assert source.endswith("/" + SKILL_FILE), (
+                f"{source} is not a spec-conformant skill directory"
+            )
+            front, _ = split_frontmatter(host.read(source))
+            assert front is not None, f"{source} has no frontmatter"
+            declared = front.get("name")
+            assert declared == source_name(source), (
+                f"{source}: frontmatter names {declared!r}, "
+                f"directory names {source_name(source)!r}"
+            )
+            assert valid_skill_name(str(declared))
+
+
+@pytest.mark.parametrize("host", [EXAMPLE, SOLO, MULTI], ids=lambda h: h.dist)
+def test_a_skills_references_live_inside_its_own_directory(host: Host) -> None:
+    """A doc namespaced by a skill is stored under that skill's directory.
+
+    The spec's skill directory holds the skill's `references/` too, not just
+    its `SKILL.md`, so `multihost`'s `audit/severity` is sourced from
+    `skills/audit/references/severity.md`. A doc that belongs to no skill —
+    `examplehost`'s deliberately stale `references/broken.md` — is exempt,
+    since there is no directory for it to live in.
+    """
+    owners = {source_name(source) for skill in host.skills for source in skill.sources}
+    for doc in host.docs:
+        owner, _, rest = doc.name.partition("/")
+        if not rest or owner not in owners:
+            continue
+        assert doc.source.startswith(f"skills/{owner}/"), (
+            f"doc {doc.name!r} is sourced from {doc.source!r}, outside "
+            f"the {owner!r} skill directory"
         )
-        assert valid_skill_name(str(declared))
