@@ -12,6 +12,14 @@ Artifacts come in three kinds. A :class:`Skill` is materialized as a thin
 subcommands are the source file stems. A :class:`Rule` and an :class:`Agent`
 are materialized as stamped *copies*, because the harness reads their full
 text off disk with no model in the loop.
+
+A :class:`Doc` is the fourth declared thing and the one that is *not* an
+artifact: it is printed by ``<cli> doc <name>`` and never written to disk. It
+exists because a skill body that says "read ``references/x.md`` first" has
+nowhere to read it from once the body is printed from a package — there is no
+skill directory next to the stub. Docs therefore live on :attr:`Host.docs`
+rather than in :attr:`Host.artifacts`, since an artifact here is something
+materialized at a location per mode and a doc has neither.
 """
 
 from __future__ import annotations
@@ -52,13 +60,14 @@ class Skill:
     Several sources make a dispatcher: the stub lists each source's stem as a
     subcommand and carries a generated (or ``description``-supplied)
     frontmatter of its own. ``render_cli`` substitutes ``{cli}`` in the bodies
-    when they are printed.
+    when they are printed; left unset it follows
+    :attr:`Host.render_cli`.
     """
 
     name: str
     sources: tuple[str, ...]
     description: str | None = None
-    render_cli: bool = False
+    render_cli: bool | None = None
 
     @property
     def kind(self) -> Kind:
@@ -100,7 +109,7 @@ class Rule:
 
     name: str
     source: str
-    render_cli: bool = False
+    render_cli: bool | None = None
 
     @property
     def kind(self) -> Kind:
@@ -113,14 +122,36 @@ class Agent:
 
     name: str
     source: str
-    render_cli: bool = False
+    render_cli: bool | None = None
 
     @property
     def kind(self) -> Kind:
         return Kind.AGENT
 
 
+@dataclass(frozen=True)
+class Doc:
+    """A reference document the host ships, printed and never installed.
+
+    A skill body that defers detail to a sidecar file cannot reach that file
+    once the body is printed from a package. Declaring the sidecar as a ``Doc``
+    gives it a command — ``<cli> doc <name>`` — that renders it exactly the way
+    ``skill`` renders a body, ``{cli}`` included.
+
+    ``name`` may contain ``/`` so a host can namespace its docs by the skill
+    that owns them (``tidy/fields``). That is a convention for the host to
+    keep, not a rule: nothing here splits on the separator.
+    """
+
+    name: str
+    source: str
+    render_cli: bool | None = None
+
+
 Artifact = Skill | Rule | Agent
+
+#: Anything that carries a prompt body and an opt-in ``{cli}`` substitution.
+Declared = Artifact | Doc
 
 
 @dataclass(frozen=True)
@@ -169,6 +200,18 @@ class Host:
       ``local_prefix`` (``uv run`` by default).
     * ``prompts`` is the dotted package that holds the prompt files.
     * ``artifacts`` lists what the host ships.
+    * ``docs`` lists the reference documents it ships. They are printed by
+      ``<cli> doc <name>`` and never installed, checked, or stamped, so they
+      appear here rather than in ``artifacts``.
+    * ``render_cli`` is the default for every artifact and doc that leaves its
+      own ``render_cli`` unset. A host whose every body uses ``{cli}`` sets it
+      once here instead of repeating the flag on each declaration.
+    * ``modes`` are the install modes this host supports, in preference order;
+      the first is what the CLI uses when given no mode flag. A host whose
+      skills only mean anything inside one repository declares
+      ``modes=("local",)``, and the other mode stops being reachable at all —
+      including by the stray ``install`` that would otherwise write stubs under
+      ``$HOME`` and shadow the per-repo ones.
     * ``version`` overrides the metadata lookup; leave it unset in real hosts.
     * ``after_install`` runs once an install has written every artifact, for
       host-specific follow-up such as wiring a pre-commit hook.
@@ -186,6 +229,9 @@ class Host:
     cli: str
     prompts: str
     artifacts: tuple[Artifact, ...] = field(default_factory=tuple)
+    docs: tuple[Doc, ...] = field(default_factory=tuple)
+    render_cli: bool = False
+    modes: tuple[Mode, ...] = MODES
     local_prefix: str = "uv run"
     harness: Harness = CLAUDE_CODE
     version: str | None = None
@@ -202,6 +248,15 @@ class Host:
         """Reject a declaration the rest of the package cannot serve."""
         if not self.dist or not self.cli or not self.prompts:
             raise ValueError("Host needs a dist, a cli, and a prompts package")
+        if not self.modes:
+            raise ValueError("Host must support at least one install mode")
+        for mode in self.modes:
+            if mode not in MODES:
+                raise ValueError(
+                    f"unknown install mode {mode!r}; choose from: " + ", ".join(MODES)
+                )
+        if len(set(self.modes)) != len(self.modes):
+            raise ValueError("Host declares an install mode twice")
         seen: set[tuple[Kind, str]] = set()
         for art in self.artifacts:
             if not self.harness.supports(art.kind):
@@ -223,6 +278,20 @@ class Host:
                     )
         # Raises when two bodies would answer to the same `skill <name>`.
         self.skill_sources()
+        seen_docs: set[str] = set()
+        for doc in self.docs:
+            if doc.name in seen_docs:
+                raise ValueError(f"duplicate doc {doc.name!r}")
+            seen_docs.add(doc.name)
+            # Docs are the one declared thing nothing else ever touches: they
+            # are never installed and never checked, so a typo in `source`
+            # would surface only when a model ran the command and got a
+            # traceback. An artifact's source is exercised by the first
+            # install; a doc's is exercised here or nowhere.
+            if not self.has_source(doc.source):
+                raise ValueError(
+                    f"doc {doc.name!r}: no such prompt {doc.source!r} in {self.prompts}"
+                )
         for level in self.permissions:
             if level not in LEVELS:
                 raise ValueError(f"unknown permission level {level!r}")
@@ -246,6 +315,26 @@ class Host:
             return metadata.version(self.dist)
         except metadata.PackageNotFoundError:
             return "0.0.0"
+
+    # -- modes -------------------------------------------------------------
+
+    @property
+    def default_mode(self) -> Mode:
+        """The mode used when no mode flag is given, and the printing fallback.
+
+        For a two-mode host this is ``global``, which is what a bare ``install``
+        has always meant. For a single-mode host it is that mode, so the flag a
+        host with one mode has no use for is never required.
+        """
+        return self.modes[0]
+
+    def supports_mode(self, mode: Mode) -> bool:
+        """True when ``mode`` is one this host installs in.
+
+        Spelled out rather than ``supports`` because :class:`~mli.harness.Harness`
+        already has one, over artifact kinds; the two answer different questions.
+        """
+        return mode in self.modes
 
     def invocation(self, mode: Mode) -> str:
         """The command prefix generated text uses to call this host's CLI."""
@@ -273,6 +362,11 @@ class Host:
         cmd = f"{self.invocation(mode)} skill"
         return f"{cmd} {subcommand}" if subcommand else cmd
 
+    def doc_command(self, mode: Mode, name: str | None = None) -> str:
+        """The command that prints a reference document for ``mode``."""
+        cmd = f"{self.invocation(mode)} doc"
+        return f"{cmd} {name}" if name else cmd
+
     # -- prompts -----------------------------------------------------------
 
     def read(self, source: str) -> str:
@@ -280,6 +374,19 @@ class Host:
         return (
             resources.files(self.prompts).joinpath(source).read_text(encoding="utf-8")
         )
+
+    def has_source(self, source: str) -> bool:
+        """True when ``source`` names a file inside the ``prompts`` package."""
+        return resources.files(self.prompts).joinpath(source).is_file()
+
+    def renders_cli(self, art: Declared) -> bool:
+        """Whether ``art``'s body gets ``{cli}`` substituted.
+
+        The declaration decides when it says so; otherwise the host's own
+        :attr:`render_cli` does, so a host whose every body uses the token
+        declares it once.
+        """
+        return self.render_cli if art.render_cli is None else art.render_cli
 
     # -- artifact lookup ---------------------------------------------------
 
@@ -304,6 +411,13 @@ class Host:
             if art.kind is kind and art.name == name:
                 return art
         raise KeyError(f"{kind.value} {name!r}")
+
+    def doc(self, name: str) -> Doc:
+        """The declared doc named ``name``. Raises ``KeyError`` if unknown."""
+        for doc in self.docs:
+            if doc.name == name:
+                return doc
+        raise KeyError(f"doc {name!r}")
 
     def skill_sources(self) -> dict[str, tuple[Skill, str]]:
         """Every skill body by the name ``skill`` prints it under.

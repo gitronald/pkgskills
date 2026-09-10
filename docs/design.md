@@ -24,7 +24,9 @@ the `{cli}` placeholder, rules, a pre-commit hook), and was trimmed back to a
 single body by citefinder. Their implementations agreed on the shape and
 disagreed on details: an HTML-comment stamp versus a frontmatter `version:`
 key, masked versus byte-for-byte drift, refuse-foreign versus skip-existing,
-and local-only versus global-and-local modes. `mli` picks one answer to each.
+and local-only versus global-and-local modes. `mli` picks one answer to each —
+except the last, which turned out to be a property of the host rather than of
+the machinery, and is declared per host (see Decisions).
 
 Between them the three carried roughly 1,800 lines of delivery machinery and a
 similar weight of tests, all of it hand-kept in parallel. That number alone did
@@ -68,6 +70,31 @@ model then runs the CLI. A rule or agent is a copy because the harness reads
 its full text with no model in the loop. The two share the stamp and the
 check; only the render differs.
 
+**Documents, which are neither.** Print-on-demand takes the skill directory
+away, and with it every sidecar a body used to reach by relative path. A `Doc`
+gives that sidecar a command instead — `<cli> doc <name>` — and nothing else:
+it is never written, stamped, or checked, so it lives on `Host.docs` rather
+than in `Host.artifacts`, where everything has a location per mode. The
+alternative, a fourth `Kind`, would have put a thing with no path through code
+whose whole subject is paths. Two hosts had already grown a print command of
+their own for exactly this — one of the three originals, with two such commands,
+and the fourth — which is what made it a declaration rather than an option (see
+"Two hosts before an option"); the same
+reasoning exports `printing_mode`, since a host that keeps its own command must
+resolve `{cli}` the way `skill` does or print commands that do not run.
+
+**Modes a host opts out of.** Both modes are first-class, but which of them a
+given host has any use for is the host's to declare: `Host.modes` lists them in
+preference order, and the first is what a flagless `install` and a pre-install
+render use. This is the one place the three originals disagreed that could not
+be settled by picking a side — local-only and global-and-local are both correct,
+for different hosts — so it is a declaration rather than an answer. A host bound
+to one repository declares `modes=("local",)`, and the other mode stops being
+reachable: the flag is refused, `mli.install` refuses it, and the two checks that
+only exist across two bases (a superseded local copy, a shadowed local stub) are
+skipped. Distinct from the project-level mode declaration under "Not yet": that
+is a per-repository setting, this is a per-host constraint.
+
 **Anchoring.** Mode-derived locations anchor to `$HOME` or to the repository
 root found by walking up to `.git` or the harness config directory. Nothing
 anchors to the working directory, which is how a local install from a
@@ -78,6 +105,20 @@ host's files to drifted with no host change. Masking both versions removes
 the common case; hosts should pin a compatible range so patches flow without
 host releases. A stub also has two producers now, the host and `mli`; the stamp
 names both versions so a bad render is attributable to one of them.
+
+**Commands in prompts are checked, not trusted.** The reason `{cli}` exists is
+that prose about a CLI goes stale, and substituting it correctly says nothing
+about whether the command after it is real. `mli.testing.assert_prompt_commands`
+resolves every mention against the host's own typer app, which is why it ships
+here rather than in each host: the check is the same everywhere, and a host that
+writes its own version writes it once per host. Two choices carry it. A mention
+counts only where it is written as code — inside backticks or a fenced block —
+because a body that names the bare placeholder in a sentence is talking about
+the token, and reading the following words as a command path invents a command
+to fail on. And the argument to `skill`, `doc`, `rule`, and `agent` is resolved
+against the *declarations* rather than skipped as argument-shaped, because a
+renamed doc is the stale mention most likely to happen and a scanner that stops
+at the first path-shaped token never sees it.
 
 **Two hosts before an option.** Some of the divergences the three hosts had were
 deliberate and some were accidents, and the difference is not visible from one

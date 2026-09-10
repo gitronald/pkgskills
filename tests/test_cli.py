@@ -79,13 +79,13 @@ def test_single_skill_host_prints_without_a_name_and_leaves_cli_alone(
     assert "{cli}" in result.output
 
 
-def _load_command(stub: str) -> list[str]:
+def _load_command(stub: str, host: Host, mode: Mode) -> list[str]:
     """The argv from the stub's 'load the instructions' bash block."""
     _, _, after = stub.partition("**Load the instructions and follow them exactly:**")
     line = after.split("```bash\n", 1)[1].splitlines()[0]
-    argv = line.split()
-    assert argv[0] == "multihost"
-    return argv[1:]
+    prefix = host.invocation(mode)
+    assert line.startswith(f"{prefix} ")
+    return line[len(prefix) + 1 :].split()
 
 
 @pytest.mark.parametrize(("name", "sentinel"), [("tidy", "TIDY"), ("audit", "AUDIT")])
@@ -94,8 +94,9 @@ def test_stub_command_on_a_multi_skill_host_actually_runs(
 ) -> None:
     # The whole point of the stub is that a model can run what it prints, so
     # run it: a nameless `multihost skill` would exit 1 here.
-    stub = render(MULTI, MULTI.artifact(Kind.SKILL, name), "global")
-    result = runner.invoke(multi_app, _load_command(stub))
+    mode = MULTI.default_mode
+    stub = render(MULTI, MULTI.artifact(Kind.SKILL, name), mode)
+    result = runner.invoke(multi_app, _load_command(stub, MULTI, mode))
     assert result.exit_code == 0
     assert f"{sentinel}-BODY-SENTINEL" in result.output
 
@@ -126,6 +127,51 @@ def test_single_skill_host_has_no_rule_or_agent_commands(box: Sandbox) -> None:
     assert runner.invoke(solo_app, ["agent"]).exit_code != 0
 
 
+def test_doc_prints_a_reference_document(box: Sandbox) -> None:
+    result = runner.invoke(multi_app, ["doc", "tidy/fields"])
+    assert result.exit_code == 0, result.output
+    assert result.output.startswith("# Fields a tidy pass may rewrite\n")
+    assert "TIDY-FIELDS-SENTINEL" in result.output
+    # Same render a skill body gets: frontmatter stripped, {cli} resolved.
+    severity = runner.invoke(multi_app, ["doc", "audit/severity"])
+    assert severity.output.startswith("# Severity\n")
+    assert "name: severity" not in severity.output
+
+
+def test_doc_renders_cli_the_way_skill_does(box: Sandbox) -> None:
+    # Nothing installed: the fallback is the host's own mode, not "global".
+    before = runner.invoke(multi_app, ["doc", "tidy/fields"])
+    assert "uv run multihost install --check" in before.output
+    inst.install(MULTI, box.repo, "local")
+    after = runner.invoke(multi_app, ["doc", "tidy/fields"])
+    assert "uv run multihost install --check" in after.output
+
+
+def test_doc_list_and_the_errors(box: Sandbox) -> None:
+    listing = runner.invoke(multi_app, ["doc", "--list"])
+    assert listing.exit_code == 0
+    assert listing.output.split() == ["tidy/fields", "audit/severity"]
+
+    unnamed = runner.invoke(multi_app, ["doc"])
+    assert unnamed.exit_code == 1
+    assert "ships 2 docs; name one of: tidy/fields, audit/severity" in unnamed.output
+
+    unknown = runner.invoke(multi_app, ["doc", "nope"])
+    assert unknown.exit_code == 1
+    assert "unknown doc 'nope'" in unknown.output
+
+
+def test_doc_command_is_mounted_only_for_a_host_that_ships_docs(box: Sandbox) -> None:
+    assert runner.invoke(example_app, ["doc"]).exit_code != 0
+    one = dataclasses.replace(
+        MULTI, docs=(MULTI.docs[0],), artifacts=(), version="0.4.0"
+    )
+    # With exactly one, the name is optional, like `skill` on a solo host.
+    result = runner.invoke(typer_app(one), ["doc"])
+    assert result.exit_code == 0, result.output
+    assert "TIDY-FIELDS-SENTINEL" in result.output
+
+
 def test_install_local_writes_and_narrates(box: Sandbox) -> None:
     result = runner.invoke(example_app, ["install", "--local"])
     assert result.exit_code == 0, result.output
@@ -142,6 +188,49 @@ def test_install_defaults_to_global_and_warns_when_cli_is_off_path(
     assert result.exit_code == 0, result.output
     assert (box.home / ".claude/skills/use-solo/SKILL.md").is_file()
     assert "not on PATH" in result.output
+
+
+def test_local_only_host_installs_without_a_flag(box: Sandbox) -> None:
+    result = runner.invoke(multi_app, ["install"])
+    assert result.exit_code == 0, result.output
+    assert "wrote .claude/skills/tidy/SKILL.md" in result.output
+    assert (box.repo / ".claude/skills/audit/SKILL.md").is_file()
+    # The mode it has no use for is never written, and never warned about.
+    assert not (box.home / ".claude").exists()
+    assert "not on PATH" not in result.output
+    # Its own mode's flag is still accepted, since the stub's repair command
+    # names it.
+    assert runner.invoke(multi_app, ["install", "--local"]).exit_code == 0
+
+
+def test_local_only_host_refuses_the_other_modes_flag(box: Sandbox) -> None:
+    result = runner.invoke(multi_app, ["install", "--global"])
+    assert result.exit_code == 1
+    assert "multihost installs in local mode only; drop --global" in result.output
+    assert not (box.home / ".claude").exists()
+
+
+def test_local_only_host_checks_against_the_repo_alone(box: Sandbox) -> None:
+    before = runner.invoke(multi_app, ["install", "--check"])
+    assert before.exit_code == 1
+    assert "missing local  .claude/skills/tidy/SKILL.md" in before.output
+    assert "repair: uv run multihost install --local --force" in before.output
+    assert " global " not in before.output
+
+    runner.invoke(multi_app, ["install"])
+    ok = runner.invoke(multi_app, ["install", "--check"])
+    assert ok.exit_code == 0, ok.output
+    assert "ok      local  .claude/skills/audit/SKILL.md" in ok.output
+
+
+def test_local_only_host_prints_bodies_for_its_own_mode_before_any_install(
+    box: Sandbox,
+) -> None:
+    # Nothing is installed, so the printing mode is the fallback — which must
+    # be the host's own mode, not the literal "global".
+    result = runner.invoke(multi_app, ["skill", "tidy"])
+    assert result.exit_code == 0
+    assert "uv run multihost install --check" in result.output
 
 
 def test_check_reports_each_status_and_exit_codes(box: Sandbox) -> None:

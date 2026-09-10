@@ -1,8 +1,8 @@
 """The shared command grammar, mounted onto a host's own typer app.
 
 A host calls :func:`register` once and gains ``skill``, ``install``, and, when
-it declares them, ``rule``, ``agent``, and ``permissions``. Hosts with extra
-needs keep writing
+it declares them, ``doc``, ``rule``, ``agent``, and ``permissions``. Hosts with
+extra needs keep writing
 their own commands on top of :mod:`mli.artifacts`; the grammar here is the part
 that should read the same across every tool.
 
@@ -23,7 +23,7 @@ from mli import artifacts as install_mod
 from mli import permissions as perms
 from mli.harness import Kind
 from mli.host import Agent, Host, Mode, Rule
-from mli.rendering import render_copy, skill_body
+from mli.rendering import doc_body, render_copy, skill_body
 from mli.stamp import mli_version
 
 ENTRY_POINT_GROUP = "mli.hosts"
@@ -48,7 +48,7 @@ def _print_prompt(text: str) -> None:
 
 def _printing_mode(host: Host) -> Mode:
     root = install_mod.find_repo_root(harness=host.harness)
-    return install_mod.installed_mode(host, root) or "global"
+    return install_mod.printing_mode(host, root)
 
 
 def _skill_command(host: Host) -> typer.Typer:
@@ -81,6 +81,41 @@ def _skill_command(host: Host) -> typer.Typer:
 
     app = typer.Typer()
     app.command("skill")(skill)
+    return app
+
+
+def _doc_command(host: Host) -> typer.Typer:
+    def doc(
+        name: str | None = typer.Argument(
+            None, help="Document to print; omit when the host ships exactly one."
+        ),
+        list_: bool = typer.Option(False, "--list", help="List the documents."),
+    ) -> None:
+        """Print a bundled reference document."""
+        docs = host.docs
+        if list_:
+            for declared in docs:
+                typer.echo(declared.name)
+            return
+        if name is None:
+            if len(docs) != 1:
+                _err(
+                    f"{host.cli} ships {len(docs)} docs; name one of: "
+                    + ", ".join(d.name for d in docs)
+                )
+                raise typer.Exit(1)
+            name = docs[0].name
+        try:
+            declared = host.doc(name)
+        except KeyError:
+            _err(
+                f"unknown doc {name!r}; choose from: " + ", ".join(d.name for d in docs)
+            )
+            raise typer.Exit(1) from None
+        _print_prompt(doc_body(host, declared, _printing_mode(host)))
+
+    app = typer.Typer()
+    app.command("doc")(doc)
     return app
 
 
@@ -199,11 +234,39 @@ def run_install(host: Host, root: Path, mode: Mode, *, force: bool) -> None:
         )
 
 
+def _requested_mode(host: Host, local: bool | None) -> Mode:
+    """The mode a ``--local/--global`` flag asks for, or the host's default.
+
+    A host with one mode needs no flag, so ``None`` resolves to it. Naming the
+    *other* mode is an error rather than a silent redirect: a local-only host
+    asked to install globally would otherwise scatter stubs under ``$HOME``
+    that then shadow the per-repo ones, which is the whole reason a host
+    restricts its modes.
+    """
+    if local is None:
+        return host.default_mode
+    mode: Mode = "local" if local else "global"
+    if not host.supports_mode(mode):
+        flag = "--local" if local else "--global"
+        raise ValueError(
+            f"{host.cli} installs in {' and '.join(host.modes)} mode only; drop {flag}"
+        )
+    return mode
+
+
 def _install_command(host: Host) -> typer.Typer:
+    one_mode = len(host.modes) == 1
+    # Both halves name the host's own default, since which mode a bare
+    # `install` means is the host's to declare, not always global.
+    mode_help = (
+        f"This host installs in {host.default_mode} mode only; the flag is optional."
+        if one_mode
+        else f"Install into the enclosing repo (--local) or ~ (--global);"
+        f" defaults to {host.default_mode}."
+    )
+
     def install(
-        local: bool = typer.Option(
-            False, "--local", help="Install into the enclosing repo instead of ~."
-        ),
+        local: bool | None = typer.Option(None, "--local/--global", help=mode_help),
         check: bool = typer.Option(
             False, "--check", help="Report drift without writing; exit 1 unless ok."
         ),
@@ -213,9 +276,17 @@ def _install_command(host: Host) -> typer.Typer:
     ) -> None:
         """Materialize the generated files the harness reads, or check them."""
         root = install_mod.find_repo_root(harness=host.harness)
-        mode: Mode = "local" if local else "global"
+        try:
+            mode = _requested_mode(host, local)
+        except ValueError as exc:
+            _err(str(exc))
+            raise typer.Exit(1) from None
         if check:
-            ok = run_check(host, root, mode if local else None)
+            # A flagless check on a two-mode host judges every occupied
+            # location, since the harness loads from both. With one mode, or
+            # with a flag, there is one location to judge.
+            scope = mode if local is not None or one_mode else None
+            ok = run_check(host, root, scope)
             raise typer.Exit(0 if ok else 1)
         run_install(host, root, mode, force=force)
 
@@ -342,6 +413,8 @@ def register(app: typer.Typer, host: Host) -> None:
 
 def _commands(host: Host) -> list[typer.Typer]:
     apps = [_skill_command(host), _install_command(host)]
+    if host.docs:
+        apps.append(_doc_command(host))
     if host.rules:
         apps.append(_copy_command(host, Kind.RULE))
     if host.agents:

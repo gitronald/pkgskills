@@ -8,7 +8,7 @@ renderer returns is exactly what ``install`` writes and exactly what
 from __future__ import annotations
 
 from mli.frontmatter import split_frontmatter
-from mli.host import CLI_TOKEN, Agent, Artifact, Host, Mode, Rule, Skill
+from mli.host import CLI_TOKEN, Agent, Artifact, Doc, Host, Mode, Rule, Skill
 from mli.stamp import METADATA_KEYS, metadata_lines, place_stamp, render_stamp
 
 
@@ -27,8 +27,19 @@ def render_prompt(text: str, invocation: str | None = None) -> str:
 
 def skill_body(host: Host, skill: Skill, source: str, mode: Mode) -> str:
     """The printable body of one skill source."""
-    inv = host.invocation(mode) if skill.render_cli else None
+    inv = host.invocation(mode) if host.renders_cli(skill) else None
     return render_prompt(host.read(source), inv)
+
+
+def doc_body(host: Host, doc: Doc, mode: Mode) -> str:
+    """The printable text of a reference document.
+
+    The same render a skill body gets, deliberately: a doc is a body that
+    happens to be loaded by a step rather than by a trigger, so ``{cli}`` has
+    to come out the same way in both.
+    """
+    inv = host.invocation(mode) if host.renders_cli(doc) else None
+    return render_prompt(host.read(doc.source), inv)
 
 
 def _single_line(text: str) -> str:
@@ -169,7 +180,7 @@ def render_copy(
     """
     text = host.read(art.source)
     front, body = split_frontmatter(text)
-    if art.render_cli:
+    if host.renders_cli(art):
         body = body.replace(CLI_TOKEN, host.invocation(mode))
     raw = front.raw if front else ""
     body = body.strip() + "\n"

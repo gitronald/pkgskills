@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 from examplehost.cli import HOST as EXAMPLE
+from multihost.cli import HOST as MULTI
 from solohost.cli import HOST as SOLO
 
 from mli import artifacts as inst
@@ -83,6 +84,27 @@ def test_installed_mode_prefers_global(box: Sandbox) -> None:
     assert inst.installed_mode(SOLO, box.repo) == "local"
     inst.install(SOLO, box.repo, "global")
     assert inst.installed_mode(SOLO, box.repo) == "global"
+
+
+def test_printing_mode_folds_the_nothing_installed_case_into_a_default(
+    box: Sandbox,
+) -> None:
+    # What `installed_mode` deliberately refuses to decide, exported for hosts
+    # that print bodies of their own.
+    assert inst.installed_mode(SOLO, box.repo) is None
+    assert inst.printing_mode(SOLO, box.repo) == "global"
+    assert inst.printing_mode(MULTI, box.repo) == "local"
+    inst.install(SOLO, box.repo, "local")
+    assert inst.printing_mode(SOLO, box.repo) == "local"
+
+
+def test_docs_are_never_installed_or_checked(box: Sandbox) -> None:
+    # multihost ships two docs; neither is written, and neither earns a row.
+    report = inst.install(MULTI, box.repo, "local")
+    assert len(report.written) == len(MULTI.artifacts)
+    assert not (box.repo / ".claude/references").exists()
+    assert set(_statuses(MULTI, box.repo)) == {"skill:tidy", "skill:audit"}
+    assert set(_statuses(MULTI, box.repo).values()) == {"ok"}
 
 
 def test_version_only_bump_is_not_drift(box: Sandbox) -> None:
@@ -323,6 +345,52 @@ def test_installed_mode_falls_back_to_other_kinds_for_a_skill_less_host(
     assert inst.installed_mode(rules_only, box.repo) is None
     inst.install(rules_only, box.repo, "global")
     assert inst.installed_mode(rules_only, box.repo) == "global"
+
+
+def test_a_local_only_host_never_resolves_or_writes_a_global_install(
+    box: Sandbox,
+) -> None:
+    skill = MULTI.skills[0]
+    inst.install(MULTI, box.repo, "local")
+    assert inst.installed_mode(MULTI, box.repo) == "local"
+    # A stray global copy is outside the host's world: it neither resolves as
+    # the installed mode nor supersedes the per-repo one.
+    stray = inst.artifact_path(MULTI, skill, "global", box.repo)
+    stray.parent.mkdir(parents=True)
+    stray.write_text(render(MULTI, skill, "global"), encoding="utf-8")
+    assert inst.installed_mode(MULTI, box.repo) == "local"
+    assert inst.shadowed_skills(MULTI, box.repo) == []
+
+
+def test_a_local_copy_is_never_stale_for_a_host_with_no_global_mode(
+    box: Sandbox,
+) -> None:
+    # A rule, since a skill is shadowed rather than stale, and a host that
+    # loads it from both bases but installs in only one of them.
+    local_only = dataclasses.replace(EXAMPLE, modes=("local",))
+    rule = local_only.rules[0]
+    inst.install(local_only, box.repo, "local")
+    assert not inst.stale_local(local_only, rule, "local", box.repo)
+    # Even handed a global verdict outright: there is no global install of this
+    # host for a per-repo copy to be leftovers from.
+    assert not inst.stale_local(local_only, rule, "local", box.repo, installed="global")
+    assert inst.stale_local(EXAMPLE, rule, "local", box.repo, installed="global")
+
+
+def test_check_on_a_local_only_host_judges_the_repo_alone(box: Sandbox) -> None:
+    rows = inst.check(MULTI, box.repo)
+    assert {row.mode for row in rows} == {"local"}
+    assert {row.status for row in rows} == {"missing"}
+    inst.install(MULTI, box.repo, "local")
+    rows = inst.check(MULTI, box.repo)
+    assert {row.mode for row in rows} == {"local"}
+    assert {row.status for row in rows} == {"ok"}
+
+
+def test_installing_a_local_only_host_globally_is_refused(box: Sandbox) -> None:
+    with pytest.raises(ValueError, match="does not install in global mode"):
+        inst.install(MULTI, box.repo, "global")
+    assert not (box.home / ".claude").exists()
 
 
 def test_after_install_hook_receives_the_report(box: Sandbox) -> None:
