@@ -30,7 +30,7 @@ from mli.stamp import (
 
 
 def test_single_skill_stub_lifts_frontmatter_verbatim() -> None:
-    front, _ = split_frontmatter(SOLO.read("skill.md"))
+    front, _ = split_frontmatter(SOLO.read("skills/use-solo/SKILL.md"))
     assert front is not None
     stub = render_stub(SOLO, SOLO.skills[0], "global")
     source_lines = front.raw.splitlines()[:-1]  # every line but the closing fence
@@ -131,7 +131,7 @@ def test_stub_rejects_a_source_whose_name_disagrees() -> None:
         cli="solohost",
         prompts="solohost.prompts",
         version="1.0",
-        artifacts=(Skill(name="wrong-name", sources=("skill.md",)),),
+        artifacts=(Skill(name="wrong-name", sources=("skills/use-solo/SKILL.md",)),),
     )
     with pytest.raises(ValueError, match="names 'use-solo'"):
         stub_frontmatter(host, host.skills[0])

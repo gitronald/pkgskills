@@ -24,6 +24,7 @@ materialized at a location per mode and a doc has neither.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from importlib import metadata, resources
@@ -47,8 +48,33 @@ MODES: tuple[Mode, ...] = ("global", "local")
 CLI_TOKEN = "{cli}"
 
 
-def _stem(source: str) -> str:
-    return PurePosixPath(source).stem
+#: The filename the Agent Skills spec requires of a skill's entry file. Matched
+#: exactly — the spec writes it uppercase, and anything else is an ordinary
+#: flat source whose stem names it.
+SKILL_FILE = "SKILL.md"
+
+#: The spec's `name` grammar: 1-64 lowercase alphanumerics and hyphens, no
+#: leading, trailing, or consecutive hyphen.
+_NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+
+
+def source_name(source: str) -> str:
+    """The name a prompt source contributes, from its path.
+
+    A spec-conformant skill lives in its own directory as ``<name>/SKILL.md``,
+    so the *directory* is what names it; every stem in that layout is the
+    literal ``SKILL``. Any other file is named by its stem, which is what a
+    flat source has always meant.
+    """
+    path = PurePosixPath(source)
+    if path.name == SKILL_FILE and path.parent.name:
+        return path.parent.name
+    return path.stem
+
+
+def valid_skill_name(name: str) -> bool:
+    """True when ``name`` satisfies the Agent Skills spec's ``name`` grammar."""
+    return 1 <= len(name) <= 64 and _NAME.fullmatch(name) is not None
 
 
 @dataclass(frozen=True)
@@ -57,8 +83,9 @@ class Skill:
 
     ``sources`` are resource paths under the host's prompt package. One source
     makes a plain skill whose frontmatter is lifted verbatim into the stub.
-    Several sources make a dispatcher: the stub lists each source's stem as a
-    subcommand and carries a generated (or ``description``-supplied)
+    Several sources make a dispatcher: the stub lists each source's name --
+    its directory under the ``<name>/SKILL.md`` layout, its stem otherwise --
+    as a subcommand and carries a generated (or ``description``-supplied)
     frontmatter of its own. ``render_cli`` substitutes ``{cli}`` in the bodies
     when they are printed; left unset it follows
     :attr:`Host.render_cli`.
@@ -81,13 +108,13 @@ class Skill:
     @property
     def subcommands(self) -> tuple[str, ...]:
         """The subcommand names, one per source, in declaration order."""
-        return tuple(_stem(source) for source in self.sources)
+        return tuple(source_name(source) for source in self.sources)
 
     @property
     def body_names(self) -> tuple[str, ...]:
         """The names ``<cli> skill <name>`` accepts, one per source.
 
-        A dispatcher's bodies are addressed by their source stems, which are
+        A dispatcher's bodies are addressed by their source names, which are
         the subcommands the stub advertises. A single-source skill is addressed
         by the *skill's* name: that is what the model has — it is in the stub's
         frontmatter and in the slash command — and the source file need not be
@@ -98,7 +125,7 @@ class Skill:
     def source_for(self, subcommand: str) -> str:
         """The source behind ``subcommand``. Raises ``KeyError`` if unknown."""
         for source in self.sources:
-            if _stem(source) == subcommand:
+            if source_name(source) == subcommand:
                 return source
         raise KeyError(subcommand)
 
@@ -269,12 +296,17 @@ class Host:
                 raise ValueError(f"duplicate {art.kind.value} {art.name!r}")
             seen.add(key)
             if isinstance(art, Skill):
+                if not valid_skill_name(art.name):
+                    raise ValueError(
+                        f"skill name {art.name!r} is not spec-conformant: 1-64 "
+                        "characters of a-z, 0-9 and single interior hyphens"
+                    )
                 if not art.sources:
                     raise ValueError(f"skill {art.name!r} declares no sources")
                 subs = art.subcommands
                 if len(set(subs)) != len(subs):
                     raise ValueError(
-                        f"skill {art.name!r} has sources with duplicate stems"
+                        f"skill {art.name!r} has sources with duplicate names"
                     )
         # Raises when two bodies would answer to the same `skill <name>`.
         self.skill_sources()

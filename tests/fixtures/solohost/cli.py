@@ -9,7 +9,7 @@ HOST = Host(
     cli="solohost",
     prompts="solohost.prompts",
     version="0.9.0",
-    artifacts=(Skill(name="use-solo", sources=("skill.md",)),),
+    artifacts=(Skill(name="use-solo", sources=("skills/use-solo/SKILL.md",)),),
 )
 
 app = typer_app(HOST)

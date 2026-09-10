@@ -52,24 +52,28 @@ def test_scans_every_declared_prompt() -> None:
     sources = {cmd.source for cmd in prompt_commands(EXAMPLE)}
     # The rule is scanned alongside the two skill bodies; the agent declares no
     # `{cli}` at all, which is why it contributes nothing rather than failing.
-    assert sources == {"skills/add.md", "skills/close.md", "rules/examplehost.md"}
+    assert sources == {
+        "skills/add/SKILL.md",
+        "skills/close/SKILL.md",
+        "rules/examplehost.md",
+    }
 
 
 def test_reads_a_fenced_command() -> None:
-    (cmd,) = found(EXAMPLE, "skills/add.md")
+    (cmd,) = found(EXAMPLE, "skills/add/SKILL.md")
     assert cmd.tokens == ("validate",)
     assert cmd.argument is None
     assert cmd.text == "{cli} validate"
 
 
 def test_stops_at_a_placeholder_argument() -> None:
-    (cmd,) = found(EXAMPLE, "skills/close.md")
+    (cmd,) = found(EXAMPLE, "skills/close/SKILL.md")
     assert cmd.tokens == ("close",)
     assert cmd.argument is None
 
 
 def test_reads_a_declared_argument() -> None:
-    by_line = {cmd.line: cmd for cmd in found(MULTI, "skills/tidy.md")}
+    by_line = {cmd.line: cmd for cmd in found(MULTI, "skills/tidy/SKILL.md")}
     doc_cmd = next(c for c in by_line.values() if c.tokens == ("doc",))
     assert doc_cmd.argument == "tidy/fields"
     assert doc_cmd.text == "{cli} doc tidy/fields"
