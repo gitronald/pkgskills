@@ -239,3 +239,43 @@ when the host's bodies get rewritten.
 
 **Not pushed.** The repository still has no remote (Part 5), so there is no upstream and no
 PR; the branch and its worktree are local only.
+
+### 2026-09-09 — Part 3 implemented
+
+`feature/multi-skill-hosts`, commit `b450f55`. Part 3 as specced, plus one coupling the
+spec did not name; Parts 2, 4, and 5 untouched.
+
+- `Host.modes: tuple[Mode, ...] = MODES`, with `default_mode` (the first) and
+  `supports_mode()` as the seam everything else reads. Spelled `supports_mode` rather than
+  `supports` because `Harness.supports` already exists over artifact kinds and the two sit
+  two lines apart in `validate`.
+- `artifacts` walks `host.modes` everywhere it walked the module-level `MODES` — `check`,
+  `installed_mode`, `skill_stub_paths` — and `check`'s never-installed fallback row is now
+  the host's default mode rather than the literal `"global"`. `MODES` is no longer imported
+  there; `stamp` keeps it, since parsing a recorded mode is not a per-host question.
+- `stale_local` and `shadowed_skills` return early for a host with no global mode. Both were
+  *almost* free — `installed_mode` can no longer answer `"global"` for such a host — but a
+  caller handing in `installed="global"` would have bypassed it, so the guard is explicit.
+- `install()` raises `ValueError` for an unsupported mode. The CLI already refuses, but the
+  library function is public and writing a local-only host's stubs under `$HOME` is exactly
+  the accident the part exists to prevent.
+- `install` takes `--local/--global` (default `None`) instead of a lone `--local`, so
+  "no flag" and "the other mode" are distinguishable. `None` resolves to `default_mode`;
+  naming an undeclared mode exits 1 with `<cli> installs in local mode only; drop --global`.
+  A flagless `--check` still judges both locations on a two-mode host, and the one location
+  on a single-mode host.
+- **Not in the spec:** `permissions.invocation_rule` derived the grant from the settings
+  file's scope, so a local-only host asked for a user-wide profile would have been granted
+  `Bash(<cli>:*)` — a bare invocation that never happens. It now falls back to the host's
+  default mode. The two `mode` arguments look alike and mean different things; the docstring
+  says so now.
+- Fixture: `multihost` declares `modes=("local",)`. Its stub renders moved to its own mode,
+  and `_load_command` strips `host.invocation(mode)` instead of assuming a bare `multihost`.
+  10 new tests, 134 passing, coverage 97.3%; ruff and pyrefly clean.
+- Docs: a "A host that supports only one" subsection under README's Modes, the `install`
+  rows in the command table, a "Modes a host opts out of" decision in `docs/design.md` (and
+  the lineage paragraph's claim that `mli` picks one answer to each divergence, which is now
+  false for this one), and a CHANGELOG bullet.
+- Not done here: `Host.render_cli` (the smaller item) still touches no code this part
+  changed — it belongs with Part 2, which adds the second declaration kind that would repeat
+  the flag.
