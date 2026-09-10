@@ -1,11 +1,11 @@
 ---
 id: 3
 slug: spec-conformant-skill-sources
-status: active
+status: done
 branch: feature/spec-conformant-skill-sources
 created: 2026-09-09T21:51:26-07:00
-concluded:
-pr:
+concluded: 2026-09-09T23:13:55-07:00
+pr: null
 ---
 
 # Store skill sources as spec-conformant SKILL.md directories
@@ -356,3 +356,98 @@ is real files rather than a hand-built string.
 
 **Checks.** `uv run pytest` (218 passed, 98.13% coverage; `mli/spec.py` still
 at 100%), ruff check, ruff format --check, and pyrefly (0 errors) all pass.
+
+### 2026-09-09 — review gate
+
+`/code-review` at `medium` over the branch diff: two finders, four verifiers,
+twelve candidates, nine confirmed. Two were rejected on verification and are
+recorded here as conscious no-ops:
+
+- `check_skill` re-running `check_declared_name` after `Host.__post_init__`
+  already did looks redundant, but `__post_init__` hardcodes the module-level
+  `SPEC` while `check_skill` is an instance method. A caller pinning a stricter
+  reading via `dataclasses.replace(SPEC, ...)` gets a real violation the
+  construction check could not have raised. The duplication is the feature.
+- `with_metadata`'s collision loop matching a `version` key nested under an
+  unrelated sub-mapping reproduces identically on `dev`, so it is pre-existing
+  and out of this branch's scope.
+
+**Four real bugs, all in the new parsing, and all one family: the difference
+between the bytes on the line and what YAML would resolve them to.**
+
+- `Block.entries()` partitioned every line on `:`, so `- key: value` — a
+  *sequence* item — was read as a mapping pair. `metadata` holding a list of
+  pairs therefore passed the check clean, and `with_metadata` then spliced
+  mli's keys above the items into frontmatter `yaml.safe_load` rejects with
+  `expected <block end>, but found '-'`. The check meant to stop a broken
+  install was waving through the one shape that produces one. A line starting
+  `-` now declares no key, colon or no colon.
+- `find_block` captured the whole tail of the key line as `inline`, so
+  `metadata:  # fill this in later` read as an inline scalar and a *valid*
+  host failed with `metadata-not-a-mapping`. The inverse error to the one
+  above, from the same missing distinction.
+- `_not_a_string` full-matched the raw value, so `version: 1.0  # bump me`
+  was never recognized as a float — the exact defect the check exists for,
+  hidden by a comment. Fixed at the source: `strip_comment` now runs in
+  `entries()`, so `spec.py` needs no change and every consumer of a block
+  value gets the resolved scalar.
+- `find_block` returned the *first* match while `parse_fields` and YAML both
+  keep the *last*, so a source with two `metadata:` keys was checked in one
+  block and loaded from another. Now last-wins throughout.
+
+`strip_comment` is deliberately narrow: YAML opens a comment only at a token
+or after whitespace and never inside a quoted scalar, so `a#b` stays `a#b`.
+
+**Three cleanups.** `valid_skill_name` and `SKILL_FILE` were thin aliases of
+`SPEC.valid_name` and `SPEC.entry_file` with no consumer anywhere but their own
+tests — `Host.validate` calls the spec directly — so both are gone and the
+tests point at `SPEC`. `check_frontmatter` was split into a `check_parsed` that
+takes the already-split block, which is what `stub_frontmatter` wanted: it was
+parsing the same text twice, once for the violations and once for the
+frontmatter. And the new `__all__` entries were sorted back into the file's
+order (ruff cannot catch this — `RUF022` is not in the configured `select`).
+
+**One hardening.** `with_metadata` now refuses an inline `metadata:` value
+instead of splicing indented keys under it. Both production call sites already
+guard it, so this is unreachable today; it is here because the function is
+public and the failure is silent — invalid YAML, not an exception.
+
+Each fix carries a regression test: five in `test_frontmatter.py` (comment
+stripping, the commented key line, last-wins, sequence items, commented
+values), three in `test_spec.py` (a sequence of pairs, a commented key line, a
+commented float), and one parametrized case in `test_render.py` for the inline
+guard. The duplicate assertion review found in
+`test_source_name_reads_the_directory_of_a_conformant_skill` was replaced with
+the case it was presumably meant to be — a source nested more than one
+directory deep.
+
+**Checks.** `uv run pytest` (229 passed, 98.17% coverage; `mli/spec.py` still
+at 100%), ruff check, ruff format --check, and pyrefly (0 errors) all pass.
+
+## Retrospective
+
+- The plan's premise held: `_stem` was the whole blocker, and replacing it with
+  a name-from-directory helper made the conformant layout expressible without
+  breaking a single flat source. Steps 1-2 were quick; everything after
+  was the plan's own "also worth deciding" growing into the larger half of the
+  work.
+- Folding the `name` grammar in rather than splitting it out was right, but it
+  pulled `mli/spec.py` in with it — an unplanned module that is now the biggest
+  thing on the branch. Encoding a specification as data pays for itself the
+  moment a second check needs the same field limits; it was not obvious at
+  planning time that there would be a second.
+- Two claims on this branch were stated and later found wrong: that flat
+  sources had to stay in the fixtures to preserve coverage, and that
+  `metadata`'s shape was unenforceable. Both were convenient — each closed a
+  question rather than opening one. Both were caught by review, not by the
+  checks. A capability claim ("the parser cannot see it") is worth tracing to
+  the consumer that would use it before it is written down.
+- Every bug the review found was in hand-rolled YAML-ish line parsing, and each
+  was the same mistake in a different place: treating the raw bytes of a line
+  as the value. If this parsing grows again, the thing to add first is a
+  property test against `yaml.safe_load` — the two disagreeing is the whole
+  bug class, and it is cheap to assert directly.
+- The fixture split into three exemplary hosts plus one deliberately broken one
+  was the structural decision that made the negative tests honest. Worth
+  reaching for earlier next time: a validator with no wrong files to run
+  against is only testing its own error strings.
