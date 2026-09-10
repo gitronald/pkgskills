@@ -54,7 +54,9 @@ def with_metadata(raw: str, host: Host, skill: Skill) -> str:
     one, and open a new one just before the closing fence otherwise. Every
     other line is left byte for byte, since the harness reads this block.
     A source that already declares one of mli's keys is rejected rather than
-    emitted as a duplicate key.
+    emitted as a duplicate key, and so is one whose ``metadata`` is a scalar
+    or a flow mapping: there is no block for indented keys to join, so
+    splicing them in would emit frontmatter that no longer parses.
     """
     lines = raw.splitlines()
     close = len(lines) - 1
@@ -62,6 +64,11 @@ def with_metadata(raw: str, host: Host, skill: Skill) -> str:
     if block is None:
         opened = ["metadata:", *metadata_lines(host)]
         return "\n".join([*lines[:close], *opened, lines[close], ""])
+    if block.inline:
+        raise SpecError(
+            SPEC.check_metadata_block(f"skill {skill.name!r}", block),
+            header=f"skill {skill.name!r} cannot be rendered into a stub",
+        )
     for _, key, _value in block.entries():
         if key in METADATA_KEYS:
             raise ValueError(
@@ -81,13 +88,12 @@ def stub_frontmatter(host: Host, skill: Skill) -> str:
     """
     if not skill.dispatches:
         source = skill.sources[0]
-        text = host.read(source)
+        front, _ = split_frontmatter(host.read(source))
         # The stub *is* the skill the harness loads, so a source that breaks
         # the spec would install a broken skill. Report every way it does,
         # rather than the first one this function happens to trip over.
         header = f"skill {skill.name!r} cannot be rendered into a stub"
-        violations = SPEC.check_frontmatter(source, text)
-        front, _ = split_frontmatter(text)
+        violations = SPEC.check_parsed(source, front)
         if front is None:
             raise SpecError(violations, header=header)
         declared = front.get("name")

@@ -349,6 +349,30 @@ def test_metadata_may_not_hold_a_sequence() -> None:
     assert "'- one', '- two', which declares no key" in violation.detail
 
 
+def test_a_sequence_of_pairs_is_still_a_sequence() -> None:
+    """`- key: value` carries a colon but opens a list, not a mapping.
+
+    Reading it as a pair let the whole wrong shape pass, and `with_metadata`
+    then spliced mli's keys above the items into frontmatter YAML rejects.
+    """
+    (violation,) = metadata_check("metadata:\n  - key: value\n  - other: text\n")
+    assert violation.rule == "metadata-not-a-mapping"
+    assert "'- key: value', '- other: text'" in violation.detail
+
+
+def test_a_comment_beside_the_metadata_key_is_not_an_inline_scalar() -> None:
+    """The mapping below it is what the block is; the note is not a value."""
+    assert metadata_check("metadata:  # fill this in later\n  author: x\n") == []
+
+
+def test_a_commented_value_is_read_as_what_yaml_would_resolve() -> None:
+    """The comment is not part of the scalar, so `1.0  # note` is a float."""
+    (violation,) = metadata_check("metadata:\n  version: 1.0  # bump me\n")
+    assert violation.rule == "metadata-value-not-a-string"
+    assert "which YAML reads as a float" in violation.detail
+    assert metadata_check('metadata:\n  version: "1.0"  # bump me\n') == []
+
+
 def test_a_nested_mapping_is_reported_against_the_key_that_opens_it() -> None:
     found = metadata_check("metadata:\n  owner:\n    team: platform\n")
     # One violation, not two: the deeper line is part of the value, not an

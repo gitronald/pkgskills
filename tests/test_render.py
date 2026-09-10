@@ -20,6 +20,7 @@ from mli.rendering import (
     stub_frontmatter,
     with_metadata,
 )
+from mli.spec import SpecError
 from mli.stamp import (
     mask_versions,
     mli_version,
@@ -75,6 +76,20 @@ def test_stub_metadata_rejects_a_source_that_claims_a_managed_key() -> None:
     raw = '---\nname: x\nmetadata:\n  version: "2.0"\n---\n'
     with pytest.raises(ValueError, match="already declares metadata.version"):
         with_metadata(raw, SOLO, SOLO.skills[0])
+
+
+@pytest.mark.parametrize("inline", ["whatever", "{}", "{a: b}"])
+def test_stub_metadata_refuses_to_splice_into_an_inline_value(inline: str) -> None:
+    """There is no block for indented keys to join, so splicing breaks YAML.
+
+    `stub_frontmatter` catches this before it gets here, but `with_metadata`
+    is a plain function and must not emit frontmatter that no longer parses
+    just because it was called directly.
+    """
+    raw = f"---\nname: x\nmetadata: {inline}\n---\n"
+    with pytest.raises(SpecError) as caught:
+        with_metadata(raw, SOLO, SOLO.skills[0])
+    assert {v.rule for v in caught.value.violations} == {"metadata-not-a-mapping"}
 
 
 def test_single_skill_stub_holds_no_instructions() -> None:

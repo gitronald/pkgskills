@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from mli.frontmatter import body_only, parse_fields, split_frontmatter
+from mli.frontmatter import (
+    body_only,
+    find_block,
+    parse_fields,
+    split_frontmatter,
+    strip_comment,
+)
 
 DOC = """\
 ---
@@ -78,3 +84,48 @@ def test_comments_and_nested_mappings_are_ignored() -> None:
 def test_colons_in_values_survive() -> None:
     fields = parse_fields(["url: https://example.com/a:b\n"])
     assert fields["url"] == "https://example.com/a:b"
+
+
+def test_strip_comment_only_cuts_a_real_yaml_comment() -> None:
+    assert strip_comment("1.0  # bump before release") == "1.0"
+    assert strip_comment("# all comment") == ""
+    # A `#` that opens no comment belongs to the value: YAML starts one only at
+    # the token or after whitespace, and never inside a quoted scalar.
+    assert strip_comment("a#b") == "a#b"
+    assert strip_comment('"a # b"') == '"a # b"'
+    assert strip_comment("plain value") == "plain value"
+
+
+def test_find_block_ignores_a_comment_on_the_key_line() -> None:
+    """A note beside `metadata:` still opens the mapping below it."""
+    raw = "---\nname: x\nmetadata:  # fill this in later\n  author: example-org\n---\n"
+    block = find_block(raw, "metadata")
+    assert block is not None
+    assert block.inline == ""
+    assert block.entries() == [(2, "author", "example-org")]
+
+
+def test_find_block_resolves_a_repeated_key_to_the_last_one() -> None:
+    """YAML is last-wins, and so is `parse_fields`; the block has to agree."""
+    raw = "---\nmetadata:\n  author: first\nmetadata: scalar\n---\n"
+    block = find_block(raw, "metadata")
+    assert block is not None
+    assert block.inline == "scalar"
+    front, _ = split_frontmatter(raw)
+    assert front is not None
+    assert front.fields["metadata"] == "scalar"
+
+
+def test_entries_reports_a_sequence_item_as_declaring_no_key() -> None:
+    """`- key: value` opens a list, not a mapping, colon or no colon."""
+    raw = "---\nmetadata:\n  - key: value\n  - bare\n---\n"
+    block = find_block(raw, "metadata")
+    assert block is not None
+    assert block.entries() == [(2, "", "- key: value"), (2, "", "- bare")]
+
+
+def test_entries_strips_a_comment_from_a_value() -> None:
+    raw = "---\nmetadata:\n  version: 1.0  # bump before release\n---\n"
+    block = find_block(raw, "metadata")
+    assert block is not None
+    assert block.entries() == [(2, "version", "1.0")]

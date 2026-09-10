@@ -30,11 +30,11 @@ from mli.spec import SPEC, Field, SkillSpec, SpecError, Violation
 
 __all__ = [
     "CLAUDE_CODE",
-    "SPEC",
     "LOCATION_ENV",
+    "SPEC",
     "Agent",
-    "Block",
     "Artifact",
+    "Block",
     "Check",
     "Doc",
     "ExtraCheck",

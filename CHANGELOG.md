@@ -27,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   explicit flag on a declaration still wins.
 - Skills install as print-on-demand stubs, each naming the body it prints
   (`<cli> skill <name>`); a multi-source skill becomes a dispatcher whose
-  subcommands are the source stems, while a single-source skill is addressed
+  subcommands are the source names, while a single-source skill is addressed
   by the skill's own name, whatever its source file is called. Rules and
   agents install as stamped copies.
 - Global (`~/.claude/`) and local (repository) install modes, with the
@@ -110,7 +110,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   frontmatter key opens, as a `Block` with the inline value and per-line
   `entries()`. It backs both the `metadata` spec check and the version-key
   splice in `with_metadata`, which previously walked the raw lines itself and
-  stopped at the first blank line inside the mapping.
+  stopped at the first blank line inside the mapping. It reads a key declared
+  twice as YAML does — last one wins, matching `parse_fields` — and treats a
+  trailing `# comment` as a comment rather than as part of the value, so a
+  commented scalar is judged by what YAML would resolve it to.
 
 ### Changed
 

@@ -9,23 +9,14 @@ from solohost.cli import HOST as SOLO
 
 from mli.frontmatter import split_frontmatter
 from mli.harness import CLAUDE_CODE, Harness, Kind
-from mli.host import (
-    SKILL_FILE,
-    Agent,
-    Doc,
-    Host,
-    Rule,
-    Skill,
-    source_name,
-    valid_skill_name,
-)
+from mli.host import Agent, Doc, Host, Rule, Skill, source_name
 from mli.spec import SPEC, SpecError
 
 
 def test_source_name_reads_the_directory_of_a_conformant_skill() -> None:
     # The spec's layout: `<name>/SKILL.md`, so the directory names the source.
     assert source_name("use-solo/SKILL.md") == "use-solo"
-    assert source_name("use-solo/SKILL.md") == "use-solo"
+    assert source_name("skills/nested/pdf-processing/SKILL.md") == "pdf-processing"
     # A flat source keeps naming itself by its stem.
     assert source_name("skills/audit-body.md") == "audit-body"
     assert source_name("skill.md") == "skill"
@@ -38,16 +29,16 @@ def test_source_name_reads_the_directory_of_a_conformant_skill() -> None:
 
 
 def test_skill_names_are_checked_against_the_spec_grammar() -> None:
-    assert valid_skill_name("pdf-processing")
-    assert valid_skill_name("a1")
-    assert not valid_skill_name("")
-    assert not valid_skill_name("PDF-Processing")
-    assert not valid_skill_name("-pdf")
-    assert not valid_skill_name("pdf-")
-    assert not valid_skill_name("pdf--processing")
-    assert not valid_skill_name("pdf processing")
-    assert not valid_skill_name("edit/refs")
-    assert not valid_skill_name("a" * 65)
+    assert SPEC.valid_name("pdf-processing")
+    assert SPEC.valid_name("a1")
+    assert not SPEC.valid_name("")
+    assert not SPEC.valid_name("PDF-Processing")
+    assert not SPEC.valid_name("-pdf")
+    assert not SPEC.valid_name("pdf-")
+    assert not SPEC.valid_name("pdf--processing")
+    assert not SPEC.valid_name("pdf processing")
+    assert not SPEC.valid_name("edit/refs")
+    assert not SPEC.valid_name("a" * 65)
 
 
 def test_invocation_and_commands_per_mode() -> None:
@@ -296,7 +287,7 @@ def test_conformant_sources_match_the_spec_layout(host: Host) -> None:
     """
     for skill in host.skills:
         for source in skill.sources:
-            assert source.endswith("/" + SKILL_FILE), (
+            assert source.endswith("/" + SPEC.entry_file), (
                 f"{source} is not a spec-conformant skill directory"
             )
             front, _ = split_frontmatter(host.read(source))
@@ -306,7 +297,7 @@ def test_conformant_sources_match_the_spec_layout(host: Host) -> None:
                 f"{source}: frontmatter names {declared!r}, "
                 f"directory names {source_name(source)!r}"
             )
-            assert valid_skill_name(str(declared))
+            assert SPEC.valid_name(str(declared))
 
 
 @pytest.mark.parametrize("host", [EXAMPLE, SOLO, MULTI], ids=lambda h: h.dist)

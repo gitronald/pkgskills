@@ -48,13 +48,6 @@ MODES: tuple[Mode, ...] = ("global", "local")
 CLI_TOKEN = "{cli}"
 
 
-#: The filename the Agent Skills spec requires of a skill's entry file. Matched
-#: exactly — the spec writes it uppercase, and anything else is an ordinary
-#: flat source whose stem names it. Re-exported from :mod:`mli.spec`, which is
-#: where the specification lives.
-SKILL_FILE = SPEC.entry_file
-
-
 def source_name(source: str) -> str:
     """The name a prompt source contributes, from its path.
 
@@ -66,11 +59,6 @@ def source_name(source: str) -> str:
     if SPEC.is_entry(source):
         return PurePosixPath(source).parent.name
     return PurePosixPath(source).stem
-
-
-def valid_skill_name(name: str) -> bool:
-    """True when ``name`` satisfies the Agent Skills spec's ``name`` grammar."""
-    return SPEC.valid_name(name)
 
 
 @dataclass(frozen=True)

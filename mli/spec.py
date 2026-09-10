@@ -38,7 +38,7 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
-from mli.frontmatter import Frontmatter, find_block, split_frontmatter
+from mli.frontmatter import Block, Frontmatter, find_block, split_frontmatter
 
 if TYPE_CHECKING:
     from mli.host import Host, Skill
@@ -221,6 +221,15 @@ class SkillSpec:
         block = find_block(front.raw, "metadata")
         if block is None:  # pragma: no cover - fields and raw cannot disagree
             return []
+        return self.check_metadata_block(source, block)
+
+    def check_metadata_block(self, source: str, block: Block) -> list[Violation]:
+        """Violations in the ``metadata`` block itself, already located.
+
+        Split from :meth:`check_metadata` so a caller holding the block —
+        :func:`mli.rendering.with_metadata` splices into it — can ask what is
+        wrong with it without re-finding it.
+        """
 
         def wrong(rule: str, detail: str, fix: str) -> Violation:
             return Violation(where=source, rule=rule, detail=detail, fix=fix)
@@ -339,8 +348,18 @@ class SkillSpec:
         ]
 
     def check_frontmatter(self, source: str, text: str) -> list[Violation]:
-        """Violations in a source's frontmatter block."""
+        """Violations in a source's frontmatter block, read from its text."""
         front, _ = split_frontmatter(text)
+        return self.check_parsed(source, front)
+
+    def check_parsed(self, source: str, front: Frontmatter | None) -> list[Violation]:
+        """Violations in an already-split frontmatter block.
+
+        The parsed form is the parameter because a caller that needs the block
+        *and* its violations — :func:`mli.rendering.stub_frontmatter` renders
+        the one and reports the other — would otherwise split the same text
+        twice.
+        """
         if front is None:
             return [
                 Violation(
