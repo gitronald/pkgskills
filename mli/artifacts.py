@@ -209,8 +209,9 @@ def check(host: Host, root: Path, mode: Mode | None = None) -> list[Check]:
     """Drift for every artifact.
 
     With ``mode`` given, each artifact is judged at that one location. Without
-    it, every occupied location the host supports is judged (global first),
-    because the harness loads rules and agents from both at once and a stale
+    it, every occupied location the host supports is judged, in the host's
+    declared mode order (global first by default), because the harness loads
+    rules and agents from both at once and a stale
     copy at either is real drift. An artifact present at neither location
     reports ``missing`` once, against its default mode's path.
     """
@@ -235,7 +236,10 @@ def check(host: Host, root: Path, mode: Mode | None = None) -> list[Check]:
 
 
 def installed_mode(host: Host, root: Path) -> Mode | None:
-    """The mode an existing install resolves to, global first, or ``None``.
+    """The mode an existing install resolves to, or ``None``.
+
+    Modes are tried in the host's declared order, so the host's preference
+    decides which of two coexisting installs is the one being used.
 
     Used to render printed bodies with the prefix the installed stub uses, so
     what the model reads agrees with the commands it was told to run. Skills

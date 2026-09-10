@@ -217,7 +217,13 @@ def _unresolved(host: Host, root: object, cmd: PromptCommand) -> str | None:
     node = root
     for i, token in enumerate(cmd.tokens):
         commands = getattr(node, "commands", None)
-        if not isinstance(commands, dict) or token not in commands:
+        if not isinstance(commands, dict):
+            # A leaf command, so whatever follows it is an argument rather
+            # than a subcommand. The scanner cannot tell the two apart —
+            # `{cli} close fix-typo` is tokens the same shape as a command
+            # path — and only the app knows where the path ends.
+            break
+        if token not in commands:
             return f"no such command {' '.join(cmd.tokens[: i + 1])!r}"
         node = commands[token]
     if cmd.argument is not None:
@@ -237,7 +243,9 @@ def assert_prompt_commands(host: Host, app: typer.Typer) -> None:
     Each mention's command path is resolved against the typer app, and the
     argument to ``skill``, ``doc``, ``rule``, or ``agent`` against the host's
     own declarations. The shared grammar's commands resolve like any other,
-    since ``register`` mounted them on the same app.
+    since ``register`` mounted them on the same app. Resolution stops at the
+    first leaf command, so a body free to write a real argument
+    (``{cli} close fix-typo``) rather than a placeholder still passes.
     """
     from typer.main import get_command
 

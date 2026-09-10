@@ -113,6 +113,18 @@ def test_prose_mention_in_a_doc_is_not_a_command() -> None:
     assert lines == {5}
 
 
+def test_a_real_argument_to_a_leaf_command_is_not_a_subcommand() -> None:
+    # `{cli} close fix-typo` is tokens the same shape as a command path, so the
+    # scanner records both; only the app knows `close` takes an argument.
+    # Resolution stops at the leaf, which is what lets a body write a realistic
+    # example instead of a placeholder.
+    (cmd,) = [
+        c for c in found(EXAMPLE, "rules/examplehost.md") if c.tokens[0] == "close"
+    ]
+    assert cmd.tokens == ("close", "fix-typo")
+    assert_prompt_commands(EXAMPLE, example_app)
+
+
 def test_every_command_the_fixtures_name_is_real() -> None:
     assert_prompt_commands(EXAMPLE, example_app)
     assert_prompt_commands(MULTI, multi_app)

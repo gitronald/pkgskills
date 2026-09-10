@@ -256,10 +256,13 @@ def _requested_mode(host: Host, local: bool | None) -> Mode:
 
 def _install_command(host: Host) -> typer.Typer:
     one_mode = len(host.modes) == 1
+    # Both halves name the host's own default, since which mode a bare
+    # `install` means is the host's to declare, not always global.
     mode_help = (
         f"This host installs in {host.default_mode} mode only; the flag is optional."
         if one_mode
-        else "Install into the enclosing repo instead of ~."
+        else f"Install into the enclosing repo (--local) or ~ (--global);"
+        f" defaults to {host.default_mode}."
     )
 
     def install(
