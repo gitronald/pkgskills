@@ -14,7 +14,7 @@ delivery model for their Claude Code skills, each implementing it by hand:
 2. `<cli> skill [<name>]` prints a body on demand.
 3. `<cli> install` writes a generated, version-stamped stub carrying only the
    frontmatter the harness reads off disk, plus the instruction to run
-   `<cli> skill`.
+   `<cli> skill <name>`.
 4. `<cli> install --check` reports drift and exits non-zero unless ok.
 5. The stub tells the agent to check before dispatching and to start a fresh
    context after regenerating.
