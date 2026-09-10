@@ -57,6 +57,28 @@ with no model in the loop, and the spec's directory rule does not reach them —
 so they stay flat files under `rules/` and `agents/`. A reference that belongs
 to no skill has nowhere to live either, and stays wherever the host puts it.
 
+### The `skills/` group is optional
+
+`mli` never looks for a `skills/` segment; a source's path matters only in that
+its last two components are `<name>/SKILL.md`. The group earns its keep when a
+host ships rules or agents too, and it is noise when a host ships only skills:
+
+```
+yourtool/
+└── prompts/
+    ├── tidy/SKILL.md
+    └── audit/SKILL.md
+```
+
+```python
+artifacts = (
+    Skill(name="tidy", sources=("tidy/SKILL.md",)),
+    Skill(name="audit", sources=("audit/SKILL.md",)),
+)
+```
+
+Both arrangements are conformant. Pick whichever leaves the tree readable.
+
 ## How a source gets its name
 
 `mli` needs a name per source: a dispatcher advertises one subcommand per
@@ -77,10 +99,10 @@ skill's own name.
 Nothing forces the migration. A host that ships `skills/tidy.md` keeps working
 exactly as before — the stem names it — and a host may mix the two layouts.
 The only thing the flat layout costs is spec conformance of the source tree
-itself, which matters when a linter is pointed at the package. The bundled
-fixture hosts are all conformant, since what they ship is what a host author
-copies; the flat layout is held open by `mli`'s own tests rather than by a
-fixture stored that way.
+itself, which matters when a linter is pointed at the package. `mli`'s own
+exemplary fixture hosts are all conformant, since what they ship is what a host
+author copies; the flat layout lives in `brokenhost`, the fixture whose whole
+purpose is to be wrong, and in tests that declare it inline.
 
 The name a source contributes is not the name a *single-source* skill is
 addressed by. That one answers to `Skill.name` — what the stub's frontmatter
@@ -103,6 +125,61 @@ harness may refuse to load.
 `Doc.name` is deliberately *not* held to that grammar: a doc is never installed
 as a skill, and its name may carry a `/` so a host can namespace its references
 by the skill that owns them (`add/fields`).
+
+## Checking a host against the spec
+
+`mli.spec` holds the specification as data — the entry filename, the optional
+directories, every frontmatter field with its limit, and the `name` grammar —
+on a `SkillSpec` dataclass, with `mli.SPEC` as the instance everything uses.
+Holding it as data rather than as scattered conditionals is what lets a failure
+say which rule broke and what to do:
+
+```
+brokenhost ships skills that do not follow the Agent Skills specification
+(skills-ref validate checks the same rules):
+  misfiled/SKILL.md:
+    - frontmatter declares no `description` [description-missing] -- add
+      `description`: 1-1024 characters saying what the skill does and when to use it
+    - frontmatter names 'Misfiled Skill' but the directory is 'misfiled'; the
+      spec requires they match [name-matches-directory] -- set the `name` to 'misfiled'
+```
+
+Three surfaces report it, at the three moments a problem can be caught:
+
+| When | What is checked | How it fails |
+|---|---|---|
+| `Host(...)` construction | declared `Skill.name`s only | raises `SpecError` |
+| `install` / `render` | the source behind a single-source skill's stub | raises `SpecError` |
+| `assert_spec_conformant(host)` | every skill, every source, read | `AssertionError` |
+
+Construction deliberately reads no files: a host is declared at import time, so
+walking the prompt package there would put a file scan on every invocation of
+the CLI. `Host.check_spec()` returns the full list of `Violation`s for a caller
+that wants them as data, and `mli.testing.assert_spec_conformant(host)` is the
+one-line form for a host's own test suite — the counterpart to
+`assert_prompt_commands`, and there for the same reason: what a host bundles is
+read by a harness and by whatever linter a consumer points at the package, and
+neither of those is running while the host's suite is.
+
+```python
+from mli.testing import assert_prompt_commands, assert_spec_conformant
+
+
+def test_prompts_are_well_formed() -> None:
+    assert_spec_conformant(HOST)
+    assert_prompt_commands(HOST, app)
+```
+
+Every violation is reported at once rather than one per run, because a source
+that is wrong in one way is usually wrong in two. Each carries a stable `rule`
+slug (`entry-file`, `name-grammar`, `name-matches-directory`,
+`description-missing`, ...) so a caller can filter rather than parse prose.
+
+What is *not* checked is the shape of `metadata`. The spec makes it a map of
+string to string; `mli.frontmatter` parses flat scalars and skips nested blocks,
+so there is nothing to inspect. The reference validator the spec ships,
+`skills-ref validate`, is the tool for a full check — this is the subset `mli`
+can enforce from inside the host.
 
 ## Related
 

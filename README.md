@@ -63,9 +63,13 @@ register(app, HOST)  # adds skill, install, doc, rule, agent
 ```
 
 Each skill source is a spec-conformant skill directory — `<name>/SKILL.md`,
-with a frontmatter `name` matching the directory — so the `prompts/` tree
-passes a skills linter as it stands. A flat `skills/add.md` still works and
-may be mixed in; see
+holding the skill's `references/` and `scripts/` too — so the `prompts/` tree
+passes a skills linter as it stands. The `skills/` group above is a
+convenience, not a requirement: `mli` reads only the last two components of the
+path, so a host that ships nothing but skills can drop it and write
+`sources=("add/SKILL.md",)`. A flat `skills/add.md` still works and may be
+mixed in. `assert_spec_conformant(HOST)` reports anything misfiled, naming the
+rule and the fix — see
 [docs/source-layout.md](docs/source-layout.md).
 
 A skill with one source lifts that file's frontmatter into the stub, adding
@@ -300,6 +304,14 @@ directory to fresh directories, so a suite never touches the developer's real
 in-process and lists its contents, which is the only way to prove the prompts
 ship: an editable install resolves package data straight to the checkout.
 
+`mli.testing.assert_spec_conformant(host)` checks every skill the host ships
+against the [Agent Skills specification](docs/agentskills-specification.md):
+that each source is stored as `<name>/SKILL.md`, that its frontmatter carries a
+`name` matching the directory and satisfying the spec's grammar, that a
+`description` is present, and that no field runs past its limit. Every
+violation is reported at once, each naming the rule it breaks and the fix — see
+[docs/source-layout.md](docs/source-layout.md#checking-a-host-against-the-spec).
+
 `mli.testing.assert_prompt_commands(host, app)` closes the loop the whole
 pattern exists for. `mli` renders `{cli}`, but nothing otherwise checks that
 what follows it is a command the host actually has, and prose about a CLI goes
@@ -310,7 +322,8 @@ declarations — so a renamed doc or a dropped subcommand fails the suite with
 the source and line of every mention that no longer reaches anything:
 
 ```python
-def test_prompts_name_real_commands() -> None:
+def test_prompts_are_well_formed() -> None:
+    assert_spec_conformant(HOST)
     assert_prompt_commands(HOST, app)
 ```
 
@@ -335,4 +348,5 @@ end: one with every artifact kind, one with a single skill body, and one with
 several single-source skills that is also local-only, ships reference
 documents inside their own skill directories, and declares `render_cli` once on
 the host. All three store their skills the way the spec does, so the tree a
-host author copies is conformant as it stands.
+host author copies is conformant as it stands; `brokenhost` is the fourth, and
+holds the counterexamples the negative tests need.

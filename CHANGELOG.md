@@ -90,6 +90,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   1-64 characters of `a-z`, `0-9`, and hyphens, with no leading, trailing, or
   consecutive hyphen. `Doc.name` is deliberately exempt, since a doc is never
   installed as a skill and may namespace itself with `/`.
+- `mli.spec` holds the Agent Skills specification as data — `SkillSpec` carries
+  the entry filename, the optional directories, every frontmatter field with
+  its length limit, and the `name` grammar; `SPEC` is the shipped instance.
+  A departure is a `Violation` naming the rule it breaks and the fix for it,
+  and failures raise `SpecError` (a `ValueError`) carrying them as data rather
+  than only as a message.
+- `Host.check_spec()` returns every violation across a host's skills, and
+  `mli.testing.assert_spec_conformant(host)` is the one-line form for a host's
+  own test suite — the counterpart to `assert_prompt_commands`. All violations
+  are reported at once, grouped by file. Construction still checks only the
+  declared names, so declaring a host does not walk its prompt package.
 
 ### Changed
 
