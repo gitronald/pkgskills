@@ -7,6 +7,6 @@ description: Audit a workspace with multihost. Triggers on "audit" or "what drif
 
 Rank what you find by `{cli} doc audit/severity`.
 
-Report what drifted, then hand the list back with `{cli} validate .`.
+Report what drifted, then hand the list back with `{cli} install --check`.
 
 AUDIT-BODY-SENTINEL

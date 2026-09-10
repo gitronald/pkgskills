@@ -141,10 +141,10 @@ def test_doc_prints_a_reference_document(box: Sandbox) -> None:
 def test_doc_renders_cli_the_way_skill_does(box: Sandbox) -> None:
     # Nothing installed: the fallback is the host's own mode, not "global".
     before = runner.invoke(multi_app, ["doc", "tidy/fields"])
-    assert "uv run multihost validate ." in before.output
+    assert "uv run multihost install --check" in before.output
     inst.install(MULTI, box.repo, "local")
     after = runner.invoke(multi_app, ["doc", "tidy/fields"])
-    assert "uv run multihost validate ." in after.output
+    assert "uv run multihost install --check" in after.output
 
 
 def test_doc_list_and_the_errors(box: Sandbox) -> None:
@@ -230,7 +230,7 @@ def test_local_only_host_prints_bodies_for_its_own_mode_before_any_install(
     # be the host's own mode, not the literal "global".
     result = runner.invoke(multi_app, ["skill", "tidy"])
     assert result.exit_code == 0
-    assert "uv run multihost validate ." in result.output
+    assert "uv run multihost install --check" in result.output
 
 
 def test_check_reports_each_status_and_exit_codes(box: Sandbox) -> None:

@@ -287,6 +287,27 @@ directory to fresh directories, so a suite never touches the developer's real
 in-process and lists its contents, which is the only way to prove the prompts
 ship: an editable install resolves package data straight to the checkout.
 
+`mli.testing.assert_prompt_commands(host, app)` closes the loop the whole
+pattern exists for. `mli` renders `{cli}`, but nothing otherwise checks that
+what follows it is a command the host actually has, and prose about a CLI goes
+stale. The helper scans every skill body, doc, rule, and agent for `{cli} ...`
+mentions, resolves each command path against the typer app, and resolves the
+argument to `skill`, `doc`, `rule`, and `agent` against the host's own
+declarations — so a renamed doc or a dropped subcommand fails the suite with
+the source and line of every mention that no longer reaches anything:
+
+```python
+def test_prompts_name_real_commands() -> None:
+    assert_prompt_commands(HOST, app)
+```
+
+A mention counts when it is written as code — inside backticks or a fenced
+block. Prose that names the bare placeholder ("`{cli}` is substituted per
+mode") is talking *about* the token, so the words after it are not read as a
+command path. `mli.testing.prompt_commands(host)` returns the same mentions as
+`PromptCommand` records (source, line, command path, declared argument) for a
+suite that wants to assert something else about them.
+
 ## Development
 
 ```bash

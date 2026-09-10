@@ -106,6 +106,20 @@ the common case; hosts should pin a compatible range so patches flow without
 host releases. A stub also has two producers now, the host and `mli`; the stamp
 names both versions so a bad render is attributable to one of them.
 
+**Commands in prompts are checked, not trusted.** The reason `{cli}` exists is
+that prose about a CLI goes stale, and substituting it correctly says nothing
+about whether the command after it is real. `mli.testing.assert_prompt_commands`
+resolves every mention against the host's own typer app, which is why it ships
+here rather than in each host: the check is the same everywhere, and a host that
+writes its own version writes it once per host. Two choices carry it. A mention
+counts only where it is written as code — inside backticks or a fenced block —
+because a body that names the bare placeholder in a sentence is talking about
+the token, and reading the following words as a command path invents a command
+to fail on. And the argument to `skill`, `doc`, `rule`, and `agent` is resolved
+against the *declarations* rather than skipped as argument-shaped, because a
+renamed doc is the stale mention most likely to happen and a scanner that stops
+at the first path-shaped token never sees it.
+
 **Two hosts before an option.** Some of the divergences the three hosts had were
 deliberate and some were accidents, and the difference is not visible from one
 host's side. So a behavior difference is a per-artifact or per-host declaration

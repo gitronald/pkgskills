@@ -51,6 +51,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `{cli}` placeholder rendering per mode for artifacts and docs that opt in.
 - `mli hosts` and `mli check` over the `mli.hosts` entry-point group.
 - `mli.testing.sandbox` and `mli.testing.wheel_files` for host test suites.
+- `mli.testing.prompt_commands(host)` and
+  `mli.testing.assert_prompt_commands(host, app)` check that every `{cli} ...`
+  mention in a host's skills, docs, rules, and agents names a command the typer
+  app really has, and that the argument to `skill`, `doc`, `rule`, or `agent`
+  names something the host declares. Mentions count only where they are written
+  as code, so prose about the placeholder is not read as a command.
 - Claude Code as the first harness adapter, with the layout kept in one
   `Harness` value.
 - A shared `permissions` command, mounted when a host declares

@@ -31,4 +31,21 @@ def hello() -> None:
     typer.echo("hello from examplehost")
 
 
+# The two commands the bundled bodies tell the model to run. They exist so the
+# prompt-command scanner has something real to resolve: a host whose prose
+# names commands it does not have is exactly what `assert_prompt_commands`
+# catches, and a fixture that never mentions a host-owned command would only
+# ever exercise the shared grammar.
+@app.command()
+def validate(path: str = typer.Argument(".")) -> None:
+    """Validate a thing."""
+    typer.echo(f"validated {path}")
+
+
+@app.command()
+def close(id_: str = typer.Argument(..., metavar="ID")) -> None:
+    """Close a thing."""
+    typer.echo(f"closed {id_}")
+
+
 register(app, HOST)
