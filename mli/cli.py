@@ -1,8 +1,8 @@
 """The shared command grammar, mounted onto a host's own typer app.
 
 A host calls :func:`register` once and gains ``skill``, ``install``, and, when
-it declares them, ``rule``, ``agent``, and ``permissions``. Hosts with extra
-needs keep writing
+it declares them, ``doc``, ``rule``, ``agent``, and ``permissions``. Hosts with
+extra needs keep writing
 their own commands on top of :mod:`mli.artifacts`; the grammar here is the part
 that should read the same across every tool.
 
@@ -23,7 +23,7 @@ from mli import artifacts as install_mod
 from mli import permissions as perms
 from mli.harness import Kind
 from mli.host import Agent, Host, Mode, Rule
-from mli.rendering import render_copy, skill_body
+from mli.rendering import doc_body, render_copy, skill_body
 from mli.stamp import mli_version
 
 ENTRY_POINT_GROUP = "mli.hosts"
@@ -48,7 +48,7 @@ def _print_prompt(text: str) -> None:
 
 def _printing_mode(host: Host) -> Mode:
     root = install_mod.find_repo_root(harness=host.harness)
-    return install_mod.installed_mode(host, root) or host.default_mode
+    return install_mod.printing_mode(host, root)
 
 
 def _skill_command(host: Host) -> typer.Typer:
@@ -81,6 +81,41 @@ def _skill_command(host: Host) -> typer.Typer:
 
     app = typer.Typer()
     app.command("skill")(skill)
+    return app
+
+
+def _doc_command(host: Host) -> typer.Typer:
+    def doc(
+        name: str | None = typer.Argument(
+            None, help="Document to print; omit when the host ships exactly one."
+        ),
+        list_: bool = typer.Option(False, "--list", help="List the documents."),
+    ) -> None:
+        """Print a bundled reference document."""
+        docs = host.docs
+        if list_:
+            for declared in docs:
+                typer.echo(declared.name)
+            return
+        if name is None:
+            if len(docs) != 1:
+                _err(
+                    f"{host.cli} ships {len(docs)} docs; name one of: "
+                    + ", ".join(d.name for d in docs)
+                )
+                raise typer.Exit(1)
+            name = docs[0].name
+        try:
+            declared = host.doc(name)
+        except KeyError:
+            _err(
+                f"unknown doc {name!r}; choose from: " + ", ".join(d.name for d in docs)
+            )
+            raise typer.Exit(1) from None
+        _print_prompt(doc_body(host, declared, _printing_mode(host)))
+
+    app = typer.Typer()
+    app.command("doc")(doc)
     return app
 
 
@@ -375,6 +410,8 @@ def register(app: typer.Typer, host: Host) -> None:
 
 def _commands(host: Host) -> list[typer.Typer]:
     apps = [_skill_command(host), _install_command(host)]
+    if host.docs:
+        apps.append(_doc_command(host))
     if host.rules:
         apps.append(_copy_command(host, Kind.RULE))
     if host.agents:

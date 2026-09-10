@@ -127,6 +127,51 @@ def test_single_skill_host_has_no_rule_or_agent_commands(box: Sandbox) -> None:
     assert runner.invoke(solo_app, ["agent"]).exit_code != 0
 
 
+def test_doc_prints_a_reference_document(box: Sandbox) -> None:
+    result = runner.invoke(multi_app, ["doc", "tidy/fields"])
+    assert result.exit_code == 0, result.output
+    assert result.output.startswith("# Fields a tidy pass may rewrite\n")
+    assert "TIDY-FIELDS-SENTINEL" in result.output
+    # Same render a skill body gets: frontmatter stripped, {cli} resolved.
+    severity = runner.invoke(multi_app, ["doc", "audit/severity"])
+    assert severity.output.startswith("# Severity\n")
+    assert "name: severity" not in severity.output
+
+
+def test_doc_renders_cli_the_way_skill_does(box: Sandbox) -> None:
+    # Nothing installed: the fallback is the host's own mode, not "global".
+    before = runner.invoke(multi_app, ["doc", "tidy/fields"])
+    assert "uv run multihost validate ." in before.output
+    inst.install(MULTI, box.repo, "local")
+    after = runner.invoke(multi_app, ["doc", "tidy/fields"])
+    assert "uv run multihost validate ." in after.output
+
+
+def test_doc_list_and_the_errors(box: Sandbox) -> None:
+    listing = runner.invoke(multi_app, ["doc", "--list"])
+    assert listing.exit_code == 0
+    assert listing.output.split() == ["tidy/fields", "audit/severity"]
+
+    unnamed = runner.invoke(multi_app, ["doc"])
+    assert unnamed.exit_code == 1
+    assert "ships 2 docs; name one of: tidy/fields, audit/severity" in unnamed.output
+
+    unknown = runner.invoke(multi_app, ["doc", "nope"])
+    assert unknown.exit_code == 1
+    assert "unknown doc 'nope'" in unknown.output
+
+
+def test_doc_command_is_mounted_only_for_a_host_that_ships_docs(box: Sandbox) -> None:
+    assert runner.invoke(example_app, ["doc"]).exit_code != 0
+    one = dataclasses.replace(
+        MULTI, docs=(MULTI.docs[0],), artifacts=(), version="0.4.0"
+    )
+    # With exactly one, the name is optional, like `skill` on a solo host.
+    result = runner.invoke(typer_app(one), ["doc"])
+    assert result.exit_code == 0, result.output
+    assert "TIDY-FIELDS-SENTINEL" in result.output
+
+
 def test_install_local_writes_and_narrates(box: Sandbox) -> None:
     result = runner.invoke(example_app, ["install", "--local"])
     assert result.exit_code == 0, result.output

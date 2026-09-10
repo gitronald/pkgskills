@@ -8,7 +8,7 @@ from multihost.cli import HOST as MULTI
 from solohost.cli import HOST as SOLO
 
 from mli.harness import CLAUDE_CODE, Harness, Kind
-from mli.host import Agent, Host, Rule, Skill
+from mli.host import Agent, Doc, Host, Rule, Skill
 
 
 def test_invocation_and_commands_per_mode() -> None:
@@ -133,6 +133,64 @@ def test_ambiguous_skill_bodies_are_rejected_at_construction() -> None:
                 Skill("audit", ("y/audit-body.md",)),
             ),
         )
+
+
+def test_docs_are_declared_apart_from_artifacts() -> None:
+    # A doc is never installed, so it must not reach anything that walks
+    # `artifacts` — the install, the check, or the harness's layout.
+    assert [d.name for d in MULTI.docs] == ["tidy/fields", "audit/severity"]
+    assert all(not isinstance(art, Doc) for art in MULTI.artifacts)
+    assert MULTI.doc("tidy/fields").source == "references/tidy/fields.md"
+    with pytest.raises(KeyError):
+        MULTI.doc("nope")
+    assert MULTI.doc_command("local", "tidy/fields") == (
+        "uv run multihost doc tidy/fields"
+    )
+    assert MULTI.doc_command("local") == "uv run multihost doc"
+
+
+def test_validation_rejects_bad_docs() -> None:
+    with pytest.raises(ValueError, match="duplicate doc"):
+        Host(
+            dist="d",
+            cli="c",
+            prompts="multihost.prompts",
+            docs=(
+                Doc("x", "references/tidy/fields.md"),
+                Doc("x", "references/audit/severity.md"),
+            ),
+        )
+    # Nothing else ever reads a doc's source, so a typo would surface only when
+    # a model ran the command; it is caught at construction instead.
+    with pytest.raises(ValueError, match="no such prompt"):
+        Host(
+            dist="d",
+            cli="c",
+            prompts="multihost.prompts",
+            docs=(Doc("x", "references/nope.md"),),
+        )
+
+
+def test_render_cli_defaults_to_the_hosts_setting() -> None:
+    # multihost declares it once; every body and doc it ships inherits.
+    assert MULTI.render_cli
+    assert all(art.render_cli is None for art in MULTI.artifacts)
+    assert all(MULTI.renders_cli(art) for art in MULTI.artifacts)
+    assert all(MULTI.renders_cli(doc) for doc in MULTI.docs)
+    # examplehost leaves the host default off and opts in per declaration.
+    assert not EXAMPLE.render_cli
+    assert EXAMPLE.renders_cli(EXAMPLE.rules[0])
+    assert not EXAMPLE.renders_cli(EXAMPLE.agents[0])
+    # An explicit `False` outranks a host that says `True`, so a host-wide
+    # default never forces the token on a body that means it literally.
+    opted_out = Host(
+        dist="d",
+        cli="c",
+        prompts="multihost.prompts",
+        render_cli=True,
+        docs=(Doc("x", "references/tidy/fields.md", render_cli=False),),
+    )
+    assert not opted_out.renders_cli(opted_out.docs[0])
 
 
 def test_claude_code_layout() -> None:

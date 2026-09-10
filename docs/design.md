@@ -70,6 +70,19 @@ model then runs the CLI. A rule or agent is a copy because the harness reads
 its full text with no model in the loop. The two share the stamp and the
 check; only the render differs.
 
+**Documents, which are neither.** Print-on-demand takes the skill directory
+away, and with it every sidecar a body used to reach by relative path. A `Doc`
+gives that sidecar a command instead — `<cli> doc <name>` — and nothing else:
+it is never written, stamped, or checked, so it lives on `Host.docs` rather
+than in `Host.artifacts`, where everything has a location per mode. The
+alternative, a fourth `Kind`, would have put a thing with no path through code
+whose whole subject is paths. Two hosts had already grown a print command of
+their own for exactly this — one of the three originals, with two such commands,
+and the fourth — which is what made it a declaration rather than an option (see
+"Two hosts before an option"); the same
+reasoning exports `printing_mode`, since a host that keeps its own command must
+resolve `{cli}` the way `skill` does or print commands that do not run.
+
 **Modes a host opts out of.** Both modes are first-class, but which of them a
 given host has any use for is the host's to declare: `Host.modes` lists them in
 preference order, and the first is what a flagless `install` and a pre-install

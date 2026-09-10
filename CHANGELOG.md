@@ -10,9 +10,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 - `Host` declaration: distribution name, CLI name, prompt package, and the
-  skills, rules, and agents a package ships, with an `after_install` hook.
+  skills, rules, agents, and reference documents a package ships, with an
+  `after_install` hook.
 - `register(app, host)` mounts the shared grammar on a host's typer app:
-  `skill`, `install`, and, when declared, `rule` and `agent`.
+  `skill`, `install`, and, when declared, `doc`, `rule` and `agent`.
+- `Doc` declares a reference document a skill body loads mid-step. It is
+  printed by `<cli> doc <name>` — the same render a skill body gets — and is
+  never installed, stamped, or checked, so it sits on `Host.docs` rather than
+  in `Host.artifacts`. Names may contain `/` for namespacing, and a source
+  that does not exist is rejected at construction.
+- `printing_mode(host, root)` and `installed_mode(host, root)` are exported,
+  so a host with a print command of its own resolves `{cli}` the way `skill`
+  and `doc` do.
+- `Host.render_cli` is the default for every artifact and doc that leaves its
+  own `render_cli` unset, for a host whose every body uses the placeholder. An
+  explicit flag on a declaration still wins.
 - Skills install as print-on-demand stubs, each naming the body it prints
   (`<cli> skill <name>`); a multi-source skill becomes a dispatcher whose
   subcommands are the source stems, while a single-source skill is addressed
@@ -36,7 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Foreign files (unstamped, another package's stamp, symlinks, directories,
   undecodable bytes) are never replaced without `--force`, and every target
   is guarded before the first write.
-- `{cli}` placeholder rendering per mode for artifacts that opt in.
+- `{cli}` placeholder rendering per mode for artifacts and docs that opt in.
 - `mli hosts` and `mli check` over the `mli.hosts` entry-point group.
 - `mli.testing.sandbox` and `mli.testing.wheel_files` for host test suites.
 - Claude Code as the first harness adapter, with the layout kept in one

@@ -20,7 +20,9 @@ when to fire, plus an instruction to run `<cli> skill <name>` and follow the
 output.
 Rules and agents are installed as *copies*, because the harness reads their
 full text with no model in the loop. Both carry the same stamp and the same
-drift check.
+drift check. Reference *documents* are the fourth thing a host declares and
+the one that is never installed at all: they are printed by `<cli> doc <name>`,
+which is how a body defers detail to a sidecar it can no longer reach by path.
 
 ## Install
 
@@ -39,7 +41,7 @@ package directory by default) and declare them once:
 # yourtool/cli.py
 import typer
 
-from mli import Agent, Host, Rule, Skill, register
+from mli import Agent, Doc, Host, Rule, Skill, register
 
 HOST = Host(
     dist="yourtool",  # distribution name, for the version lookup
@@ -50,10 +52,11 @@ HOST = Host(
         Rule(name="yourtool", source="rules/yourtool.md", render_cli=True),
         Agent(name="yourtool-reviewer", source="agents/reviewer.md"),
     ),
+    docs=(Doc(name="add/fields", source="references/add/fields.md"),),
 )
 
 app = typer.Typer()
-register(app, HOST)  # adds skill, install, rule, agent
+register(app, HOST)  # adds skill, install, doc, rule, agent
 ```
 
 A skill with one source lifts that file's frontmatter into the stub, adding
@@ -66,9 +69,17 @@ stem is a subcommand, and the stub tells the agent to run
 dispatcher stem may not collide with another skill's name; `Host` rejects that
 at construction.
 
-Set `render_cli=True` on an artifact whose body uses the `{cli}` placeholder;
-it is rendered as `yourtool` for a global install and `uv run yourtool` for a
-local one, so printed commands run as written.
+A body must not point at a file by a path relative to the stub: after
+`install` the stub is alone in its directory and there is nothing there to
+read. Ship the file as a `Doc` and refer to it as `{cli} doc <name>` — see
+[Documents](#documents).
+
+Set `render_cli=True` on an artifact or doc whose body uses the `{cli}`
+placeholder; it is rendered as `yourtool` for a global install and
+`uv run yourtool` for a local one, so printed commands run as written. When
+every body a host ships uses the token, set `render_cli=True` on the `Host`
+instead and leave the declarations alone; an explicit flag on a declaration
+still wins, so one body can opt back out.
 
 Register the host under the `mli.hosts` entry-point group and the `mli`
 script can find it:
@@ -83,6 +94,7 @@ yourtool = "yourtool.cli:HOST"
 | Command | Does |
 |---|---|
 | `yourtool skill [NAME] [--list]` | Print a skill body, frontmatter stripped. `NAME` is a skill's name, or a dispatcher's subcommand; it is optional when the host ships exactly one body. |
+| `yourtool doc [NAME] [--list]` | Print a reference document (only when the host ships docs). |
 | `yourtool rule [NAME] [--list]` | Print a rule (only when the host ships rules). |
 | `yourtool agent [NAME] [--list]` | Print an agent definition (only when the host ships agents). |
 | `yourtool install` | Write every artifact for the host's default mode — under `~/.claude/` unless the host restricts its `modes`. |
@@ -129,6 +141,39 @@ copy gone stale under a global install, a global skill shadowing a local stub
 
 This is a per-host constraint. Which mode a *particular repository* expects is
 a separate question, and not one `mli` answers yet.
+
+## Documents
+
+A skill body that says "read `references/fields.md` before rewriting anything"
+works while the body is a file in a skill directory and stops working the
+moment it is printed from a package: there is no directory next to the stub,
+and the path resolves to nothing. A `Doc` is that sidecar, declared:
+
+```python
+HOST = Host(
+    ...,
+    docs=(Doc(name="add/fields", source="references/add/fields.md"),),
+)
+```
+
+The body then says `{cli} doc add/fields`, and the document is printed the same
+way a skill body is — frontmatter stripped, `{cli}` resolved for the mode the
+install actually resolves to. Because it loads only when a step asks for it,
+the detail stays out of context until it is needed.
+
+A doc is not an artifact. It is never written, stamped, checked, or removed;
+`install`, `install --check`, and `mli check` do not know it exists, and the
+only place it has to ship is the wheel. Names may contain `/` so a host can
+namespace its documents by the skill that owns them; that is a convention, not
+something `mli` interprets. Since nothing else ever reads a doc's `source`, a
+missing one is rejected when the `Host` is constructed rather than when a model
+runs the command.
+
+A host that would rather keep a print command of its own can: build the body
+with `mli.render_prompt(text, host.invocation(mode))` and get `mode` from
+`mli.printing_mode(host, root)`, which is what `skill` and `doc` use — the
+installed mode when there is one, the host's default before the first install.
+Resolving it any other way prints commands that do not run.
 
 ## The stamp and the check
 
@@ -253,4 +298,6 @@ uv run pyrefly check
 
 `tests/fixtures/` holds three throwaway hosts that the suite drives end to
 end: one with every artifact kind, one with a single skill body, and one with
-several single-source skills (whose bodies do not all match their file stems).
+several single-source skills (whose bodies do not all match their file stems)
+that is also local-only, ships reference documents, and declares `render_cli`
+once on the host.

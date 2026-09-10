@@ -255,6 +255,18 @@ def installed_mode(host: Host, root: Path) -> Mode | None:
     return None
 
 
+def printing_mode(host: Host, root: Path) -> Mode:
+    """The mode a *printed* body should render ``{cli}`` for.
+
+    :func:`installed_mode` when anything is installed, the host's
+    :attr:`~mli.host.Host.default_mode` when nothing is — which is the whole
+    of the "which prefix do I print?" decision, exported because a host that
+    keeps a print command of its own has to make it the same way ``skill`` and
+    ``doc`` do or the commands it prints will not run.
+    """
+    return installed_mode(host, root) or host.default_mode
+
+
 def stale_local(
     host: Host,
     art: Artifact,

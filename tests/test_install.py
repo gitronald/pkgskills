@@ -86,6 +86,27 @@ def test_installed_mode_prefers_global(box: Sandbox) -> None:
     assert inst.installed_mode(SOLO, box.repo) == "global"
 
 
+def test_printing_mode_folds_the_nothing_installed_case_into_a_default(
+    box: Sandbox,
+) -> None:
+    # What `installed_mode` deliberately refuses to decide, exported for hosts
+    # that print bodies of their own.
+    assert inst.installed_mode(SOLO, box.repo) is None
+    assert inst.printing_mode(SOLO, box.repo) == "global"
+    assert inst.printing_mode(MULTI, box.repo) == "local"
+    inst.install(SOLO, box.repo, "local")
+    assert inst.printing_mode(SOLO, box.repo) == "local"
+
+
+def test_docs_are_never_installed_or_checked(box: Sandbox) -> None:
+    # multihost ships two docs; neither is written, and neither earns a row.
+    report = inst.install(MULTI, box.repo, "local")
+    assert len(report.written) == len(MULTI.artifacts)
+    assert not (box.repo / ".claude/references").exists()
+    assert set(_statuses(MULTI, box.repo)) == {"skill:tidy", "skill:audit"}
+    assert set(_statuses(MULTI, box.repo).values()) == {"ok"}
+
+
 def test_version_only_bump_is_not_drift(box: Sandbox) -> None:
     inst.install(EXAMPLE, box.repo, "local")
     bumped = dataclasses.replace(EXAMPLE, version="1.3.0")
