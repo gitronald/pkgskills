@@ -79,13 +79,13 @@ def test_single_skill_host_prints_without_a_name_and_leaves_cli_alone(
     assert "{cli}" in result.output
 
 
-def _load_command(stub: str) -> list[str]:
+def _load_command(stub: str, host: Host, mode: Mode) -> list[str]:
     """The argv from the stub's 'load the instructions' bash block."""
     _, _, after = stub.partition("**Load the instructions and follow them exactly:**")
     line = after.split("```bash\n", 1)[1].splitlines()[0]
-    argv = line.split()
-    assert argv[0] == "multihost"
-    return argv[1:]
+    prefix = host.invocation(mode)
+    assert line.startswith(f"{prefix} ")
+    return line[len(prefix) + 1 :].split()
 
 
 @pytest.mark.parametrize(("name", "sentinel"), [("tidy", "TIDY"), ("audit", "AUDIT")])
@@ -94,8 +94,9 @@ def test_stub_command_on_a_multi_skill_host_actually_runs(
 ) -> None:
     # The whole point of the stub is that a model can run what it prints, so
     # run it: a nameless `multihost skill` would exit 1 here.
-    stub = render(MULTI, MULTI.artifact(Kind.SKILL, name), "global")
-    result = runner.invoke(multi_app, _load_command(stub))
+    mode = MULTI.default_mode
+    stub = render(MULTI, MULTI.artifact(Kind.SKILL, name), mode)
+    result = runner.invoke(multi_app, _load_command(stub, MULTI, mode))
     assert result.exit_code == 0
     assert f"{sentinel}-BODY-SENTINEL" in result.output
 
@@ -142,6 +143,49 @@ def test_install_defaults_to_global_and_warns_when_cli_is_off_path(
     assert result.exit_code == 0, result.output
     assert (box.home / ".claude/skills/use-solo/SKILL.md").is_file()
     assert "not on PATH" in result.output
+
+
+def test_local_only_host_installs_without_a_flag(box: Sandbox) -> None:
+    result = runner.invoke(multi_app, ["install"])
+    assert result.exit_code == 0, result.output
+    assert "wrote .claude/skills/tidy/SKILL.md" in result.output
+    assert (box.repo / ".claude/skills/audit/SKILL.md").is_file()
+    # The mode it has no use for is never written, and never warned about.
+    assert not (box.home / ".claude").exists()
+    assert "not on PATH" not in result.output
+    # Its own mode's flag is still accepted, since the stub's repair command
+    # names it.
+    assert runner.invoke(multi_app, ["install", "--local"]).exit_code == 0
+
+
+def test_local_only_host_refuses_the_other_modes_flag(box: Sandbox) -> None:
+    result = runner.invoke(multi_app, ["install", "--global"])
+    assert result.exit_code == 1
+    assert "multihost installs in local mode only; drop --global" in result.output
+    assert not (box.home / ".claude").exists()
+
+
+def test_local_only_host_checks_against_the_repo_alone(box: Sandbox) -> None:
+    before = runner.invoke(multi_app, ["install", "--check"])
+    assert before.exit_code == 1
+    assert "missing local  .claude/skills/tidy/SKILL.md" in before.output
+    assert "repair: uv run multihost install --local --force" in before.output
+    assert " global " not in before.output
+
+    runner.invoke(multi_app, ["install"])
+    ok = runner.invoke(multi_app, ["install", "--check"])
+    assert ok.exit_code == 0, ok.output
+    assert "ok      local  .claude/skills/audit/SKILL.md" in ok.output
+
+
+def test_local_only_host_prints_bodies_for_its_own_mode_before_any_install(
+    box: Sandbox,
+) -> None:
+    # Nothing is installed, so the printing mode is the fallback — which must
+    # be the host's own mode, not the literal "global".
+    result = runner.invoke(multi_app, ["skill", "tidy"])
+    assert result.exit_code == 0
+    assert "uv run multihost validate ." in result.output
 
 
 def test_check_reports_each_status_and_exit_codes(box: Sandbox) -> None:

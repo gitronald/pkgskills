@@ -98,7 +98,15 @@ def invocation_rule(host: Host, mode: Mode) -> str:
     ``uv run <cli>`` and is already covered by the broader ``Bash(uv run:*)``
     that a host's own increments carry. Deduplication in :func:`rules_for` makes
     the overlap a no-op either way.
+
+    ``mode`` here is the *settings file's* scope, which a host may not install
+    in: a local-only host can still want a user-wide profile. What it is
+    invoked as does not change with the file the grant is written to, so an
+    unsupported mode falls back to the host's default rather than promising a
+    bare ``<cli>`` that is never how it runs.
     """
+    if not host.supports_mode(mode):
+        mode = host.default_mode
     prefix = host.cli if mode == "global" else host.local_prefix
     return f"Bash({prefix}:*)"
 

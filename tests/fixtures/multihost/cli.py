@@ -3,7 +3,9 @@
 The shape the other two fixtures leave untested: several skills, each with one
 body and one trigger. `audit` deliberately lives in a file whose stem is not
 its skill name, so keying bodies by stem would break it while `tidy` kept
-working.
+working. It is also the local-only host: its skills only mean anything inside
+one repository, so it declares `modes=("local",)` and global mode is
+unreachable for it.
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ HOST = Host(
     cli="multihost",
     prompts="multihost.prompts",
     version="0.4.0",
+    modes=("local",),
     artifacts=(
         Skill(name="tidy", sources=("skills/tidy.md",), render_cli=True),
         Skill(name="audit", sources=("skills/audit-body.md",), render_cli=True),

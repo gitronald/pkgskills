@@ -89,6 +89,25 @@ def test_validation_rejects_bad_declarations() -> None:
         )
 
 
+def test_modes_default_to_both_and_a_host_can_restrict_them() -> None:
+    assert EXAMPLE.modes == ("global", "local")
+    assert EXAMPLE.default_mode == "global"
+    assert EXAMPLE.supports_mode("local") and EXAMPLE.supports_mode("global")
+    # A host bound to one repository has no use for global mode.
+    assert MULTI.modes == ("local",)
+    assert MULTI.default_mode == "local"
+    assert not MULTI.supports_mode("global")
+
+
+def test_validation_rejects_bad_modes() -> None:
+    with pytest.raises(ValueError, match="at least one install mode"):
+        Host(dist="d", cli="c", prompts="p", modes=())
+    with pytest.raises(ValueError, match="unknown install mode"):
+        Host(dist="d", cli="c", prompts="p", modes=("repo",))  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="install mode twice"):
+        Host(dist="d", cli="c", prompts="p", modes=("local", "local"))
+
+
 def test_ambiguous_skill_bodies_are_rejected_at_construction() -> None:
     # Two dispatchers whose stems overlap.
     with pytest.raises(ValueError, match="more than one skill"):

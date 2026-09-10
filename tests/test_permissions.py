@@ -55,6 +55,14 @@ def test_the_invocation_rule_is_mode_aware_and_deduplicated() -> None:
     )
 
 
+def test_the_invocation_rule_follows_the_host_not_the_settings_scope() -> None:
+    # A local-only host can still want a user-wide profile, but it is never
+    # invoked bare, so the global-scoped block must not grant `Bash(solohost:*)`.
+    local_only = dataclasses.replace(HOST, modes=("local",))
+    assert perms.invocation_rule(local_only, "global") == "Bash(uv run:*)"
+    assert "Bash(solohost:*)" not in perms.rules_for(local_only, Level.full, "global")
+
+
 def test_a_host_that_grants_nothing_gets_no_invocation_rule() -> None:
     assert perms.rules_for(SOLO, Level.full, "global") == []
 

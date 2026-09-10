@@ -85,8 +85,8 @@ yourtool = "yourtool.cli:HOST"
 | `yourtool skill [NAME] [--list]` | Print a skill body, frontmatter stripped. `NAME` is a skill's name, or a dispatcher's subcommand; it is optional when the host ships exactly one body. |
 | `yourtool rule [NAME] [--list]` | Print a rule (only when the host ships rules). |
 | `yourtool agent [NAME] [--list]` | Print an agent definition (only when the host ships agents). |
-| `yourtool install` | Write every artifact under `~/.claude/` (global mode). |
-| `yourtool install --local` | Write them under the enclosing repository instead. |
+| `yourtool install` | Write every artifact for the host's default mode — under `~/.claude/` unless the host restricts its `modes`. |
+| `yourtool install --local` / `--global` | Write them under the enclosing repository, or under `~/.claude/`. Naming a mode the host does not declare is an error. |
 | `yourtool install --check` | Report `ok`, `drifted`, `stale`, `missing`, or `foreign` per file; exit 1 unless all ok. |
 | `yourtool install --force` | Replace files the host did not generate. |
 | `yourtool permissions [--level L] [--global] [--apply]` | Print or apply an automation-level allow-rule profile (only when the host declares one). |
@@ -107,6 +107,28 @@ and carried to the global path reads as drifted, because the commands inside
 it are wrong where it sits. When both a global and a local copy of a skill
 exist, the global one is what the harness loads; `install` and `--check` say
 so.
+
+### A host that supports only one
+
+A host whose skills only mean anything inside one repository — they read that
+repo's files, or drive its history — has no use for global mode, and a stray
+`yourtool install` would write stubs under `$HOME` that then shadow the
+per-repo ones. Declare the modes it actually supports:
+
+```python
+HOST = Host(..., modes=("local",))
+```
+
+The first mode listed is what a flagless `install` uses and what printed
+bodies render `{cli}` for before anything is installed, so the flag becomes
+optional rather than mandatory. Asking for the other mode (`--global` here) is
+an error naming the host's modes, not a silent redirect, and `mli.install`
+refuses it too. The checks that only make sense across two bases — a per-repo
+copy gone stale under a global install, a global skill shadowing a local stub
+— are skipped, since neither can happen.
+
+This is a per-host constraint. Which mode a *particular repository* expects is
+a separate question, and not one `mli` answers yet.
 
 ## The stamp and the check
 

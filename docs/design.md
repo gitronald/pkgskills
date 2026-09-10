@@ -24,7 +24,9 @@ the `{cli}` placeholder, rules, a pre-commit hook), and was trimmed back to a
 single body by citefinder. Their implementations agreed on the shape and
 disagreed on details: an HTML-comment stamp versus a frontmatter `version:`
 key, masked versus byte-for-byte drift, refuse-foreign versus skip-existing,
-and local-only versus global-and-local modes. `mli` picks one answer to each.
+and local-only versus global-and-local modes. `mli` picks one answer to each —
+except the last, which turned out to be a property of the host rather than of
+the machinery, and is declared per host (see Decisions).
 
 Between them the three carried roughly 1,800 lines of delivery machinery and a
 similar weight of tests, all of it hand-kept in parallel. That number alone did
@@ -67,6 +69,18 @@ new value, not a redesign.
 model then runs the CLI. A rule or agent is a copy because the harness reads
 its full text with no model in the loop. The two share the stamp and the
 check; only the render differs.
+
+**Modes a host opts out of.** Both modes are first-class, but which of them a
+given host has any use for is the host's to declare: `Host.modes` lists them in
+preference order, and the first is what a flagless `install` and a pre-install
+render use. This is the one place the three originals disagreed that could not
+be settled by picking a side — local-only and global-and-local are both correct,
+for different hosts — so it is a declaration rather than an answer. A host bound
+to one repository declares `modes=("local",)`, and the other mode stops being
+reachable: the flag is refused, `mli.install` refuses it, and the two checks that
+only exist across two bases (a superseded local copy, a shadowed local stub) are
+skipped. Distinct from the project-level mode declaration under "Not yet": that
+is a per-repository setting, this is a per-host constraint.
 
 **Anchoring.** Mode-derived locations anchor to `$HOME` or to the repository
 root found by walking up to `.git` or the harness config directory. Nothing

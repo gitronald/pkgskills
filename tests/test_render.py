@@ -97,9 +97,13 @@ def test_every_stub_on_a_multi_skill_host_names_its_own_body() -> None:
     # The nameless `<cli> skill` a solo host could get away with exits 1 here,
     # so each stub has to name the body it stands for. `audit` proves the name
     # comes from the skill, not from the source file's stem.
-    stubs = {skill.name: render_stub(MULTI, skill, "global") for skill in MULTI.skills}
-    assert "\nmultihost skill tidy\n" in stubs["tidy"]
-    assert "\nmultihost skill audit\n" in stubs["audit"]
+    # Rendered for the host's only mode, which is the only one it installs in.
+    stubs = {
+        skill.name: render_stub(MULTI, skill, MULTI.default_mode)
+        for skill in MULTI.skills
+    }
+    assert "\nuv run multihost skill tidy\n" in stubs["tidy"]
+    assert "\nuv run multihost skill audit\n" in stubs["audit"]
     assert "audit-body" not in stubs["audit"]
 
 

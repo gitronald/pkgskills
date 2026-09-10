@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   agents install as stamped copies.
 - Global (`~/.claude/`) and local (repository) install modes, with the
   repository root found by walking up to `.git` or `.claude/`.
+- `Host.modes` declares which install modes a host supports, in preference
+  order; the first is used by a flagless `install` and by `{cli}` rendering
+  before anything is installed. A host bound to one repository declares
+  `modes=("local",)`: `--global` is then refused by name, `mli.install` refuses
+  it too, and the stale-local and shadowed-stub checks are skipped. `install`
+  takes `--local/--global` rather than only `--local`.
 - Skill stubs declare the host and `mli` versions as frontmatter `metadata`
   (`version`, `mli-version`), the field the [Agent Skills
   specification](https://agentskills.io/specification#frontmatter-required)

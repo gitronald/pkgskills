@@ -169,6 +169,12 @@ class Host:
       ``local_prefix`` (``uv run`` by default).
     * ``prompts`` is the dotted package that holds the prompt files.
     * ``artifacts`` lists what the host ships.
+    * ``modes`` are the install modes this host supports, in preference order;
+      the first is what the CLI uses when given no mode flag. A host whose
+      skills only mean anything inside one repository declares
+      ``modes=("local",)``, and the other mode stops being reachable at all —
+      including by the stray ``install`` that would otherwise write stubs under
+      ``$HOME`` and shadow the per-repo ones.
     * ``version`` overrides the metadata lookup; leave it unset in real hosts.
     * ``after_install`` runs once an install has written every artifact, for
       host-specific follow-up such as wiring a pre-commit hook.
@@ -186,6 +192,7 @@ class Host:
     cli: str
     prompts: str
     artifacts: tuple[Artifact, ...] = field(default_factory=tuple)
+    modes: tuple[Mode, ...] = MODES
     local_prefix: str = "uv run"
     harness: Harness = CLAUDE_CODE
     version: str | None = None
@@ -202,6 +209,15 @@ class Host:
         """Reject a declaration the rest of the package cannot serve."""
         if not self.dist or not self.cli or not self.prompts:
             raise ValueError("Host needs a dist, a cli, and a prompts package")
+        if not self.modes:
+            raise ValueError("Host must support at least one install mode")
+        for mode in self.modes:
+            if mode not in MODES:
+                raise ValueError(
+                    f"unknown install mode {mode!r}; choose from: " + ", ".join(MODES)
+                )
+        if len(set(self.modes)) != len(self.modes):
+            raise ValueError("Host declares an install mode twice")
         seen: set[tuple[Kind, str]] = set()
         for art in self.artifacts:
             if not self.harness.supports(art.kind):
@@ -246,6 +262,26 @@ class Host:
             return metadata.version(self.dist)
         except metadata.PackageNotFoundError:
             return "0.0.0"
+
+    # -- modes -------------------------------------------------------------
+
+    @property
+    def default_mode(self) -> Mode:
+        """The mode used when no mode flag is given, and the printing fallback.
+
+        For a two-mode host this is ``global``, which is what a bare ``install``
+        has always meant. For a single-mode host it is that mode, so the flag a
+        host with one mode has no use for is never required.
+        """
+        return self.modes[0]
+
+    def supports_mode(self, mode: Mode) -> bool:
+        """True when ``mode`` is one this host installs in.
+
+        Spelled out rather than ``supports`` because :class:`~mli.harness.Harness`
+        already has one, over artifact kinds; the two answer different questions.
+        """
+        return mode in self.modes
 
     def invocation(self, mode: Mode) -> str:
         """The command prefix generated text uses to call this host's CLI."""

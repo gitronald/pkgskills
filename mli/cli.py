@@ -48,7 +48,7 @@ def _print_prompt(text: str) -> None:
 
 def _printing_mode(host: Host) -> Mode:
     root = install_mod.find_repo_root(harness=host.harness)
-    return install_mod.installed_mode(host, root) or "global"
+    return install_mod.installed_mode(host, root) or host.default_mode
 
 
 def _skill_command(host: Host) -> typer.Typer:
@@ -199,11 +199,36 @@ def run_install(host: Host, root: Path, mode: Mode, *, force: bool) -> None:
         )
 
 
+def _requested_mode(host: Host, local: bool | None) -> Mode:
+    """The mode a ``--local/--global`` flag asks for, or the host's default.
+
+    A host with one mode needs no flag, so ``None`` resolves to it. Naming the
+    *other* mode is an error rather than a silent redirect: a local-only host
+    asked to install globally would otherwise scatter stubs under ``$HOME``
+    that then shadow the per-repo ones, which is the whole reason a host
+    restricts its modes.
+    """
+    if local is None:
+        return host.default_mode
+    mode: Mode = "local" if local else "global"
+    if not host.supports_mode(mode):
+        flag = "--local" if local else "--global"
+        raise ValueError(
+            f"{host.cli} installs in {' and '.join(host.modes)} mode only; drop {flag}"
+        )
+    return mode
+
+
 def _install_command(host: Host) -> typer.Typer:
+    one_mode = len(host.modes) == 1
+    mode_help = (
+        f"This host installs in {host.default_mode} mode only; the flag is optional."
+        if one_mode
+        else "Install into the enclosing repo instead of ~."
+    )
+
     def install(
-        local: bool = typer.Option(
-            False, "--local", help="Install into the enclosing repo instead of ~."
-        ),
+        local: bool | None = typer.Option(None, "--local/--global", help=mode_help),
         check: bool = typer.Option(
             False, "--check", help="Report drift without writing; exit 1 unless ok."
         ),
@@ -213,9 +238,17 @@ def _install_command(host: Host) -> typer.Typer:
     ) -> None:
         """Materialize the generated files the harness reads, or check them."""
         root = install_mod.find_repo_root(harness=host.harness)
-        mode: Mode = "local" if local else "global"
+        try:
+            mode = _requested_mode(host, local)
+        except ValueError as exc:
+            _err(str(exc))
+            raise typer.Exit(1) from None
         if check:
-            ok = run_check(host, root, mode if local else None)
+            # A flagless check on a two-mode host judges every occupied
+            # location, since the harness loads from both. With one mode, or
+            # with a flag, there is one location to judge.
+            scope = mode if local is not None or one_mode else None
+            ok = run_check(host, root, scope)
             raise typer.Exit(0 if ok else 1)
         run_install(host, root, mode, force=force)
 

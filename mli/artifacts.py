@@ -11,6 +11,10 @@ A file's mode is the one its location implies. A copy rendered for one mode
 and carried to the other location reads as drifted, because the commands
 embedded in it are wrong where it sits.
 
+Which of the two a given host uses is the host's to declare: everything here
+walks :attr:`Host.modes <mli.host.Host.modes>` rather than both, so a host that
+supports one mode is never checked at, or written to, the other's location.
+
 Every write is guarded. A path occupied by anything that is not a plain file
 this host generated (a hand-written file, a symlink, a directory, another
 package's stamp) is *foreign* and is never replaced without ``force``. The
@@ -25,7 +29,7 @@ from pathlib import Path
 from typing import Literal
 
 from mli.harness import Harness
-from mli.host import MODES, Artifact, Host, Mode, Skill
+from mli.host import Artifact, Host, Mode, Skill
 from mli.rendering import render
 from mli.stamp import is_stamped, mask_versions, stamped_by, stamped_mode
 
@@ -205,10 +209,10 @@ def check(host: Host, root: Path, mode: Mode | None = None) -> list[Check]:
     """Drift for every artifact.
 
     With ``mode`` given, each artifact is judged at that one location. Without
-    it, every occupied location is judged (global first), because the harness
-    loads rules and agents from both at once and a stale copy at either is
-    real drift. An artifact present at neither location reports ``missing``
-    once, against its global path.
+    it, every occupied location the host supports is judged (global first),
+    because the harness loads rules and agents from both at once and a stale
+    copy at either is real drift. An artifact present at neither location
+    reports ``missing`` once, against its default mode's path.
     """
     # One fact for the whole run: which mode an existing install resolves to.
     # Re-deriving it per row would re-walk the filesystem for every artifact.
@@ -220,11 +224,12 @@ def check(host: Host, root: Path, mode: Mode | None = None) -> list[Check]:
             continue
         found = [
             check_artifact(host, art, m, root, installed=installed)
-            for m in MODES
+            for m in host.modes
             if occupied(artifact_path(host, art, m, root))
         ]
         results.extend(
-            found or [check_artifact(host, art, "global", root, installed=installed)]
+            found
+            or [check_artifact(host, art, host.default_mode, root, installed=installed)]
         )
     return results
 
@@ -239,12 +244,12 @@ def installed_mode(host: Host, root: Path) -> Mode | None:
     the answer stays grounded in what is actually on disk.
 
     ``None`` means *nothing is installed* and is deliberately not folded into a
-    default here: callers that need a mode to print with substitute ``global``
-    themselves, while callers asking "has this repo been pinned to global?"
-    need the difference.
+    default here: callers that need a mode to print with substitute the host's
+    :attr:`~mli.host.Host.default_mode` themselves, while callers asking "has
+    this repo been pinned to global?" need the difference.
     """
     for art in host.skills or host.artifacts:
-        for mode in MODES:
+        for mode in host.modes:
             if occupied(artifact_path(host, art, mode, root)):
                 return mode
     return None
@@ -267,9 +272,11 @@ def stale_local(
 
     Three guards keep the verdict honest:
 
-    * Only ``local`` rows. The asymmetry is deliberate: a *global* copy present
-      during a local install is shared infrastructure serving every other
-      repository, never this repo's leftover, and is never flagged.
+    * Only ``local`` rows, and only for a host that has a global mode at all —
+      a local-only host can have nothing supersede its per-repo copy. The
+      asymmetry is deliberate: a *global* copy present during a local install
+      is shared infrastructure serving every other repository, never this
+      repo's leftover, and is never flagged.
     * Only a genuinely resolved global install counts, so a local-only copy in
       a repo with no global install still reads ``ok``.
     * Only when the two paths differ, which they do not when the repo root is
@@ -279,6 +286,8 @@ def stale_local(
     :func:`installed_mode`'s answer instead of paying for it once per row.
     """
     if mode != "local" or host.harness.shadows(art.kind):
+        return False
+    if not host.supports_mode("global"):
         return False
     resolved = installed_mode(host, root) if installed == "auto" else installed
     if resolved != "global":
@@ -293,8 +302,11 @@ def shadowed_skills(host: Host, root: Path) -> list[Path]:
 
     Under Claude Code's precedence the global skill wins, so a per-repo stub
     with the same name is inert. Empty when the repo root is ``$HOME``, where
-    the two paths coincide and there is really only one file.
+    the two paths coincide and there is really only one file, and empty for a
+    host with no global mode, which never puts a stub there to shadow with.
     """
+    if not host.supports_mode("global"):
+        return []
     out: list[Path] = []
     for skill in host.skills:
         glob = artifact_path(host, skill, "global", root)
@@ -360,8 +372,15 @@ def install(
     """Write every artifact for ``mode`` and run the host's follow-up hook.
 
     Raises :class:`ForeignArtifactError` before writing anything when a target
-    is not ours and ``force`` is off.
+    is not ours and ``force`` is off, and ``ValueError`` when ``mode`` is not
+    one the host supports — a local-only host must not be written under
+    ``$HOME`` by a caller that bypassed the CLI's own check.
     """
+    if not host.supports_mode(mode):
+        raise ValueError(
+            f"{host.dist} does not install in {mode} mode; "
+            f"it supports: {', '.join(host.modes)}"
+        )
     guard(host, root, mode, force=force)
     written = tuple(write_artifact(host, art, mode, root) for art in host.artifacts)
     removed: tuple[Path, ...] = ()
@@ -381,5 +400,5 @@ def skill_stub_paths(host: Host, root: Path) -> list[tuple[Skill, Mode, Path]]:
     return [
         (skill, mode, artifact_path(host, skill, mode, root))
         for skill in host.skills
-        for mode in MODES
+        for mode in host.modes
     ]
