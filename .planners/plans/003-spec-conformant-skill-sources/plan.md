@@ -205,3 +205,84 @@ variable in `mli/cli.py`.
 .`, `uv run ruff format --check .`, and `uv run pyrefly check` (0 errors) all
 pass. Smoke-tested `multihost` directly too: both skill bodies and both docs
 render from their new paths with `{cli}` resolved.
+
+### 2026-09-09 — review pass: hoisting, and the spec as a module
+
+Two follow-ups from review, beyond the plan's original scope.
+
+**Hoisting `skills/` (`2655a40`).** `mli` never looks for a `skills/` segment —
+only the last two path components matter — so the group is a convenience for
+telling skills apart from rules and agents, not a requirement. `solohost` and
+`multihost` ship nothing else, so their skills moved to the prompts root
+(`solohost/prompts/use-solo/SKILL.md`, `multihost/prompts/tidy/SKILL.md`).
+`examplehost` keeps `skills/`, since it has `rules/` and `agents/` beside them;
+between them the fixtures now cover both arrangements.
+
+`examplehost/prompts/references/broken.md` was the last thing outside a skill
+directory. It is a deliberately stale document used by the negative test for
+`assert_prompt_commands`, so it had nowhere conformant to go — attaching it to
+a real skill would misrepresent it, and leaving it put kept a stray
+`references/` in an otherwise exemplary tree.
+
+**`brokenhost`.** Hence a fourth fixture whose entire purpose is to be wrong.
+The other three are exemplary — what they ship is what a host author copies —
+which left nowhere to keep the failing cases, and negative tests need real
+files: a violation reported off a hand-built string proves the message renders,
+not that the check finds anything on disk. `brokenhost` holds the stale-prose
+doc, a flat skill source, and a `misfiled/SKILL.md` whose `name` is neither the
+spec's grammar nor its directory. Its `__init__` says so, so nobody copies it.
+
+**`mli/spec.py`.** The Agent Skills specification as data rather than as
+scattered conditionals:
+
+- `SkillSpec` carries the entry filename, the optional directories
+  (`scripts/`, `references/`, `assets/`), the `name` grammar, and every
+  frontmatter field as a `Field(name, required, constraint, max_length)`. It is
+  a frozen dataclass with `SPEC` as the shipped instance, so a caller can
+  `dataclasses.replace` it to pin a different reading without forking the
+  checks.
+- A departure is a `Violation(where, rule, detail, fix)` — a stable slug to
+  filter on, what is actually wrong, and what to do. `SpecError` (a
+  `ValueError`, so existing `except ValueError` keeps working) carries them as
+  data rather than only as a message.
+- `SkillSpec.structure()` renders the spec's own directory diagram, which the
+  `entry-file` violation quotes inline. The fix text for
+  `name-matches-directory` deliberately never advises renaming a directory to a
+  name the grammar rejects — that would trade one violation for two.
+
+Wired in at the three moments a problem can surface:
+
+| When | Checked | Fails as |
+| --- | --- | --- |
+| `Host(...)` construction | declared `Skill.name`s, all at once | `SpecError` |
+| `render` / `install` | the source behind a single-source stub | `SpecError` |
+| `assert_spec_conformant(host)` | every skill, every source, read | `AssertionError` |
+
+Construction reads no files on purpose: a host is declared at import time, so
+walking the prompt package there would put a file scan on every CLI
+invocation. `Host.check_spec()` is the deliberate, file-reading call;
+`mli.testing.assert_spec_conformant` is its one-line form for a host's own
+suite, the counterpart to `assert_prompt_commands` and there for the same
+reason. `stub_frontmatter`'s three ad-hoc `ValueError`s were replaced by the
+spec check, so a bad source now reports every problem it has instead of the
+first one that function tripped over.
+
+Not checked, and said so in the module docstring: the shape of `metadata`. The
+spec makes it a map of string to string and `mli.frontmatter` parses flat
+scalars only, so there is nothing to inspect from here. `skills-ref validate`
+remains the full check; this is the subset `mli` can enforce from inside a host.
+
+**Tests.** New `tests/test_spec.py` (31 tests, `mli/spec.py` at 100%) covering
+the spec-as-data, the layout and name predicates, each frontmatter rule, the
+whole-host collection against `brokenhost`, the report formatting, and that the
+three exemplary fixtures stay silent. `test_a_skills_references_live_inside_its_own_directory`
+now reads each skill's directory off its own source rather than assuming a
+`skills/` prefix.
+
+**Docs.** `docs/source-layout.md` gained "The `skills/` group is optional" and
+"Checking a host against the spec"; the README's host-authoring and
+"Testing a host" sections and `.claude/CLAUDE.md`'s structure map were updated.
+Two more `[Unreleased]` changelog entries.
+
+**Checks.** `uv run pytest` (196 passed, 98.15% coverage), ruff check, ruff
+format --check, and pyrefly (0 errors) all pass.
