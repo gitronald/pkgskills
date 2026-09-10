@@ -120,7 +120,7 @@ through it, so the duplicate guard and `Host.skill_bodies`' collision check
 operate on the derived name automatically; only the error text changed
 ("duplicate stems" -> "duplicate names").
 
-**3-4. Fixtures.** Migrated three of the four sources:
+**3-4. Fixtures.** Migrated every source. First pass (`a3c4360`):
 
 | before | after |
 | --- | --- |
@@ -129,16 +129,38 @@ operate on the derived name automatically; only the error text changed
 | `examplehost/prompts/skills/close.md` | `.../skills/close/SKILL.md` |
 | `multihost/prompts/skills/tidy.md` | `.../skills/tidy/SKILL.md` |
 
-**Deviation from the plan's step 3:** `multihost/prompts/skills/audit-body.md`
-was left flat. The plan listed it for migration, but moving it to
-`audit-body/SKILL.md` would have made it *non*-conformant — its frontmatter
-`name` is `audit` (to match the skill), which would then disagree with the
-directory. Naming the directory `audit` instead would have destroyed the exact
-property the fixture exists to test: that a single-source skill is keyed by
-`Skill.name`, not by its source's name. Leaving it flat preserves that and
-simultaneously satisfies step 4's requirement that an unmigrated flat source
-stay covered — `multihost` now carries both layouts side by side, which is
-better coverage than either alone.
+That pass left `multihost/prompts/skills/audit-body.md` flat, reasoning that
+migrating it would erase the property the fixture exists to test — a
+single-source skill keyed by `Skill.name` rather than by its source's name —
+since a conformant `<name>/SKILL.md` forces directory, frontmatter `name`, and
+`Skill.name` to coincide. **Reversed on review:** the point of the plan is a
+source tree with no non-conformant sources in it, since the fixtures are what
+a host author copies. A second pass (`b54e9d9`) migrated it and went further,
+storing the whole skill directory the way the spec describes one rather than
+just its entry file:
+
+    multihost/prompts/skills/
+    ├── audit/
+    │   ├── SKILL.md              # was skills/audit-body.md
+    │   └── references/severity.md  # was references/audit/severity.md
+    └── tidy/
+        ├── SKILL.md
+        └── references/fields.md    # was references/tidy/fields.md
+
+A doc's *name* and its *source* are independent, which is what makes this
+work: `Doc(name="audit/severity", source="skills/audit/references/severity.md")`
+keeps the body writing `{cli} doc audit/severity` while the file lives inside
+the skill that owns it. Rules and agents stay flat — they are stamped copies,
+not skills — as does `examplehost`'s `references/broken.md`, a deliberately
+stale document belonging to no skill.
+
+The keyed-by-`Skill.name` property and flat-source support now live in
+`test_skill_bodies_are_keyed_by_source_name_only_when_dispatching`, which
+declares an unmigrated `Host` inline (no files needed — `Host.validate` reads
+only doc sources) instead of shipping one. That is a real reduction in
+coverage: flat *skill* sources are no longer read off disk end to end. The
+read path is identical for both layouts and is still exercised by the nested
+doc sources, so what is lost is narrow, but it is a trade rather than a wash.
 
 Nested resource paths resolve fine: `Host.read` goes through
 `resources.files(...).joinpath(source)`, and every migrated fixture is read
@@ -146,13 +168,17 @@ that way by the passing suite. `mli` itself ships no prompts, so the
 `wheel_files` test has nothing new to assert.
 
 **5. Layout assertion.** `skills-ref` is not installed and there is no CI hook
-for it, so the check is a test instead:
-`test_conformant_sources_match_the_spec_layout` is parametrized over all three
-fixture hosts and asserts that every source ending in `/SKILL.md` has
-frontmatter whose `name` equals its directory and satisfies the spec grammar.
-It also asserts each host ships at least one conformant source, so a
-regression that quietly reverted the layout would fail rather than vacuously
-pass.
+for it, so the check is two tests instead, each parametrized over all three
+fixture hosts:
+
+- `test_conformant_sources_match_the_spec_layout` — every skill source ends in
+  `/SKILL.md` and carries frontmatter whose `name` equals its directory and
+  satisfies the spec grammar. Asserting the layout for *every* source, rather
+  than only for those already in it, is what makes a silent regression fail
+  instead of vacuously passing.
+- `test_a_skills_references_live_inside_its_own_directory` — a doc whose name
+  is namespaced by a skill the host declares is sourced from under that
+  skill's directory. A doc belonging to no skill is exempt.
 
 **"Also worth deciding" — resolved by folding in.** Added
 `valid_skill_name(name)` implementing the spec's full `name` grammar (1-64
@@ -162,16 +188,20 @@ installed as a skill and its name may carry `/` for namespacing. `Rule` and
 `Agent` are exempt for the reason the plan already gives for their directory
 layout — they are stamped copies, not skills.
 
-**6. Docs (`82b74f0`).** New `docs/source-layout.md` covering the conformant
-layout, how a source path yields a name, why flat sources still work, and the
-name grammar; linked from `docs/frontmatter.md` and from the README's
-host-authoring section, whose example now uses the conformant paths. Added two
-`[Unreleased]` changelog entries.
+**6. Docs (`82b74f0`, revised in `b54e9d9`).** New `docs/source-layout.md`
+covering the full skill directory (entry file plus its `references/`), how a
+source path yields a name, why flat sources still work, what stays flat and
+why, and the name grammar; linked from `docs/frontmatter.md` and from the
+README's host-authoring section, whose `Skill` and `Doc` examples now use
+conformant paths. The README's Documents section gained the name-vs-source
+point that makes the layout possible. Added two `[Unreleased]` changelog
+entries.
 
 Also swept the now-inaccurate "stem" wording out of `mli/host.py`'s module and
 `skill_sources` docstrings, the README's fixtures paragraph, and a local
 variable in `mli/cli.py`.
 
-**Checks.** `uv run pytest` (162 passed, 97.77% coverage), `uv run ruff check
+**Checks.** `uv run pytest` (165 passed, 97.77% coverage), `uv run ruff check
 .`, `uv run ruff format --check .`, and `uv run pyrefly check` (0 errors) all
-pass.
+pass. Smoke-tested `multihost` directly too: both skill bodies and both docs
+render from their new paths with `{cli}` resolved.
