@@ -209,3 +209,33 @@ when the host's bodies get rewritten.
 - The project-level `[tool.mli]` mode declaration from the design doc's "Not yet" list.
 - Porting the three original hosts; their order is
   unchanged and each benefits from Part 1 only if it ever ships a second single-source skill.
+
+## Log
+
+### 2026-09-09 — Part 1 implemented
+
+`feature/multi-skill-hosts`, commit `4660b7e`. Both defects fixed; Parts 2-5 untouched.
+
+- `Skill.body_names` is the new seam: a dispatcher's bodies keep answering to their source
+  stems (they are its subcommands), a single-source skill's body answers to `skill.name`.
+  `skill_sources()` keys off that instead of the stem, so `skill --list` prints skill names
+  and `<cli> skill <skill.name>` resolves whatever the source file is called.
+- `render_stub` renders `host.skill_command(mode, skill.body_names[0])` for a
+  non-dispatching skill, so no generated stub names a command that exits 1.
+- The two namespaces share one `skill <name>` argument, so a collision between them is
+  rejected in `Host.validate` (which calls `skill_sources()`), not at print time. The
+  ambiguity test moved from lookup to construction and gained the cross-namespace case.
+- New fixture `multihost`: two single-source skills, no dispatcher, and `audit` deliberately
+  sourced from `skills/audit-body.md` so the keying fix is what makes it work. Its stub's
+  printed command is extracted and run through `CliRunner` per skill, which is the assertion
+  the old suite could not make.
+- The solo-host assertions moved to the named form. Coverage 97.2%, 123 passing; ruff and
+  pyrefly clean.
+- Docs: README's stub/dispatcher/commands text and fixture count, `docs/design.md`'s point 3,
+  and the CHANGELOG bullet — amended in place rather than filed under "Fixed", since nothing
+  has been released yet.
+- Not done here, deliberately: `Host.render_cli` (the smaller item) touches no code this part
+  changed, and `multihost` gets `modes=("local",)` in Part 3.
+
+**Not pushed.** The repository still has no remote (Part 5), so there is no upstream and no
+PR; the branch and its worktree are local only.
