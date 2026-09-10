@@ -48,7 +48,10 @@ HOST = Host(
     cli="yourtool",  # bare command; local mode prefixes `uv run`
     prompts="yourtool.prompts",  # package holding the prompt files
     artifacts=(
-        Skill(name="yourtool", sources=("skills/add.md", "skills/close.md")),
+        Skill(
+            name="yourtool",
+            sources=("skills/add/SKILL.md", "skills/close/SKILL.md"),
+        ),
         Rule(name="yourtool", source="rules/yourtool.md", render_cli=True),
         Agent(name="yourtool-reviewer", source="agents/reviewer.md"),
     ),
@@ -59,15 +62,22 @@ app = typer.Typer()
 register(app, HOST)  # adds skill, install, doc, rule, agent
 ```
 
+Each skill source is a spec-conformant skill directory — `<name>/SKILL.md`,
+with a frontmatter `name` matching the directory — so the `prompts/` tree
+passes a skills linter as it stands. A flat `skills/add.md` still works and
+may be mixed in; see
+[docs/source-layout.md](docs/source-layout.md).
+
 A skill with one source lifts that file's frontmatter into the stub, adding
 the host and `mli` versions under `metadata` (see
 [docs/frontmatter.md](docs/frontmatter.md)). Its body is addressed by the
-*skill's* name — `<cli> skill use-solo` — so the source file need not be named
+*skill's* name — `<cli> skill use-solo` — so the source need not be named
 after it. A skill with several sources becomes a dispatcher: each source's
-stem is a subcommand, and the stub tells the agent to run
-`<cli> skill <subcommand>`. The two namespaces share one argument, so a
-dispatcher stem may not collide with another skill's name; `Host` rejects that
-at construction.
+name — its directory, or its stem for a flat file — is a subcommand, and the
+stub tells the agent to run `<cli> skill <subcommand>`. The two namespaces
+share one argument, so a dispatcher subcommand may not collide with another
+skill's name; `Host` rejects that at construction, as it rejects a
+`Skill.name` outside the spec's grammar.
 
 A body must not point at a file by a path relative to the stub: after
 `install` the stub is alone in its directory and there is nothing there to
@@ -319,6 +329,6 @@ uv run pyrefly check
 
 `tests/fixtures/` holds three throwaway hosts that the suite drives end to
 end: one with every artifact kind, one with a single skill body, and one with
-several single-source skills (whose bodies do not all match their file stems)
-that is also local-only, ships reference documents, and declares `render_cli`
-once on the host.
+several single-source skills (one under the conformant `<name>/SKILL.md`
+layout, one a flat file matching neither) that is also local-only, ships
+reference documents, and declares `render_cli` once on the host.

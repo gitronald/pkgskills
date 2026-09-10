@@ -9,7 +9,7 @@ version, so nothing about the host is restated anywhere else.
 Artifacts come in three kinds. A :class:`Skill` is materialized as a thin
 *stub* that tells the model to print the real instructions with
 ``<cli> skill <name>``; a skill with several sources becomes a dispatcher whose
-subcommands are the source file stems. A :class:`Rule` and an :class:`Agent`
+subcommands are the source names. A :class:`Rule` and an :class:`Agent`
 are materialized as stamped *copies*, because the harness reads their full
 text off disk with no model in the loop.
 
@@ -455,7 +455,7 @@ class Host:
         """Every skill body by the name ``skill`` prints it under.
 
         Two namespaces share this mapping: a dispatcher contributes its source
-        stems, a single-source skill contributes its own name. A name claimed
+        names, a single-source skill contributes its own name. A name claimed
         twice — by either namespace — is ambiguous and is rejected here rather
         than silently resolved to one of them. :meth:`validate` calls this, so
         a colliding host fails at construction, not at print time.

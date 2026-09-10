@@ -77,6 +77,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   repo root with git's location variables (`GIT_DIR` and friends) stripped, so
   a host's `after_install` hook cannot have its shell-outs redirected at another
   repository by an inherited environment variable.
+- Skill sources may be stored in the Agent Skills spec's own layout —
+  `<name>/SKILL.md` — so a host's `prompts/` tree passes a skills linter as it
+  stands. A source named exactly `SKILL.md` takes its name from its parent
+  directory; any other file keeps naming itself by its stem, so flat sources
+  are unchanged and the two layouts may be mixed. See
+  [docs/source-layout.md](docs/source-layout.md).
+- `Skill.name` is validated against the spec's `name` grammar at construction:
+  1-64 characters of `a-z`, `0-9`, and hyphens, with no leading, trailing, or
+  consecutive hyphen. `Doc.name` is deliberately exempt, since a doc is never
+  installed as a skill and may namespace itself with `/`.
 
 ### Changed
 

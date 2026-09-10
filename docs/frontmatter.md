@@ -63,3 +63,5 @@ two-space-indented line with a quoted value — the exact shape `mli` writes.
 - A source that declares no `metadata` gets the block opened for it, just
   before the closing fence. Every other line of the block is copied byte for
   byte.
+- Where the source file itself belongs, and how its path names it, is
+  [Source layout](source-layout.md).
