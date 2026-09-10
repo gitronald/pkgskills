@@ -1,11 +1,11 @@
 ---
 id: 0
 slug: multi-skill-hosts
-status: active
+status: done
 branch: feature/multi-skill-hosts
 created: 2026-09-04T19:53:42-07:00
-concluded:
-pr:
+concluded: 2026-09-09T22:12:58-07:00
+pr: null
 ---
 
 # Support hosts with several single-source skills and print-only docs
@@ -356,3 +356,56 @@ did not anticipate; Part 5 is all that remains.
   (untracked here, so the same edit was applied in the main checkout).
 
 **Not pushed**, same as Parts 1, 2, and 3: the repository still has no remote (Part 5).
+
+### 2026-09-09 — closed with Part 5 deferred
+
+`feature/multi-skill-hosts` merged into `dev` as `8497497`, after a review of the whole
+range (Parts 3, 2, and 4 together). **Part 5 is not done and was deliberately deferred**:
+the repository still has no remote, so nothing is pushed, no release exists, and no host
+can yet `uv add mli` or pin it at a commit. Everything else in the plan is implemented.
+
+**Review follow-up.** Five findings, three fixed in `0317e6c`, two conscious no-ops.
+
+- Fixed: `assert_prompt_commands` walked the click tree past a leaf command, so a body
+  that named a real argument (`{cli} close fix-typo`) instead of a placeholder failed on
+  a command that exists. Resolution now stops at the first leaf, since only the app knows
+  where the path ends. `examplehost`'s rule body gained exactly that mention and a test
+  asserts both that it is recorded with both tokens and that the assertion still passes —
+  the one finding that would have bitten a real adopting host, whose bodies are full of
+  concrete examples.
+- Fixed: `check` and `installed_mode` walk `host.modes` now, but both docstrings still
+  promised a fixed "global first" order, which is only the default. Fixed: the two-mode
+  `install --help` text hardcoded "instead of ~", describing the flags backwards for a
+  host that lists `local` first.
+- No-op: `Host.validate` reaches `has_source` for each doc, so a misspelled `prompts`
+  package now raises `ModuleNotFoundError` from `__post_init__` rather than a `ValueError`
+  shaped like the other declaration errors. Failing early is the improvement the check was
+  for; only the message is off, and wrapping it would swallow a real import error.
+- No-op: `Host.doc_command` has no caller but its own test, since bodies naming
+  `{cli} doc <name>` are hand-written rather than generated. Kept for symmetry with
+  `skill_command` as part of the host-facing API, and noted here so the next reader knows
+  it is unproven by use rather than overlooked.
+
+## Retrospective
+
+- The four code parts landed in the reordered sequence the 2026-09-09 review set, and only
+  Part 5 — the one that needs a remote and a release decision — is outstanding. Ordering
+  the cheap, spec-closing part (3) ahead of the one with a timing window (2) was right;
+  Part 2 then absorbed the `render_cli` smaller item the earlier parts had parked.
+- Three of the four parts turned up a coupling the spec had not named, and each was worth
+  more than the specced change around it: `permissions.invocation_rule` following the
+  settings scope instead of the host (Part 3), the tri-state `render_cli` so an explicit
+  `False` outranks a host-wide `True` (Part 2), and the code-span rule that keeps prose
+  about `{cli}` from being read as a command (Part 4). A spec written from one host's
+  shape predicts the feature, not the seams it lands on.
+- The fixtures did the load-bearing work. `multihost` was built in Part 1 to carry a defect
+  deliberately, and by Part 4 it was also the local-only host, the doc-shipping host, and
+  the host-wide `render_cli` host — one fixture covering four shapes the original three
+  could not. Part 4's scanner then found that both `examplehost` and `multihost` had been
+  naming commands that did not exist, which is the check's own first catch.
+- The review's one real bug was in the newest code and of the same species the part exists
+  to prevent: a checker that fails on correct prose is worse than no checker, because a
+  host writing realistic examples would have had to weaken its bodies to pass.
+- For next time: Part 5 is a decision, not an implementation — where the repository lives
+  and what the first published version is. It is carved out here rather than half-done, so
+  whoever picks it up starts from a clean question.
