@@ -9,7 +9,7 @@ version, so nothing about the host is restated anywhere else.
 Artifacts come in three kinds. A :class:`Skill` is materialized as a thin
 *stub* that tells the model to print the real instructions with
 ``<cli> skill <name>``; a skill with several sources becomes a dispatcher whose
-subcommands are the source file stems. A :class:`Rule` and an :class:`Agent`
+subcommands are the source names. A :class:`Rule` and an :class:`Agent`
 are materialized as stamped *copies*, because the harness reads their full
 text off disk with no model in the loop.
 
@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING, Literal
 
 from mli.harness import CLAUDE_CODE, Harness, Kind
 from mli.permissions import LEVELS, Level
+from mli.spec import SPEC, SpecError, Violation
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -47,7 +48,16 @@ MODES: tuple[Mode, ...] = ("global", "local")
 CLI_TOKEN = "{cli}"
 
 
-def _stem(source: str) -> str:
+def source_name(source: str) -> str:
+    """The name a prompt source contributes, from its path.
+
+    A spec-conformant skill lives in its own directory as ``<name>/SKILL.md``,
+    so the *directory* is what names it; every stem in that layout is the
+    literal ``SKILL``. Any other file is named by its stem, which is what a
+    flat source has always meant.
+    """
+    if SPEC.is_entry(source):
+        return PurePosixPath(source).parent.name
     return PurePosixPath(source).stem
 
 
@@ -57,8 +67,9 @@ class Skill:
 
     ``sources`` are resource paths under the host's prompt package. One source
     makes a plain skill whose frontmatter is lifted verbatim into the stub.
-    Several sources make a dispatcher: the stub lists each source's stem as a
-    subcommand and carries a generated (or ``description``-supplied)
+    Several sources make a dispatcher: the stub lists each source's name --
+    its directory under the ``<name>/SKILL.md`` layout, its stem otherwise --
+    as a subcommand and carries a generated (or ``description``-supplied)
     frontmatter of its own. ``render_cli`` substitutes ``{cli}`` in the bodies
     when they are printed; left unset it follows
     :attr:`Host.render_cli`.
@@ -81,13 +92,13 @@ class Skill:
     @property
     def subcommands(self) -> tuple[str, ...]:
         """The subcommand names, one per source, in declaration order."""
-        return tuple(_stem(source) for source in self.sources)
+        return tuple(source_name(source) for source in self.sources)
 
     @property
     def body_names(self) -> tuple[str, ...]:
         """The names ``<cli> skill <name>`` accepts, one per source.
 
-        A dispatcher's bodies are addressed by their source stems, which are
+        A dispatcher's bodies are addressed by their source names, which are
         the subcommands the stub advertises. A single-source skill is addressed
         by the *skill's* name: that is what the model has — it is in the stub's
         frontmatter and in the slash command — and the source file need not be
@@ -98,7 +109,7 @@ class Skill:
     def source_for(self, subcommand: str) -> str:
         """The source behind ``subcommand``. Raises ``KeyError`` if unknown."""
         for source in self.sources:
-            if _stem(source) == subcommand:
+            if source_name(source) == subcommand:
                 return source
         raise KeyError(subcommand)
 
@@ -274,10 +285,25 @@ class Host:
                 subs = art.subcommands
                 if len(set(subs)) != len(subs):
                     raise ValueError(
-                        f"skill {art.name!r} has sources with duplicate stems"
+                        f"skill {art.name!r} has sources with duplicate names"
                     )
         # Raises when two bodies would answer to the same `skill <name>`.
         self.skill_sources()
+        # Every skill name at once, so an author fixing several sees them all.
+        # Only the names: reading and parsing every source here would put a
+        # file walk on the import of any package that declares a host, and the
+        # file-level rules are what `check_spec` and the harness's own loader
+        # are for.
+        named = [
+            v
+            for skill in self.skills
+            for v in SPEC.check_declared_name(skill.name, where=f"skill {skill.name!r}")
+        ]
+        if named:
+            raise SpecError(
+                named,
+                header=f"host {self.dist!r} declares skill names the spec rejects",
+            )
         seen_docs: set[str] = set()
         for doc in self.docs:
             if doc.name in seen_docs:
@@ -379,6 +405,15 @@ class Host:
         """True when ``source`` names a file inside the ``prompts`` package."""
         return resources.files(self.prompts).joinpath(source).is_file()
 
+    def check_spec(self) -> list[Violation]:
+        """Every way this host's skills depart from the Agent Skills spec.
+
+        Reads each source, so it is a deliberate call rather than something
+        :meth:`validate` does on import. A host's own test suite is where this
+        belongs — see :func:`mli.testing.assert_spec_conformant`.
+        """
+        return SPEC.check_host(self)
+
     def renders_cli(self, art: Declared) -> bool:
         """Whether ``art``'s body gets ``{cli}`` substituted.
 
@@ -423,7 +458,7 @@ class Host:
         """Every skill body by the name ``skill`` prints it under.
 
         Two namespaces share this mapping: a dispatcher contributes its source
-        stems, a single-source skill contributes its own name. A name claimed
+        names, a single-source skill contributes its own name. A name claimed
         twice — by either namespace — is ambiguous and is rejected here rather
         than silently resolved to one of them. :meth:`validate` calls this, so
         a colliding host fails at construction, not at print time.

@@ -27,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   explicit flag on a declaration still wins.
 - Skills install as print-on-demand stubs, each naming the body it prints
   (`<cli> skill <name>`); a multi-source skill becomes a dispatcher whose
-  subcommands are the source stems, while a single-source skill is addressed
+  subcommands are the source names, while a single-source skill is addressed
   by the skill's own name, whatever its source file is called. Rules and
   agents install as stamped copies.
 - Global (`~/.claude/`) and local (repository) install modes, with the
@@ -77,6 +77,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   repo root with git's location variables (`GIT_DIR` and friends) stripped, so
   a host's `after_install` hook cannot have its shell-outs redirected at another
   repository by an inherited environment variable.
+- Skill sources may be stored in the Agent Skills spec's own layout — a
+  directory named for the skill, holding its `SKILL.md` and its `references/` —
+  so a host's `prompts/` tree passes a skills linter as it stands. A source
+  named exactly `SKILL.md` takes its name from its parent directory; any other
+  file keeps naming itself by its stem, so flat sources are unchanged and the
+  two layouts may be mixed. A `Doc`'s name and source stay independent, which
+  is what lets a namespaced doc (`add/fields`) be sourced from inside the
+  skill that owns it (`skills/add/references/fields.md`). See
+  [docs/source-layout.md](docs/source-layout.md).
+- `Skill.name` is validated against the spec's `name` grammar at construction:
+  1-64 characters of `a-z`, `0-9`, and hyphens, with no leading, trailing, or
+  consecutive hyphen. `Doc.name` is deliberately exempt, since a doc is never
+  installed as a skill and may namespace itself with `/`.
+- `mli.spec` holds the Agent Skills specification as data — `SkillSpec` carries
+  the entry filename, the optional directories, every frontmatter field with
+  its length limit, and the `name` grammar; `SPEC` is the shipped instance.
+  A departure is a `Violation` naming the rule it breaks and the fix for it,
+  and failures raise `SpecError` (a `ValueError`) carrying them as data rather
+  than only as a message.
+- `Host.check_spec()` returns every violation across a host's skills, and
+  `mli.testing.assert_spec_conformant(host)` is the one-line form for a host's
+  own test suite — the counterpart to `assert_prompt_commands`. All violations
+  are reported at once, grouped by file. Construction still checks only the
+  declared names, so declaring a host does not walk its prompt package.
+- The spec check covers `metadata`, which the spec defines as a map from string
+  keys to string values: a scalar or sequence where a mapping belongs, a nested
+  mapping under a key, and — the one that bites — a value YAML resolves to
+  something other than a string (`version: 1.0` is a float, `retries: 3` an
+  integer, `enabled: true` a boolean). The fix names the quoted form.
+- `mli.frontmatter.find_block(raw, key)` returns the raw indented block a
+  frontmatter key opens, as a `Block` with the inline value and per-line
+  `entries()`. It backs both the `metadata` spec check and the version-key
+  splice in `with_metadata`, which previously walked the raw lines itself and
+  stopped at the first blank line inside the mapping. It reads a key declared
+  twice as YAML does — last one wins, matching `parse_fields` — and treats a
+  trailing `# comment` as a comment rather than as part of the value, so a
+  commented scalar is judged by what YAML would resolve it to.
 
 ### Changed
 

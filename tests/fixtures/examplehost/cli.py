@@ -14,7 +14,7 @@ HOST = Host(
     artifacts=(
         Skill(
             name="example",
-            sources=("skills/add.md", "skills/close.md"),
+            sources=("skills/add/SKILL.md", "skills/close/SKILL.md"),
             render_cli=True,
         ),
         Rule(name="examplehost", source="rules/examplehost.md", render_cli=True),

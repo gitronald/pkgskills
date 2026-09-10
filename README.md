@@ -48,26 +48,40 @@ HOST = Host(
     cli="yourtool",  # bare command; local mode prefixes `uv run`
     prompts="yourtool.prompts",  # package holding the prompt files
     artifacts=(
-        Skill(name="yourtool", sources=("skills/add.md", "skills/close.md")),
+        Skill(
+            name="yourtool",
+            sources=("skills/add/SKILL.md", "skills/close/SKILL.md"),
+        ),
         Rule(name="yourtool", source="rules/yourtool.md", render_cli=True),
         Agent(name="yourtool-reviewer", source="agents/reviewer.md"),
     ),
-    docs=(Doc(name="add/fields", source="references/add/fields.md"),),
+    docs=(Doc(name="add/fields", source="skills/add/references/fields.md"),),
 )
 
 app = typer.Typer()
 register(app, HOST)  # adds skill, install, doc, rule, agent
 ```
 
+Each skill source is a spec-conformant skill directory — `<name>/SKILL.md`,
+holding the skill's `references/` and `scripts/` too — so the `prompts/` tree
+passes a skills linter as it stands. The `skills/` group above is a
+convenience, not a requirement: `mli` reads only the last two components of the
+path, so a host that ships nothing but skills can drop it and write
+`sources=("add/SKILL.md",)`. A flat `skills/add.md` still works and may be
+mixed in. `assert_spec_conformant(HOST)` reports anything misfiled, naming the
+rule and the fix — see
+[docs/source-layout.md](docs/source-layout.md).
+
 A skill with one source lifts that file's frontmatter into the stub, adding
 the host and `mli` versions under `metadata` (see
 [docs/frontmatter.md](docs/frontmatter.md)). Its body is addressed by the
-*skill's* name — `<cli> skill use-solo` — so the source file need not be named
+*skill's* name — `<cli> skill use-solo` — so the source need not be named
 after it. A skill with several sources becomes a dispatcher: each source's
-stem is a subcommand, and the stub tells the agent to run
-`<cli> skill <subcommand>`. The two namespaces share one argument, so a
-dispatcher stem may not collide with another skill's name; `Host` rejects that
-at construction.
+name — its directory, or its stem for a flat file — is a subcommand, and the
+stub tells the agent to run `<cli> skill <subcommand>`. The two namespaces
+share one argument, so a dispatcher subcommand may not collide with another
+skill's name; `Host` rejects that at construction, as it rejects a
+`Skill.name` outside the spec's grammar.
 
 A body must not point at a file by a path relative to the stub: after
 `install` the stub is alone in its directory and there is nothing there to
@@ -152,7 +166,7 @@ and the path resolves to nothing. A `Doc` is that sidecar, declared:
 ```python
 HOST = Host(
     ...,
-    docs=(Doc(name="add/fields", source="references/add/fields.md"),),
+    docs=(Doc(name="add/fields", source="skills/add/references/fields.md"),),
 )
 ```
 
@@ -165,7 +179,10 @@ A doc is not an artifact. It is never written, stamped, checked, or removed;
 `install`, `install --check`, and `mli check` do not know it exists, and the
 only place it has to ship is the wheel. Names may contain `/` so a host can
 namespace its documents by the skill that owns them; that is a convention, not
-something `mli` interprets. Since nothing else ever reads a doc's `source`, a
+something `mli` interprets. A doc's name and its source are independent, which
+is what lets the file live inside that skill's own directory —
+`skills/add/references/fields.md` — so the shipped tree matches the spec's
+skill layout while the body still writes `{cli} doc add/fields`. Since nothing else ever reads a doc's `source`, a
 missing one is rejected when the `Host` is constructed rather than when a model
 runs the command.
 
@@ -287,6 +304,16 @@ directory to fresh directories, so a suite never touches the developer's real
 in-process and lists its contents, which is the only way to prove the prompts
 ship: an editable install resolves package data straight to the checkout.
 
+`mli.testing.assert_spec_conformant(host)` checks every skill the host ships
+against the [Agent Skills specification](docs/agentskills-specification.md):
+that each source is stored as `<name>/SKILL.md`, that its frontmatter carries a
+`name` matching the directory and satisfying the spec's grammar, that a
+`description` is present, that `metadata` is the map of strings the spec calls
+for (an unquoted `version: 1.0` is a float, not a string), and that no field
+runs past its limit. Every
+violation is reported at once, each naming the rule it breaks and the fix — see
+[docs/source-layout.md](docs/source-layout.md#checking-a-host-against-the-spec).
+
 `mli.testing.assert_prompt_commands(host, app)` closes the loop the whole
 pattern exists for. `mli` renders `{cli}`, but nothing otherwise checks that
 what follows it is a command the host actually has, and prose about a CLI goes
@@ -297,7 +324,8 @@ declarations — so a renamed doc or a dropped subcommand fails the suite with
 the source and line of every mention that no longer reaches anything:
 
 ```python
-def test_prompts_name_real_commands() -> None:
+def test_prompts_are_well_formed() -> None:
+    assert_spec_conformant(HOST)
     assert_prompt_commands(HOST, app)
 ```
 
@@ -319,6 +347,8 @@ uv run pyrefly check
 
 `tests/fixtures/` holds three throwaway hosts that the suite drives end to
 end: one with every artifact kind, one with a single skill body, and one with
-several single-source skills (whose bodies do not all match their file stems)
-that is also local-only, ships reference documents, and declares `render_cli`
-once on the host.
+several single-source skills that is also local-only, ships reference
+documents inside their own skill directories, and declares `render_cli` once on
+the host. All three store their skills the way the spec does, so the tree a
+host author copies is conformant as it stands; `brokenhost` is the fourth, and
+holds the counterexamples the negative tests need.

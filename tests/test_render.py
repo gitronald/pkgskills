@@ -20,6 +20,7 @@ from mli.rendering import (
     stub_frontmatter,
     with_metadata,
 )
+from mli.spec import SpecError
 from mli.stamp import (
     mask_versions,
     mli_version,
@@ -30,7 +31,7 @@ from mli.stamp import (
 
 
 def test_single_skill_stub_lifts_frontmatter_verbatim() -> None:
-    front, _ = split_frontmatter(SOLO.read("skill.md"))
+    front, _ = split_frontmatter(SOLO.read("use-solo/SKILL.md"))
     assert front is not None
     stub = render_stub(SOLO, SOLO.skills[0], "global")
     source_lines = front.raw.splitlines()[:-1]  # every line but the closing fence
@@ -77,6 +78,20 @@ def test_stub_metadata_rejects_a_source_that_claims_a_managed_key() -> None:
         with_metadata(raw, SOLO, SOLO.skills[0])
 
 
+@pytest.mark.parametrize("inline", ["whatever", "{}", "{a: b}"])
+def test_stub_metadata_refuses_to_splice_into_an_inline_value(inline: str) -> None:
+    """There is no block for indented keys to join, so splicing breaks YAML.
+
+    `stub_frontmatter` catches this before it gets here, but `with_metadata`
+    is a plain function and must not emit frontmatter that no longer parses
+    just because it was called directly.
+    """
+    raw = f"---\nname: x\nmetadata: {inline}\n---\n"
+    with pytest.raises(SpecError) as caught:
+        with_metadata(raw, SOLO, SOLO.skills[0])
+    assert {v.rule for v in caught.value.violations} == {"metadata-not-a-mapping"}
+
+
 def test_single_skill_stub_holds_no_instructions() -> None:
     stub = render_stub(SOLO, SOLO.skills[0], "global")
     assert "SOLO-BODY-SENTINEL" not in stub
@@ -105,7 +120,7 @@ def test_every_stub_on_a_multi_skill_host_names_its_own_body() -> None:
     }
     assert "\nuv run multihost skill tidy\n" in stubs["tidy"]
     assert "\nuv run multihost skill audit\n" in stubs["audit"]
-    assert "audit-body" not in stubs["audit"]
+    assert "SKILL.md" not in stubs["audit"]
 
 
 def test_dispatcher_stub_lists_subcommands_with_descriptions() -> None:
@@ -131,7 +146,7 @@ def test_stub_rejects_a_source_whose_name_disagrees() -> None:
         cli="solohost",
         prompts="solohost.prompts",
         version="1.0",
-        artifacts=(Skill(name="wrong-name", sources=("skill.md",)),),
+        artifacts=(Skill(name="wrong-name", sources=("use-solo/SKILL.md",)),),
     )
     with pytest.raises(ValueError, match="names 'use-solo'"):
         stub_frontmatter(host, host.skills[0])

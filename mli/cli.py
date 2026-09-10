@@ -61,8 +61,8 @@ def _skill_command(host: Host) -> typer.Typer:
         """Print a bundled skill's instructions."""
         bodies = host.skill_sources()
         if list_:
-            for stem in bodies:
-                typer.echo(stem)
+            for body in bodies:
+                typer.echo(body)
             return
         if name is None:
             if len(bodies) != 1:

@@ -52,31 +52,35 @@ def test_scans_every_declared_prompt() -> None:
     sources = {cmd.source for cmd in prompt_commands(EXAMPLE)}
     # The rule is scanned alongside the two skill bodies; the agent declares no
     # `{cli}` at all, which is why it contributes nothing rather than failing.
-    assert sources == {"skills/add.md", "skills/close.md", "rules/examplehost.md"}
+    assert sources == {
+        "skills/add/SKILL.md",
+        "skills/close/SKILL.md",
+        "rules/examplehost.md",
+    }
 
 
 def test_reads_a_fenced_command() -> None:
-    (cmd,) = found(EXAMPLE, "skills/add.md")
+    (cmd,) = found(EXAMPLE, "skills/add/SKILL.md")
     assert cmd.tokens == ("validate",)
     assert cmd.argument is None
     assert cmd.text == "{cli} validate"
 
 
 def test_stops_at_a_placeholder_argument() -> None:
-    (cmd,) = found(EXAMPLE, "skills/close.md")
+    (cmd,) = found(EXAMPLE, "skills/close/SKILL.md")
     assert cmd.tokens == ("close",)
     assert cmd.argument is None
 
 
 def test_reads_a_declared_argument() -> None:
-    by_line = {cmd.line: cmd for cmd in found(MULTI, "skills/tidy.md")}
+    by_line = {cmd.line: cmd for cmd in found(MULTI, "tidy/SKILL.md")}
     doc_cmd = next(c for c in by_line.values() if c.tokens == ("doc",))
     assert doc_cmd.argument == "tidy/fields"
     assert doc_cmd.text == "{cli} doc tidy/fields"
 
 
 def test_reads_an_option_as_the_end_of_the_path() -> None:
-    cmds = found(MULTI, "skills/audit-body.md")
+    cmds = found(MULTI, "audit/SKILL.md")
     assert ("install",) in {cmd.tokens for cmd in cmds}
 
 
@@ -109,7 +113,7 @@ def test_prose_mention_is_not_a_command() -> None:
 
 
 def test_prose_mention_in_a_doc_is_not_a_command() -> None:
-    lines = {cmd.line for cmd in found(MULTI, "references/tidy/fields.md")}
+    lines = {cmd.line for cmd in found(MULTI, "tidy/references/fields.md")}
     assert lines == {5}
 
 
@@ -135,15 +139,17 @@ def test_reports_an_unknown_command_and_an_undeclared_doc() -> None:
     # Only the stale doc, so the two failures are the whole message. Its app is
     # built from the same declaration, which is what mounts `doc` at all — the
     # undeclared *name* is the failure, not a missing command.
+    source = "references/stale-commands.md"
     host = dataclasses.replace(
         EXAMPLE,
+        prompts="brokenhost.prompts",
         artifacts=(),
-        docs=(Doc(name="broken", source="references/broken.md"),),
+        docs=(Doc(name="broken", source=source),),
     )
     with pytest.raises(AssertionError) as exc:
         assert_prompt_commands(host, typer_app(host))
     message = str(exc.value)
-    assert "references/broken.md:6: {cli} nonexistent -- no such command" in message
+    assert f"{source}:6: {{cli}} nonexistent -- no such command" in message
     assert "{cli} doc no-such-doc -- no doc 'no-such-doc' is declared" in message
     # The same words in prose on line 8 are not reported.
-    assert "references/broken.md:8" not in message
+    assert f"{source}:8" not in message

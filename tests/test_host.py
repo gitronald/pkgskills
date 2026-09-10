@@ -7,8 +7,38 @@ from examplehost.cli import HOST as EXAMPLE
 from multihost.cli import HOST as MULTI
 from solohost.cli import HOST as SOLO
 
+from mli.frontmatter import split_frontmatter
 from mli.harness import CLAUDE_CODE, Harness, Kind
-from mli.host import Agent, Doc, Host, Rule, Skill
+from mli.host import Agent, Doc, Host, Rule, Skill, source_name
+from mli.spec import SPEC, SpecError
+
+
+def test_source_name_reads_the_directory_of_a_conformant_skill() -> None:
+    # The spec's layout: `<name>/SKILL.md`, so the directory names the source.
+    assert source_name("use-solo/SKILL.md") == "use-solo"
+    assert source_name("skills/nested/pdf-processing/SKILL.md") == "pdf-processing"
+    # A flat source keeps naming itself by its stem.
+    assert source_name("skills/audit-body.md") == "audit-body"
+    assert source_name("skill.md") == "skill"
+    # The match is exact, as the spec writes it; anything else is a flat file
+    # that happens to be called something similar.
+    assert source_name("skills/x/skill.md") == "skill"
+    assert source_name("skills/x/Skill.MD") == "Skill"
+    # No parent to read, so there is nothing but the stem to go on.
+    assert source_name("SKILL.md") == "SKILL"
+
+
+def test_skill_names_are_checked_against_the_spec_grammar() -> None:
+    assert SPEC.valid_name("pdf-processing")
+    assert SPEC.valid_name("a1")
+    assert not SPEC.valid_name("")
+    assert not SPEC.valid_name("PDF-Processing")
+    assert not SPEC.valid_name("-pdf")
+    assert not SPEC.valid_name("pdf-")
+    assert not SPEC.valid_name("pdf--processing")
+    assert not SPEC.valid_name("pdf processing")
+    assert not SPEC.valid_name("edit/refs")
+    assert not SPEC.valid_name("a" * 65)
 
 
 def test_invocation_and_commands_per_mode() -> None:
@@ -29,7 +59,7 @@ def test_invocation_and_commands_per_mode() -> None:
 def test_skill_shape() -> None:
     skill = EXAMPLE.skills[0]
     assert skill.dispatches and skill.subcommands == ("add", "close")
-    assert skill.source_for("close") == "skills/close.md"
+    assert skill.source_for("close") == "skills/close/SKILL.md"
     with pytest.raises(KeyError):
         skill.source_for("nope")
     assert not SOLO.skills[0].dispatches
@@ -43,15 +73,30 @@ def test_lookup_by_kind_and_name() -> None:
     assert set(EXAMPLE.skill_sources()) == {"add", "close"}
 
 
-def test_skill_bodies_are_keyed_by_stem_only_when_dispatching() -> None:
-    # A dispatcher's bodies answer to their stems, which are its subcommands.
+def test_skill_bodies_are_keyed_by_source_name_only_when_dispatching() -> None:
+    # A dispatcher's bodies answer to their source names, which are its
+    # subcommands.
     assert EXAMPLE.skills[0].body_names == ("add", "close")
-    # A single-source skill answers to the skill's name, whatever the file is
-    # called: `skill.md` is not what the model knows `use-solo` as.
     assert SOLO.skills[0].body_names == ("use-solo",)
     assert set(SOLO.skill_sources()) == {"use-solo"}
     assert set(MULTI.skill_sources()) == {"tidy", "audit"}
-    assert MULTI.skill_sources()["audit"][1] == "skills/audit-body.md"
+    # A single-source skill answers to the skill's name whatever its source is
+    # called, so a host that has not moved to `<name>/SKILL.md` keeps working.
+    # Every fixture is conformant now, so the unmigrated shape is declared here
+    # rather than shipped on disk.
+    flat = Host(
+        dist="d",
+        cli="c",
+        prompts="p",
+        artifacts=(
+            Skill("audit", ("skills/audit-body.md",)),
+            Skill("two", ("x/add.md", "x/drop.md")),
+        ),
+    )
+    assert flat.skills[0].body_names == ("audit",)
+    assert flat.skill_sources()["audit"][1] == "skills/audit-body.md"
+    # A flat dispatcher still takes its subcommands from the stems.
+    assert flat.skills[1].body_names == ("add", "drop")
 
 
 def test_version_falls_back_when_no_distribution_is_installed() -> None:
@@ -64,12 +109,23 @@ def test_validation_rejects_bad_declarations() -> None:
         Host(dist="", cli="x", prompts="p")
     with pytest.raises(ValueError, match="declares no sources"):
         Host(dist="d", cli="c", prompts="p", artifacts=(Skill("s", ()),))
-    with pytest.raises(ValueError, match="duplicate stems"):
+    with pytest.raises(SpecError, match="contains uppercase characters"):
+        Host(dist="d", cli="c", prompts="p", artifacts=(Skill("Bad Name", ("x.md",)),))
+    with pytest.raises(ValueError, match="duplicate names"):
         Host(
             dist="d",
             cli="c",
             prompts="p",
             artifacts=(Skill("s", ("a/x.md", "b/x.md")),),
+        )
+    # Same collision under the conformant layout: the directory names it, so
+    # two `SKILL.md` files only collide when their directories do.
+    with pytest.raises(ValueError, match="duplicate names"):
+        Host(
+            dist="d",
+            cli="c",
+            prompts="p",
+            artifacts=(Skill("s", ("a/x/SKILL.md", "b/x/SKILL.md")),),
         )
     with pytest.raises(ValueError, match="duplicate rule"):
         Host(
@@ -140,7 +196,7 @@ def test_docs_are_declared_apart_from_artifacts() -> None:
     # `artifacts` — the install, the check, or the harness's layout.
     assert [d.name for d in MULTI.docs] == ["tidy/fields", "audit/severity"]
     assert all(not isinstance(art, Doc) for art in MULTI.artifacts)
-    assert MULTI.doc("tidy/fields").source == "references/tidy/fields.md"
+    assert MULTI.doc("tidy/fields").source == "tidy/references/fields.md"
     with pytest.raises(KeyError):
         MULTI.doc("nope")
     assert MULTI.doc_command("local", "tidy/fields") == (
@@ -156,8 +212,8 @@ def test_validation_rejects_bad_docs() -> None:
             cli="c",
             prompts="multihost.prompts",
             docs=(
-                Doc("x", "references/tidy/fields.md"),
-                Doc("x", "references/audit/severity.md"),
+                Doc("x", "tidy/references/fields.md"),
+                Doc("x", "audit/references/severity.md"),
             ),
         )
     # Nothing else ever reads a doc's source, so a typo would surface only when
@@ -188,7 +244,7 @@ def test_render_cli_defaults_to_the_hosts_setting() -> None:
         cli="c",
         prompts="multihost.prompts",
         render_cli=True,
-        docs=(Doc("x", "references/tidy/fields.md", render_cli=False),),
+        docs=(Doc("x", "tidy/references/fields.md", render_cli=False),),
     )
     assert not opted_out.renders_cli(opted_out.docs[0])
 
@@ -216,3 +272,55 @@ def test_claude_code_loading_discipline_per_kind() -> None:
     # A harness that says nothing loads every kind from both bases.
     bare = Harness(name="bare", config_dir=".bare")
     assert all(bare.both_load(kind) for kind in Kind)
+
+
+@pytest.mark.parametrize("host", [EXAMPLE, SOLO, MULTI], ids=lambda h: h.dist)
+def test_conformant_sources_match_the_spec_layout(host: Host) -> None:
+    """Every skill source is `<name>/SKILL.md` with matching frontmatter.
+
+    The spec ties a skill's frontmatter `name` to its parent directory, and
+    `mli` derives the source's name from that directory — so a source that
+    drifted apart would key a body under one name while a skills linter read
+    another. `mli` still accepts a flat source, but no fixture ships one: the
+    tree these hosts bundle is what a host author copies, and it has to pass a
+    linter as it stands.
+    """
+    for skill in host.skills:
+        for source in skill.sources:
+            assert source.endswith("/" + SPEC.entry_file), (
+                f"{source} is not a spec-conformant skill directory"
+            )
+            front, _ = split_frontmatter(host.read(source))
+            assert front is not None, f"{source} has no frontmatter"
+            declared = front.get("name")
+            assert declared == source_name(source), (
+                f"{source}: frontmatter names {declared!r}, "
+                f"directory names {source_name(source)!r}"
+            )
+            assert SPEC.valid_name(str(declared))
+
+
+@pytest.mark.parametrize("host", [EXAMPLE, SOLO, MULTI], ids=lambda h: h.dist)
+def test_a_skills_references_live_inside_its_own_directory(host: Host) -> None:
+    """A doc namespaced by a skill is stored under that skill's directory.
+
+    The spec's skill directory holds the skill's `references/` too, not just
+    its `SKILL.md`, so `multihost`'s `audit/severity` is sourced from
+    `audit/references/severity.md`. The directory is read off the skill's own
+    source rather than assumed, since a host only needs a `skills/` prefix when
+    it has rules or agents to keep the skills apart from. A doc that belongs to
+    no declared skill is exempt — there is no directory for it to live in.
+    """
+    directories = {
+        source_name(source): SPEC.directory(source)
+        for skill in host.skills
+        for source in skill.sources
+    }
+    for doc in host.docs:
+        owner, _, rest = doc.name.partition("/")
+        if not rest or owner not in directories:
+            continue
+        assert doc.source.startswith(directories[owner] + "/"), (
+            f"doc {doc.name!r} is sourced from {doc.source!r}, outside "
+            f"the {directories[owner]!r} skill directory"
+        )
