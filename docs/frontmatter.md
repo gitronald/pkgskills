@@ -2,14 +2,10 @@
 
 What `mli` writes into the frontmatter of a generated skill stub, and why.
 
-The shape is fixed by the Agent Skills specification — a local copy lives at
-[agentskills-specification.md](agentskills-specification.md), and the canonical
-version at
-[agentskills.io/specification](https://agentskills.io/specification#frontmatter-required).
-`name` and `description` are required; `license`, `compatibility`, `metadata`,
-and `allowed-tools` are optional. `metadata` is "a map from string keys to
-string values" that clients may use for properties the spec does not define,
-with a recommendation to keep key names reasonably unique.
+The shape is fixed by the [Agent Skills
+specification](agentskills-specification.md), which defines the fields and
+reserves `metadata` for properties it does not itself define, recommending
+reasonably unique key names.
 
 ## What a stub carries
 
@@ -28,9 +24,8 @@ metadata:
   harness reads to decide when a skill fires.
 - `metadata.version` is the **host release** the stub was rendered from: the
   skill's own version, and the key the spec's own example uses.
-- `metadata.mli-version` is the `mli` release that rendered it. It is prefixed
-  because it belongs to a second package, per the spec's advice on unique key
-  names.
+- `metadata.mli-version` is the `mli` release that rendered it, prefixed
+  because it belongs to a second package.
 
 Both values are quoted. A version is a string, and an unquoted `1.0` reads back
 as a float.
