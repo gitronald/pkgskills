@@ -2,7 +2,9 @@
 
 What `mli` writes into the frontmatter of a generated skill stub, and why.
 
-The shape is fixed by the Agent Skills specification:
+The shape is fixed by the Agent Skills specification — a local copy lives at
+[agentskills-specification.md](agentskills-specification.md), and the canonical
+version at
 [agentskills.io/specification](https://agentskills.io/specification#frontmatter-required).
 `name` and `description` are required; `license`, `compatibility`, `metadata`,
 and `allowed-tools` are optional. `metadata` is "a map from string keys to
