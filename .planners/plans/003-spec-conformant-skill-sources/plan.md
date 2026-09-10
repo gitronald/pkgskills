@@ -103,3 +103,75 @@ will happily install it. Either fold that validation into this plan's
 
 1 -> 2 -> 3 -> 4 -> 5 -> 6, with the fixture restructure (3) as the point where
 the change is proven end to end.
+
+## Log
+
+### 2026-09-09 — implementation
+
+Worked on `feature/spec-conformant-skill-sources` in a worktree. The repo has
+no git remote, so there is no PR and nothing was pushed.
+
+**1-2. Source naming (`a3c4360`).** Replaced `_stem` with a public
+`source_name(source)` that returns the parent directory when the file is
+named exactly `SKILL.md` (with a non-empty parent) and the stem otherwise. The
+match is case-sensitive, as the spec writes it uppercase — `skill.md` falls
+through to the stem. `Skill.subcommands` and `Skill.source_for` both route
+through it, so the duplicate guard and `Host.skill_bodies`' collision check
+operate on the derived name automatically; only the error text changed
+("duplicate stems" -> "duplicate names").
+
+**3-4. Fixtures.** Migrated three of the four sources:
+
+| before | after |
+| --- | --- |
+| `solohost/prompts/skill.md` | `solohost/prompts/skills/use-solo/SKILL.md` |
+| `examplehost/prompts/skills/add.md` | `.../skills/add/SKILL.md` |
+| `examplehost/prompts/skills/close.md` | `.../skills/close/SKILL.md` |
+| `multihost/prompts/skills/tidy.md` | `.../skills/tidy/SKILL.md` |
+
+**Deviation from the plan's step 3:** `multihost/prompts/skills/audit-body.md`
+was left flat. The plan listed it for migration, but moving it to
+`audit-body/SKILL.md` would have made it *non*-conformant — its frontmatter
+`name` is `audit` (to match the skill), which would then disagree with the
+directory. Naming the directory `audit` instead would have destroyed the exact
+property the fixture exists to test: that a single-source skill is keyed by
+`Skill.name`, not by its source's name. Leaving it flat preserves that and
+simultaneously satisfies step 4's requirement that an unmigrated flat source
+stay covered — `multihost` now carries both layouts side by side, which is
+better coverage than either alone.
+
+Nested resource paths resolve fine: `Host.read` goes through
+`resources.files(...).joinpath(source)`, and every migrated fixture is read
+that way by the passing suite. `mli` itself ships no prompts, so the
+`wheel_files` test has nothing new to assert.
+
+**5. Layout assertion.** `skills-ref` is not installed and there is no CI hook
+for it, so the check is a test instead:
+`test_conformant_sources_match_the_spec_layout` is parametrized over all three
+fixture hosts and asserts that every source ending in `/SKILL.md` has
+frontmatter whose `name` equals its directory and satisfies the spec grammar.
+It also asserts each host ships at least one conformant source, so a
+regression that quietly reverted the layout would fail rather than vacuously
+pass.
+
+**"Also worth deciding" — resolved by folding in.** Added
+`valid_skill_name(name)` implementing the spec's full `name` grammar (1-64
+chars, `[a-z0-9]` and single interior hyphens) and wired it into
+`Host.validate` for skills. `Doc.name` is deliberately exempt: a doc is never
+installed as a skill and its name may carry `/` for namespacing. `Rule` and
+`Agent` are exempt for the reason the plan already gives for their directory
+layout — they are stamped copies, not skills.
+
+**6. Docs (`82b74f0`).** New `docs/source-layout.md` covering the conformant
+layout, how a source path yields a name, why flat sources still work, and the
+name grammar; linked from `docs/frontmatter.md` and from the README's
+host-authoring section, whose example now uses the conformant paths. Added two
+`[Unreleased]` changelog entries.
+
+Also swept the now-inaccurate "stem" wording out of `mli/host.py`'s module and
+`skill_sources` docstrings, the README's fixtures paragraph, and a local
+variable in `mli/cli.py`.
+
+**Checks.** `uv run pytest` (162 passed, 97.77% coverage), `uv run ruff check
+.`, `uv run ruff format --check .`, and `uv run pyrefly check` (0 errors) all
+pass.
