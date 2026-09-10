@@ -1,8 +1,8 @@
 ---
 id: 0
 slug: multi-skill-hosts
-status: draft
-branch:
+status: active
+branch: feature/multi-skill-hosts
 created: 2026-09-04T19:53:42-07:00
 concluded:
 pr:
