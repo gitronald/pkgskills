@@ -162,6 +162,12 @@ coverage: flat *skill* sources are no longer read off disk end to end. The
 read path is identical for both layouts and is still exercised by the nested
 doc sources, so what is lost is narrow, but it is a trade rather than a wash.
 
+> **Superseded by the review pass below.** `brokenhost` ships a flat skill
+> source again — deliberately, as a counterexample — so flat sources *are* read
+> off disk end to end once more, and the coverage this paragraph gives up was
+> recovered. The paths above also predate the hoist: `multihost`'s skills now
+> sit at its prompts root, without the `skills/` segment.
+
 Nested resource paths resolve fine: `Host.read` goes through
 `resources.files(...).joinpath(source)`, and every migrated fixture is read
 that way by the passing suite. `mli` itself ships no prompts, so the
