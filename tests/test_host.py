@@ -19,11 +19,12 @@ from mli.host import (
     source_name,
     valid_skill_name,
 )
+from mli.spec import SPEC, SpecError
 
 
 def test_source_name_reads_the_directory_of_a_conformant_skill() -> None:
     # The spec's layout: `<name>/SKILL.md`, so the directory names the source.
-    assert source_name("skills/use-solo/SKILL.md") == "use-solo"
+    assert source_name("use-solo/SKILL.md") == "use-solo"
     assert source_name("use-solo/SKILL.md") == "use-solo"
     # A flat source keeps naming itself by its stem.
     assert source_name("skills/audit-body.md") == "audit-body"
@@ -117,7 +118,7 @@ def test_validation_rejects_bad_declarations() -> None:
         Host(dist="", cli="x", prompts="p")
     with pytest.raises(ValueError, match="declares no sources"):
         Host(dist="d", cli="c", prompts="p", artifacts=(Skill("s", ()),))
-    with pytest.raises(ValueError, match="not spec-conformant"):
+    with pytest.raises(SpecError, match="contains uppercase characters"):
         Host(dist="d", cli="c", prompts="p", artifacts=(Skill("Bad Name", ("x.md",)),))
     with pytest.raises(ValueError, match="duplicate names"):
         Host(
@@ -204,7 +205,7 @@ def test_docs_are_declared_apart_from_artifacts() -> None:
     # `artifacts` — the install, the check, or the harness's layout.
     assert [d.name for d in MULTI.docs] == ["tidy/fields", "audit/severity"]
     assert all(not isinstance(art, Doc) for art in MULTI.artifacts)
-    assert MULTI.doc("tidy/fields").source == "skills/tidy/references/fields.md"
+    assert MULTI.doc("tidy/fields").source == "tidy/references/fields.md"
     with pytest.raises(KeyError):
         MULTI.doc("nope")
     assert MULTI.doc_command("local", "tidy/fields") == (
@@ -220,8 +221,8 @@ def test_validation_rejects_bad_docs() -> None:
             cli="c",
             prompts="multihost.prompts",
             docs=(
-                Doc("x", "skills/tidy/references/fields.md"),
-                Doc("x", "skills/audit/references/severity.md"),
+                Doc("x", "tidy/references/fields.md"),
+                Doc("x", "audit/references/severity.md"),
             ),
         )
     # Nothing else ever reads a doc's source, so a typo would surface only when
@@ -252,7 +253,7 @@ def test_render_cli_defaults_to_the_hosts_setting() -> None:
         cli="c",
         prompts="multihost.prompts",
         render_cli=True,
-        docs=(Doc("x", "skills/tidy/references/fields.md", render_cli=False),),
+        docs=(Doc("x", "tidy/references/fields.md", render_cli=False),),
     )
     assert not opted_out.renders_cli(opted_out.docs[0])
 
@@ -314,16 +315,21 @@ def test_a_skills_references_live_inside_its_own_directory(host: Host) -> None:
 
     The spec's skill directory holds the skill's `references/` too, not just
     its `SKILL.md`, so `multihost`'s `audit/severity` is sourced from
-    `skills/audit/references/severity.md`. A doc that belongs to no skill —
-    `examplehost`'s deliberately stale `references/broken.md` — is exempt,
-    since there is no directory for it to live in.
+    `audit/references/severity.md`. The directory is read off the skill's own
+    source rather than assumed, since a host only needs a `skills/` prefix when
+    it has rules or agents to keep the skills apart from. A doc that belongs to
+    no declared skill is exempt — there is no directory for it to live in.
     """
-    owners = {source_name(source) for skill in host.skills for source in skill.sources}
+    directories = {
+        source_name(source): SPEC.directory(source)
+        for skill in host.skills
+        for source in skill.sources
+    }
     for doc in host.docs:
         owner, _, rest = doc.name.partition("/")
-        if not rest or owner not in owners:
+        if not rest or owner not in directories:
             continue
-        assert doc.source.startswith(f"skills/{owner}/"), (
+        assert doc.source.startswith(directories[owner] + "/"), (
             f"doc {doc.name!r} is sourced from {doc.source!r}, outside "
-            f"the {owner!r} skill directory"
+            f"the {directories[owner]!r} skill directory"
         )

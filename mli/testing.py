@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING
 
 from mli.harness import Kind
 from mli.host import CLI_TOKEN, Host, Skill
+from mli.spec import SPEC, VALIDATOR, report
 
 if TYPE_CHECKING:
     import pytest
@@ -235,6 +236,28 @@ def _unresolved(host: Host, root: object, cmd: PromptCommand) -> str | None:
                 f"the host declares: {declared}"
             )
     return None
+
+
+def assert_spec_conformant(host: Host) -> None:
+    """Fail unless every skill ``host`` ships follows the Agent Skills spec.
+
+    The counterpart to :func:`assert_prompt_commands`, and there for the same
+    reason: what a host bundles is read by a harness and by whatever linter a
+    consumer points at the package, and neither is running while the host's own
+    suite is. Every violation is reported at once, each naming the rule it
+    breaks and what to do about it.
+    """
+    violations = SPEC.check_host(host)
+    if violations:
+        raise AssertionError(
+            report(
+                violations,
+                header=(
+                    f"{host.dist} ships skills that do not follow the Agent "
+                    f"Skills specification ({VALIDATOR} checks the same rules):"
+                ),
+            )
+        )
 
 
 def assert_prompt_commands(host: Host, app: typer.Typer) -> None:

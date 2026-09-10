@@ -26,15 +26,18 @@ from mli.host import Agent, Artifact, Doc, ExtraCheck, Host, Mode, Rule, Skill
 from mli.permissions import Level
 from mli.proc import LOCATION_ENV, run
 from mli.rendering import render, render_prompt
+from mli.spec import SPEC, Field, SkillSpec, SpecError, Violation
 
 __all__ = [
     "CLAUDE_CODE",
+    "SPEC",
     "LOCATION_ENV",
     "Agent",
     "Artifact",
     "Check",
     "Doc",
     "ExtraCheck",
+    "Field",
     "ForeignArtifactError",
     "Frontmatter",
     "Harness",
@@ -45,6 +48,9 @@ __all__ = [
     "Mode",
     "Rule",
     "Skill",
+    "SkillSpec",
+    "SpecError",
+    "Violation",
     "artifact_path",
     "check",
     "find_repo_root",

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from mli.frontmatter import split_frontmatter
 from mli.host import CLI_TOKEN, Agent, Artifact, Doc, Host, Mode, Rule, Skill
+from mli.spec import SPEC, SpecError, Violation
 from mli.stamp import METADATA_KEYS, metadata_lines, place_stamp, render_stamp
 
 
@@ -84,20 +85,31 @@ def stub_frontmatter(host: Host, skill: Skill) -> str:
     subcommand list. Either way the block gains the ``metadata`` versions.
     """
     if not skill.dispatches:
-        front, _ = split_frontmatter(host.read(skill.sources[0]))
+        source = skill.sources[0]
+        text = host.read(source)
+        # The stub *is* the skill the harness loads, so a source that breaks
+        # the spec would install a broken skill. Report every way it does,
+        # rather than the first one this function happens to trip over.
+        header = f"skill {skill.name!r} cannot be rendered into a stub"
+        violations = SPEC.check_frontmatter(source, text)
+        front, _ = split_frontmatter(text)
         if front is None:
-            raise ValueError(
-                f"skill {skill.name!r}: source {skill.sources[0]!r} has no "
-                "frontmatter; a stub needs its name and description"
-            )
+            raise SpecError(violations, header=header)
         declared = front.get("name")
         if declared != skill.name:
-            raise ValueError(
-                f"skill {skill.name!r}: source frontmatter names {declared!r}; "
-                "the two must agree"
+            violations.append(
+                Violation(
+                    where=source,
+                    rule="name-matches-declaration",
+                    detail=(
+                        f"frontmatter names {declared!r} but the host declares "
+                        f"this skill as {skill.name!r}"
+                    ),
+                    fix="make the two agree; the stub is rendered from both",
+                )
             )
-        if not front.get("description"):
-            raise ValueError(f"skill {skill.name!r}: source has no description")
+        if violations:
+            raise SpecError(violations, header=header)
         return with_metadata(front.raw, host, skill)
     description = skill.description or (
         f"`{host.dist}` toolkit. Invoke as `/{skill.name} <subcommand> [args]`. "

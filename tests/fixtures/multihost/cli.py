@@ -37,12 +37,12 @@ HOST = Host(
     modes=("local",),
     render_cli=True,
     artifacts=(
-        Skill(name="tidy", sources=("skills/tidy/SKILL.md",)),
-        Skill(name="audit", sources=("skills/audit/SKILL.md",)),
+        Skill(name="tidy", sources=("tidy/SKILL.md",)),
+        Skill(name="audit", sources=("audit/SKILL.md",)),
     ),
     docs=(
-        Doc(name="tidy/fields", source="skills/tidy/references/fields.md"),
-        Doc(name="audit/severity", source="skills/audit/references/severity.md"),
+        Doc(name="tidy/fields", source="tidy/references/fields.md"),
+        Doc(name="audit/severity", source="audit/references/severity.md"),
     ),
 )
 

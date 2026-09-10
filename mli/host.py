@@ -24,7 +24,6 @@ materialized at a location per mode and a doc has neither.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from importlib import metadata, resources
@@ -34,6 +33,7 @@ from typing import TYPE_CHECKING, Literal
 
 from mli.harness import CLAUDE_CODE, Harness, Kind
 from mli.permissions import LEVELS, Level
+from mli.spec import SPEC, SpecError, Violation
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -50,12 +50,9 @@ CLI_TOKEN = "{cli}"
 
 #: The filename the Agent Skills spec requires of a skill's entry file. Matched
 #: exactly — the spec writes it uppercase, and anything else is an ordinary
-#: flat source whose stem names it.
-SKILL_FILE = "SKILL.md"
-
-#: The spec's `name` grammar: 1-64 lowercase alphanumerics and hyphens, no
-#: leading, trailing, or consecutive hyphen.
-_NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+#: flat source whose stem names it. Re-exported from :mod:`mli.spec`, which is
+#: where the specification lives.
+SKILL_FILE = SPEC.entry_file
 
 
 def source_name(source: str) -> str:
@@ -66,15 +63,14 @@ def source_name(source: str) -> str:
     literal ``SKILL``. Any other file is named by its stem, which is what a
     flat source has always meant.
     """
-    path = PurePosixPath(source)
-    if path.name == SKILL_FILE and path.parent.name:
-        return path.parent.name
-    return path.stem
+    if SPEC.is_entry(source):
+        return PurePosixPath(source).parent.name
+    return PurePosixPath(source).stem
 
 
 def valid_skill_name(name: str) -> bool:
     """True when ``name`` satisfies the Agent Skills spec's ``name`` grammar."""
-    return 1 <= len(name) <= 64 and _NAME.fullmatch(name) is not None
+    return SPEC.valid_name(name)
 
 
 @dataclass(frozen=True)
@@ -296,11 +292,6 @@ class Host:
                 raise ValueError(f"duplicate {art.kind.value} {art.name!r}")
             seen.add(key)
             if isinstance(art, Skill):
-                if not valid_skill_name(art.name):
-                    raise ValueError(
-                        f"skill name {art.name!r} is not spec-conformant: 1-64 "
-                        "characters of a-z, 0-9 and single interior hyphens"
-                    )
                 if not art.sources:
                     raise ValueError(f"skill {art.name!r} declares no sources")
                 subs = art.subcommands
@@ -310,6 +301,21 @@ class Host:
                     )
         # Raises when two bodies would answer to the same `skill <name>`.
         self.skill_sources()
+        # Every skill name at once, so an author fixing several sees them all.
+        # Only the names: reading and parsing every source here would put a
+        # file walk on the import of any package that declares a host, and the
+        # file-level rules are what `check_spec` and the harness's own loader
+        # are for.
+        named = [
+            v
+            for skill in self.skills
+            for v in SPEC.check_declared_name(skill.name, where=f"skill {skill.name!r}")
+        ]
+        if named:
+            raise SpecError(
+                named,
+                header=f"host {self.dist!r} declares skill names the spec rejects",
+            )
         seen_docs: set[str] = set()
         for doc in self.docs:
             if doc.name in seen_docs:
@@ -410,6 +416,15 @@ class Host:
     def has_source(self, source: str) -> bool:
         """True when ``source`` names a file inside the ``prompts`` package."""
         return resources.files(self.prompts).joinpath(source).is_file()
+
+    def check_spec(self) -> list[Violation]:
+        """Every way this host's skills depart from the Agent Skills spec.
+
+        Reads each source, so it is a deliberate call rather than something
+        :meth:`validate` does on import. A host's own test suite is where this
+        belongs — see :func:`mli.testing.assert_spec_conformant`.
+        """
+        return SPEC.check_host(self)
 
     def renders_cli(self, art: Declared) -> bool:
         """Whether ``art``'s body gets ``{cli}`` substituted.
