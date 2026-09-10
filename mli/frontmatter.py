@@ -95,6 +95,72 @@ def parse_fields(lines: list[str]) -> dict[str, str]:
     return out
 
 
+@dataclass(frozen=True)
+class Block:
+    """An indented block under one top-level frontmatter key.
+
+    :func:`parse_fields` flattens a nested mapping to an empty string, because
+    no prompt kind needs to *read* one. Two callers need to inspect one anyway
+    — ``mli`` splices its own version keys into ``metadata``, and the spec
+    check asks whether that mapping is the string-to-string map the
+    specification requires — so the raw lines are offered here rather than
+    walked separately in each place.
+
+    ``at`` indexes the ``key:`` line within ``raw.splitlines()``. ``inline`` is
+    whatever followed the colon on that line, empty for a mapping that opens
+    below. ``lines`` are the continuation lines verbatim, blanks included.
+    """
+
+    at: int
+    inline: str
+    lines: list[str] = field(default_factory=list)
+
+    def entries(self) -> list[tuple[int, str, str]]:
+        """``(indent, key, value)`` per continuation line that declares one.
+
+        Blank lines and comments are dropped; a line that is not ``key: value``
+        yields an empty key, so a caller can report it rather than skip it.
+        """
+        out: list[tuple[int, str, str]] = []
+        for line in self.lines:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            indent = len(line) - len(line.lstrip())
+            key, sep, value = stripped.partition(":")
+            # With no colon there is no key, and the whole line is what a
+            # caller needs to quote back — `- item`, say. Reporting it as an
+            # empty pair would name nothing.
+            out.append(
+                (indent, key.strip(), value.strip()) if sep else (indent, "", stripped)
+            )
+        return out
+
+
+def find_block(raw: str, key: str) -> Block | None:
+    """The block ``key`` opens in a raw frontmatter block, or ``None``.
+
+    The continuation runs to the first line that is neither indented nor
+    blank — the closing fence included. Blank lines are kept inside it, so a
+    mapping split by one is not silently truncated at the gap.
+    """
+    lines = raw.splitlines()
+    close = len(lines) - 1
+    for i in range(1, close):
+        name, sep, value = lines[i].partition(":")
+        if not sep or name.strip() != key or name[:1].isspace():
+            continue
+        run: list[str] = []
+        for line in lines[i + 1 : close]:
+            if line.strip() and not line[:1].isspace():
+                break
+            run.append(line)
+        while run and not run[-1].strip():
+            run.pop()
+        return Block(at=i, inline=value.strip(), lines=run)
+    return None
+
+
 def body_only(text: str) -> str:
     """``text`` with any leading frontmatter removed."""
     _, body = split_frontmatter(text)

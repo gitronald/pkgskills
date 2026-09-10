@@ -7,7 +7,7 @@ renderer returns is exactly what ``install`` writes and exactly what
 
 from __future__ import annotations
 
-from mli.frontmatter import split_frontmatter
+from mli.frontmatter import find_block, split_frontmatter
 from mli.host import CLI_TOKEN, Agent, Artifact, Doc, Host, Mode, Rule, Skill
 from mli.spec import SPEC, SpecError, Violation
 from mli.stamp import METADATA_KEYS, metadata_lines, place_stamp, render_stamp
@@ -58,22 +58,17 @@ def with_metadata(raw: str, host: Host, skill: Skill) -> str:
     """
     lines = raw.splitlines()
     close = len(lines) - 1
-    at = next(
-        (i for i in range(1, close) if lines[i].rstrip() == "metadata:"),
-        None,
-    )
-    if at is None:
-        block = ["metadata:", *metadata_lines(host)]
-        return "\n".join([*lines[:close], *block, lines[close], ""])
-    for line in lines[at + 1 : close]:
-        if line[:1] not in (" ", "\t"):
-            break
-        key = line.split(":", 1)[0].strip()
+    block = find_block(raw, "metadata")
+    if block is None:
+        opened = ["metadata:", *metadata_lines(host)]
+        return "\n".join([*lines[:close], *opened, lines[close], ""])
+    for _, key, _value in block.entries():
         if key in METADATA_KEYS:
             raise ValueError(
                 f"skill {skill.name!r}: source frontmatter already declares "
                 f"metadata.{key}; mli writes that key, so drop it from the source"
             )
+    at = block.at
     return "\n".join([*lines[: at + 1], *metadata_lines(host), *lines[at + 1 :], ""])
 
 

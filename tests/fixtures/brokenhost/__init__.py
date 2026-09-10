@@ -13,7 +13,8 @@ complain:
     prompts/
     ├── references/stale-commands.md   # a doc naming commands that do not exist
     ├── flat-skill.md                  # a skill body outside any directory
-    └── misfiled/SKILL.md              # frontmatter `name` != its directory
+    ├── misfiled/SKILL.md              # frontmatter `name` != its directory
+    └── bad-metadata/SKILL.md          # `metadata` values that are not strings
 
 Nothing here is a template. Read `examplehost`, `solohost`, or `multihost` for
 that.

@@ -20,7 +20,7 @@ from mli.artifacts import (
     printing_mode,
 )
 from mli.cli import register, typer_app
-from mli.frontmatter import Frontmatter, split_frontmatter
+from mli.frontmatter import Block, Frontmatter, find_block, split_frontmatter
 from mli.harness import CLAUDE_CODE, Harness, Kind
 from mli.host import Agent, Artifact, Doc, ExtraCheck, Host, Mode, Rule, Skill
 from mli.permissions import Level
@@ -33,6 +33,7 @@ __all__ = [
     "SPEC",
     "LOCATION_ENV",
     "Agent",
+    "Block",
     "Artifact",
     "Check",
     "Doc",
@@ -53,6 +54,7 @@ __all__ = [
     "Violation",
     "artifact_path",
     "check",
+    "find_block",
     "find_repo_root",
     "install",
     "installed_mode",

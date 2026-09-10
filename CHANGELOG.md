@@ -101,6 +101,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   own test suite — the counterpart to `assert_prompt_commands`. All violations
   are reported at once, grouped by file. Construction still checks only the
   declared names, so declaring a host does not walk its prompt package.
+- The spec check covers `metadata`, which the spec defines as a map from string
+  keys to string values: a scalar or sequence where a mapping belongs, a nested
+  mapping under a key, and — the one that bites — a value YAML resolves to
+  something other than a string (`version: 1.0` is a float, `retries: 3` an
+  integer, `enabled: true` a boolean). The fix names the quoted form.
+- `mli.frontmatter.find_block(raw, key)` returns the raw indented block a
+  frontmatter key opens, as a `Block` with the inline value and per-line
+  `entries()`. It backs both the `metadata` spec check and the version-key
+  splice in `with_metadata`, which previously walked the raw lines itself and
+  stopped at the first blank line inside the mapping.
 
 ### Changed
 

@@ -308,7 +308,9 @@ ship: an editable install resolves package data straight to the checkout.
 against the [Agent Skills specification](docs/agentskills-specification.md):
 that each source is stored as `<name>/SKILL.md`, that its frontmatter carries a
 `name` matching the directory and satisfying the spec's grammar, that a
-`description` is present, and that no field runs past its limit. Every
+`description` is present, that `metadata` is the map of strings the spec calls
+for (an unquoted `version: 1.0` is a float, not a string), and that no field
+runs past its limit. Every
 violation is reported at once, each naming the rule it breaks and the fix — see
 [docs/source-layout.md](docs/source-layout.md#checking-a-host-against-the-spec).
 

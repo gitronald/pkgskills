@@ -175,11 +175,31 @@ that is wrong in one way is usually wrong in two. Each carries a stable `rule`
 slug (`entry-file`, `name-grammar`, `name-matches-directory`,
 `description-missing`, ...) so a caller can filter rather than parse prose.
 
-What is *not* checked is the shape of `metadata`. The spec makes it a map of
-string to string; `mli.frontmatter` parses flat scalars and skips nested blocks,
-so there is nothing to inspect. The reference validator the spec ships,
-`skills-ref validate`, is the tool for a full check — this is the subset `mli`
-can enforce from inside the host.
+`metadata` is checked too. The spec calls it *a map from string keys to string
+values*, and the rule that earns its keep is the value one — the spec's own
+example writes `version: "1.0"` with the quotes because unquoted it is a float:
+
+```yaml
+metadata:
+  author: example-org   # fine: a plain scalar is still a string
+  version: 1.0          # metadata-value-not-a-string: YAML reads a float
+  retries: 3            # ...an integer
+  enabled: true         # ...a boolean
+  owner:                # ...and a nested mapping is not a string at all
+    team: platform
+```
+
+`mli.frontmatter.parse_fields` flattens a nested block, but
+`mli.frontmatter.find_block` hands back the raw mapping, which is what the
+check reads. It is the same helper `mli` uses to splice its own two version
+keys into `metadata` — both of which it quotes, for the reason above.
+
+What is *not* checked is the spec's **recommendations**, as against its
+constraints: that a description say what a skill does *and* when to use it,
+that `SKILL.md` stay under 500 lines, that references sit one level deep. Those
+are advice to an author, and failing a host over them would assert a house
+style the specification does not. The reference validator the spec ships,
+`skills-ref validate`, remains the tool for a full check.
 
 ## Related
 

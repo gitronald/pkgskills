@@ -15,11 +15,19 @@ renderer happened to touch it first. :meth:`SkillSpec.check_host` collects
 *every* violation rather than stopping at the first, because a source that is
 wrong in one way is usually wrong in two.
 
-What is deliberately *not* checked: the shape of ``metadata``. The spec makes
-it a map of string to string, and :mod:`mli.frontmatter` parses flat scalars
-only — a nested block is skipped rather than parsed — so there is nothing here
-to inspect. ``mli`` writes that mapping itself
-(:mod:`mli.stamp`), which is the case that matters.
+``metadata`` is checked too, though :func:`mli.frontmatter.parse_fields`
+flattens it to an empty string: the spec calls it *a map from string keys to
+string values*, and :func:`mli.frontmatter.find_block` hands back the raw
+mapping so the map-ness can be inspected. The rule that earns its keep is the
+value one — the spec's own example writes ``version: "1.0"`` with the quotes
+because unquoted it is a float, and ``mli`` quotes the two keys it writes there
+(:mod:`mli.stamp`) for exactly that reason.
+
+What is *not* checked is the spec's recommendations, as against its
+constraints: that a description name what the skill does *and* when to use it,
+that ``SKILL.md`` stay under 500 lines, that references sit one level deep.
+Those are advice to an author, and a check that fails a host over them would be
+asserting a house style the specification does not.
 """
 
 from __future__ import annotations
@@ -30,13 +38,32 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
-from mli.frontmatter import split_frontmatter
+from mli.frontmatter import Frontmatter, find_block, split_frontmatter
 
 if TYPE_CHECKING:
     from mli.host import Host, Skill
 
 #: The reference validator the spec points at, named in the repair advice.
 VALIDATOR = "skills-ref validate"
+
+#: Unquoted scalars YAML resolves to something other than a string. The spec
+#: requires string values under ``metadata``, and a bare ``1.0`` is a float.
+_NOT_STRINGS: tuple[tuple[str, str], ...] = (
+    (r"[-+]?\d+", "an integer"),
+    (r"[-+]?(\d+\.\d*|\.?\d+)([eE][-+]?\d+)?", "a float"),
+    (r"true|false|yes|no|on|off", "a boolean"),
+    (r"null|~", "a null"),
+)
+
+
+def _not_a_string(value: str) -> str | None:
+    """What YAML would read ``value`` as, when that is not a string."""
+    if len(value) >= 2 and value[0] in "\"'" and value[-1] == value[0]:
+        return None  # quoted, so a string whatever it looks like
+    for pattern, reads_as in _NOT_STRINGS:
+        if re.fullmatch(pattern, value, re.IGNORECASE):
+            return reads_as
+    return None
 
 
 @dataclass(frozen=True)
@@ -177,6 +204,85 @@ class SkillSpec:
     def valid_name(self, name: str) -> bool:
         return self.name_problem(name) is None
 
+    # -- metadata ----------------------------------------------------------
+
+    def check_metadata(self, source: str, front: Frontmatter) -> list[Violation]:
+        """Violations in the ``metadata`` mapping, if the source declares one.
+
+        The spec makes it *a map from string keys to string values*, so three
+        things are wrong here: a scalar or a sequence where a map belongs, a
+        value that is itself a mapping, and a value YAML will not hand back as
+        a string. The last is the one that bites in practice — the spec's own
+        example writes ``version: "1.0"`` with the quotes precisely because
+        unquoted it is a float.
+        """
+        if "metadata" not in front.fields:
+            return []
+        block = find_block(front.raw, "metadata")
+        if block is None:  # pragma: no cover - fields and raw cannot disagree
+            return []
+
+        def wrong(rule: str, detail: str, fix: str) -> Violation:
+            return Violation(where=source, rule=rule, detail=detail, fix=fix)
+
+        if block.inline:
+            return [
+                wrong(
+                    "metadata-not-a-mapping",
+                    f"`metadata` is the scalar {block.inline!r}",
+                    "make it a mapping of string keys to string values, "
+                    "indented on the lines below `metadata:`",
+                )
+            ]
+        entries = block.entries()
+        if not entries:
+            return [
+                wrong(
+                    "metadata-not-a-mapping",
+                    "`metadata` opens no mapping, so it reads back as null",
+                    "give it at least one `key: value` pair, or drop the key",
+                )
+            ]
+        out: list[Violation] = []
+        base = entries[0][0]
+        top = [(key, value) for indent, key, value in entries if indent <= base]
+        # A sequence is one wrong shape, not one per item: `- a` and `- b` say
+        # the same thing about the block, so reporting each would bury the
+        # entries that are genuinely worth a line of their own.
+        if loose := [value for key, value in top if not key]:
+            out.append(
+                wrong(
+                    "metadata-not-a-mapping",
+                    "`metadata` holds "
+                    + ", ".join(repr(v) for v in loose[:3])
+                    + (", ..." if len(loose) > 3 else "")
+                    + ", which declares no key",
+                    "every entry must be a `key: value` pair",
+                )
+            )
+        for key, value in top:
+            if not key:
+                continue
+            if not value:
+                out.append(
+                    wrong(
+                        "metadata-value-not-a-string",
+                        f"`metadata.{key}` has no scalar value",
+                        "give it a string; the spec allows no nested mappings, "
+                        "sequences, or nulls under `metadata`",
+                    )
+                )
+            elif problem := _not_a_string(value):
+                out.append(
+                    wrong(
+                        "metadata-value-not-a-string",
+                        f"`metadata.{key}` is {value!r}, which YAML reads as "
+                        f"{problem}, not a string",
+                        f'quote it -- `{key}: "{value}"`',
+                    )
+                )
+        return out
+
     # -- lookups -----------------------------------------------------------
 
     def field(self, name: str) -> Field:
@@ -274,6 +380,7 @@ class SkillSpec:
                         fix=f"shorten it: {spec_field.constraint}",
                     )
                 )
+        out.extend(self.check_metadata(source, front))
         declared = front.get("name")
         if declared:
             name_problem = self.name_problem(declared)
