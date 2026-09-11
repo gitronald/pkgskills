@@ -1,16 +1,16 @@
-# mli
+# pkgskills
 
 Model line interface: ship prompts inside a CLI package and install thin,
 version-stamped stubs where the harness reads them.
 
 A *host* is a Python package that bundles its Claude Code skills, rules, and
-subagent definitions as package data. `mli` gives that package three things:
+subagent definitions as package data. `pkgskills` gives that package three things:
 
 - a `skill` command that prints a bundled prompt on demand, so the text an
   agent reads always comes from the installed version and there is no copy to
   go stale;
 - an `install` command that materializes the files the harness must read off
-  disk, each stamped with the host and `mli` versions, the install mode, and
+  disk, each stamped with the host and `pkgskills` versions, the install mode, and
   the command that regenerates it;
 - an `install --check` that tells a current file from a drifted, missing, or
   foreign one and exits non-zero unless everything is `ok`.
@@ -27,7 +27,7 @@ which is how a body defers detail to a sidecar it can no longer reach by path.
 ## Install
 
 ```bash
-uv add mli
+uv add pkgskills
 ```
 
 Python 3.11 or later. The only runtime dependency is typer.
@@ -41,7 +41,7 @@ package directory by default) and declare them once:
 # yourtool/cli.py
 import typer
 
-from mli import Agent, Doc, Host, Rule, Skill, register
+from pkgskills import Agent, Doc, Host, Rule, Skill, register
 
 HOST = Host(
     dist="yourtool",  # distribution name, for the version lookup
@@ -65,7 +65,7 @@ register(app, HOST)  # adds skill, install, doc, rule, agent
 Each skill source is a spec-conformant skill directory — `<name>/SKILL.md`,
 holding the skill's `references/` and `scripts/` too — so the `prompts/` tree
 passes a skills linter as it stands. The `skills/` group above is a
-convenience, not a requirement: `mli` reads only the last two components of the
+convenience, not a requirement: `pkgskills` reads only the last two components of the
 path, so a host that ships nothing but skills can drop it and write
 `sources=("add/SKILL.md",)`. A flat `skills/add.md` still works and may be
 mixed in. `assert_spec_conformant(HOST)` reports anything misfiled, naming the
@@ -73,7 +73,7 @@ rule and the fix — see
 [docs/source-layout.md](docs/source-layout.md).
 
 A skill with one source lifts that file's frontmatter into the stub, adding
-the host and `mli` versions under `metadata` (see
+the host and `pkgskills` versions under `metadata` (see
 [docs/frontmatter.md](docs/frontmatter.md)). Its body is addressed by the
 *skill's* name — `<cli> skill use-solo` — so the source need not be named
 after it. A skill with several sources becomes a dispatcher: each source's
@@ -95,11 +95,11 @@ every body a host ships uses the token, set `render_cli=True` on the `Host`
 instead and leave the declarations alone; an explicit flag on a declaration
 still wins, so one body can opt back out.
 
-Register the host under the `mli.hosts` entry-point group and the `mli`
+Register the host under the `pkgskills.hosts` entry-point group and the `pkgskills`
 script can find it:
 
 ```toml
-[project.entry-points."mli.hosts"]
+[project.entry-points."pkgskills.hosts"]
 yourtool = "yourtool.cli:HOST"
 ```
 
@@ -148,13 +148,13 @@ HOST = Host(..., modes=("local",))
 The first mode listed is what a flagless `install` uses and what printed
 bodies render `{cli}` for before anything is installed, so the flag becomes
 optional rather than mandatory. Asking for the other mode (`--global` here) is
-an error naming the host's modes, not a silent redirect, and `mli.install`
+an error naming the host's modes, not a silent redirect, and `pkgskills.install`
 refuses it too. The checks that only make sense across two bases — a per-repo
 copy gone stale under a global install, a global skill shadowing a local stub
 — are skipped, since neither can happen.
 
 This is a per-host constraint. Which mode a *particular repository* expects is
-a separate question, and not one `mli` answers yet.
+a separate question, and not one `pkgskills` answers yet.
 
 ## Documents
 
@@ -176,10 +176,10 @@ install actually resolves to. Because it loads only when a step asks for it,
 the detail stays out of context until it is needed.
 
 A doc is not an artifact. It is never written, stamped, checked, or removed;
-`install`, `install --check`, and `mli check` do not know it exists, and the
+`install`, `install --check`, and `pkgskills check` do not know it exists, and the
 only place it has to ship is the wheel. Names may contain `/` so a host can
 namespace its documents by the skill that owns them; that is a convention, not
-something `mli` interprets. A doc's name and its source are independent, which
+something `pkgskills` interprets. A doc's name and its source are independent, which
 is what lets the file live inside that skill's own directory —
 `skills/add/references/fields.md` — so the shipped tree matches the spec's
 skill layout while the body still writes `{cli} doc add/fields`. Since nothing else ever reads a doc's `source`, a
@@ -187,8 +187,8 @@ missing one is rejected when the `Host` is constructed rather than when a model
 runs the command.
 
 A host that would rather keep a print command of its own can: build the body
-with `mli.render_prompt(text, host.invocation(mode))` and get `mode` from
-`mli.printing_mode(host, root)`, which is what `skill` and `doc` use — the
+with `pkgskills.render_prompt(text, host.invocation(mode))` and get `mode` from
+`pkgskills.printing_mode(host, root)`, which is what `skill` and `doc` use — the
 installed mode when there is one, the host's default before the first install.
 Resolving it any other way prints commands that do not run.
 
@@ -198,7 +198,7 @@ Every generated file carries one HTML comment after its frontmatter (or on
 the first line when there is none):
 
 ```
-<!-- generated by yourtool 1.4.0 via mli 0.1.0 (mode=local); do not edit. Regenerate with: uv run yourtool install --local --force -->
+<!-- generated by yourtool 1.4.0 via pkgskills 0.1.0 (mode=local); do not edit. Regenerate with: uv run yourtool install --local --force -->
 ```
 
 A skill stub also declares both versions as frontmatter `metadata`, the field
@@ -244,19 +244,19 @@ other repository.
 
 `Host.after_install` receives an `InstallReport` (mode, root, and the paths
 written, removed, and shadowed) once every artifact is on disk. Use it for
-follow-up such as wiring a pre-commit hook; shell out through `mli.run(root,
+follow-up such as wiring a pre-commit hook; shell out through `pkgskills.run(root,
 argv)`, which pins the call to `root` and strips `GIT_DIR` and its siblings, so
 an inherited location variable cannot aim a commit at another repository.
 
 `Host.extra_checks` is the read side of the same idea. Called with `(host,
 root, mode)` during `install --check`, it returns `ExtraCheck(label, status,
-gates, note)` rows for per-clone state `mli` cannot see. They print in the same
+gates, note)` rows for per-clone state `pkgskills` cannot see. They print in the same
 table, and only the rows that say they gate fold into the exit code — a hook
 that is not registered in this clone deserves a line without calling a correct
 install broken.
 
 Hosts that need extra flags keep their own `install` command and call
-`mli.install(host, root, mode, force=...)` and `mli.check(host, root, mode)`
+`pkgskills.install(host, root, mode, force=...)` and `pkgskills.check(host, root, mode)`
 directly.
 
 ## Automation levels
@@ -289,22 +289,22 @@ with `--global`). The merge is additive and never downgrades: a rule already on
 is a no-op, and an apply with nothing to add leaves the file untouched. So the
 command is safe to run blind.
 
-## The `mli` script
+## The `pkgskills` script
 
 ```bash
-mli hosts    # every host registered in this environment
-mli check    # run each host's drift check from the current repository
+pkgskills hosts    # every host registered in this environment
+pkgskills check    # run each host's drift check from the current repository
 ```
 
 ## Testing a host
 
-`mli.testing.sandbox(tmp_path, monkeypatch)` pins `$HOME` and the working
+`pkgskills.testing.sandbox(tmp_path, monkeypatch)` pins `$HOME` and the working
 directory to fresh directories, so a suite never touches the developer's real
-`~/.claude`. `mli.testing.wheel_files(project_root, out_dir)` builds a wheel
+`~/.claude`. `pkgskills.testing.wheel_files(project_root, out_dir)` builds a wheel
 in-process and lists its contents, which is the only way to prove the prompts
 ship: an editable install resolves package data straight to the checkout.
 
-`mli.testing.assert_spec_conformant(host)` checks every skill the host ships
+`pkgskills.testing.assert_spec_conformant(host)` checks every skill the host ships
 against the [Agent Skills specification](https://agentskills.io/specification):
 that each source is stored as `<name>/SKILL.md`, that its frontmatter carries a
 `name` matching the directory and satisfying the spec's grammar, that a
@@ -314,8 +314,8 @@ runs past its limit. Every
 violation is reported at once, each naming the rule it breaks and the fix — see
 [docs/source-layout.md](docs/source-layout.md#checking-a-host-against-the-spec).
 
-`mli.testing.assert_prompt_commands(host, app)` closes the loop the whole
-pattern exists for. `mli` renders `{cli}`, but nothing otherwise checks that
+`pkgskills.testing.assert_prompt_commands(host, app)` closes the loop the whole
+pattern exists for. `pkgskills` renders `{cli}`, but nothing otherwise checks that
 what follows it is a command the host actually has, and prose about a CLI goes
 stale. The helper scans every skill body, doc, rule, and agent for `{cli} ...`
 mentions, resolves each command path against the typer app, and resolves the
@@ -332,7 +332,7 @@ def test_prompts_are_well_formed() -> None:
 A mention counts when it is written as code — inside backticks or a fenced
 block. Prose that names the bare placeholder ("`{cli}` is substituted per
 mode") is talking *about* the token, so the words after it are not read as a
-command path. `mli.testing.prompt_commands(host)` returns the same mentions as
+command path. `pkgskills.testing.prompt_commands(host)` returns the same mentions as
 `PromptCommand` records (source, line, command path, declared argument) for a
 suite that wants to assert something else about them.
 
