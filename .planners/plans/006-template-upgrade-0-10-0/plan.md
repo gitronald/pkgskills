@@ -55,3 +55,20 @@ scripts rows.
 `uv sync --all-groups`, `ruff check`, `ruff format --check`, `pyrefly check`,
 `pre-commit run --all-files`, and `pytest` must pass, and `uv build` must still
 produce an sdist and a wheel that hold only the package and top-level docs.
+
+## Log
+
+- The CI workflows and `dependabot.yml` diverged only by carrying an older
+  template revision, so they were replaced outright. The `setup-uv` `v10.0.1`
+  SHA was re-resolved from the GitHub API and matched the template's pin.
+- No file fell into the ask-first class: every repo-side divergence was a pure
+  addition the template does not touch, so each merge kept the repo's version.
+- Dependabot alerts were off; turned on and verified (204). Security updates
+  were already off.
+- Reviewed what the dists ship. The wheel holds only `pkgskills/` and
+  `.dist-info`. The sdist adds `README.md`, `CHANGELOG.md`, `LICENSE`, and
+  hatchling's force-included `pyproject.toml`, `PKG-INFO`, and `.gitignore`,
+  which cannot be excluded. `pkgskills/testing.py` stays: the README documents
+  it as public API for host packages' tests. Nothing further to exclude.
+- All checks passed (229 tests, 98.17% coverage), so the stamp was written
+  as `0.10.0`.
