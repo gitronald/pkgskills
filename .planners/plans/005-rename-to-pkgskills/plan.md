@@ -1,8 +1,8 @@
 ---
 id: 5
 slug: rename-to-pkgskills
-status: draft
-branch:
+status: active
+branch: feature/rename-to-pkgskills
 created: 2026-09-11T09:53:29-07:00
 concluded:
 pr:
