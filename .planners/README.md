@@ -2,6 +2,7 @@
 
 | # | Plan | Status | Concluded | PR |
 |---|---|---|---|---|
+| 005 | [Rename the package to pkgskills](plans/005-rename-to-pkgskills/plan.md) | draft | — | — |
 | 004 | [Decide whether a stub carries a per-skill version and a host-namespaced key](plans/004-per-skill-and-host-versions/plan.md) | draft | — | — |
 | 003 | [Store skill sources as spec-conformant SKILL.md directories](plans/003-spec-conformant-skill-sources/plan.md) | done | 2026-09-09 23:13 PT | — |
 | 000 | [Support hosts with several single-source skills and print-only docs](plans/000-multi-skill-hosts/plan.md) | done | 2026-09-09 22:12 PT | — |
