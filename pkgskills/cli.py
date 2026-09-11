@@ -446,6 +446,8 @@ def discover() -> list[Host]:
     return hosts
 
 
+NO_HOSTS = f"no hosts registered under the {ENTRY_POINT_GROUP} entry-point group"
+
 pkgskills_app = typer.Typer(help="Cross-host view of installed prompt packages.")
 
 
@@ -468,7 +470,7 @@ def _hosts() -> None:
     """List the hosts registered in this environment."""
     found = discover()
     if not found:
-        typer.echo("no hosts registered under the pkgskills.hosts entry-point group")
+        typer.echo(NO_HOSTS)
         return
     for host in found:
         kinds = ", ".join(
@@ -484,7 +486,7 @@ def _check() -> None:
     """Run every registered host's drift check from the current repo."""
     found = discover()
     if not found:
-        typer.echo("no hosts registered under the pkgskills.hosts entry-point group")
+        typer.echo(NO_HOSTS)
         raise typer.Exit(1)
     ok = True
     for host in found:

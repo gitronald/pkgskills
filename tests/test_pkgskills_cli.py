@@ -31,7 +31,7 @@ def test_hosts_with_nothing_registered(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cli, "discover", list)
     result = runner.invoke(cli.pkgskills_app, ["hosts"])
     assert result.exit_code == 0
-    assert "no hosts registered" in result.output
+    assert f"no hosts registered under the {cli.ENTRY_POINT_GROUP}" in result.output
 
 
 def test_discover_loads_entry_points(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -66,4 +66,6 @@ def test_check_runs_every_host(box: Sandbox, monkeypatch: pytest.MonkeyPatch) ->
 
 def test_check_with_nothing_registered(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cli, "discover", list)
-    assert runner.invoke(cli.pkgskills_app, ["check"]).exit_code == 1
+    result = runner.invoke(cli.pkgskills_app, ["check"])
+    assert result.exit_code == 1
+    assert f"no hosts registered under the {cli.ENTRY_POINT_GROUP}" in result.output
