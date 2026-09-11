@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-11
+
 ### Changed
 
 - Renamed the package from `mli` to `pkgskills`, since PyPI refuses `mli` as
