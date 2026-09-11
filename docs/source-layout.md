@@ -3,9 +3,9 @@
 How a host arranges the prompt files it ships, and what `mli` reads out of
 their paths.
 
-The [Agent Skills specification](agentskills-specification.md) makes a skill a
-*directory*: a `SKILL.md` entry file whose frontmatter `name` must match the
-parent directory's name. The installed side has always satisfied that —
+The [Agent Skills specification](https://agentskills.io/specification) makes a
+skill a *directory*: a `SKILL.md` entry file whose frontmatter `name` must
+match the parent directory's name. The installed side has always satisfied that —
 `install` writes `.claude/skills/{name}/SKILL.md` and both the directory and
 the frontmatter derive from the same `Skill.name`. This page is about the other
 side: the sources inside the host package.

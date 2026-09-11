@@ -1,6 +1,6 @@
 """The Agent Skills specification, encoded as data and as a check.
 
-``docs/agentskills-specification.md`` is the prose; this module is the part of
+``https://agentskills.io/specification`` is the prose; this module is the part of
 it ``mli`` can enforce. Everything the spec fixes — the entry filename, the
 directories a skill may hold, the frontmatter fields and their limits, the
 ``name`` grammar and its tie to the parent directory — lives on

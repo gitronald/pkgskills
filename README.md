@@ -305,7 +305,7 @@ in-process and lists its contents, which is the only way to prove the prompts
 ship: an editable install resolves package data straight to the checkout.
 
 `mli.testing.assert_spec_conformant(host)` checks every skill the host ships
-against the [Agent Skills specification](docs/agentskills-specification.md):
+against the [Agent Skills specification](https://agentskills.io/specification):
 that each source is stored as `<name>/SKILL.md`, that its frontmatter carries a
 `name` matching the directory and satisfying the spec's grammar, that a
 `description` is present, that `metadata` is the map of strings the spec calls

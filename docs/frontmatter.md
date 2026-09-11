@@ -3,7 +3,7 @@
 What `mli` writes into the frontmatter of a generated skill stub, and why.
 
 The shape is fixed by the [Agent Skills
-specification](agentskills-specification.md), which defines the fields and
+specification](https://agentskills.io/specification), which defines the fields and
 reserves `metadata` for properties it does not itself define, recommending
 reasonably unique key names.
 
