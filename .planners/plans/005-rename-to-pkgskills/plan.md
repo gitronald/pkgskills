@@ -5,7 +5,7 @@ status: active
 branch: feature/rename-to-pkgskills
 created: 2026-09-11T09:53:29-07:00
 concluded:
-pr:
+pr: https://github.com/gitronald/pkgskills/pull/1
 ---
 
 # Rename the package to pkgskills
