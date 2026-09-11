@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `metadata.pkgskills-version`, so every stub installed under the old name
   reports drift once; reinstall it with `--force`.
 
+### Fixed
+
+- `Host.permissions` defaults through a factory, so importing the package no
+  longer fails on Python 3.11-3.13 with a mutable-default dataclass error.
+
 ## [0.1.0] - 2026-09-09
 
 ### Added
