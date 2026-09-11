@@ -27,7 +27,7 @@ body that opts out) is what `examplehost` covers.
 
 from __future__ import annotations
 
-from mli import Doc, Host, Skill, typer_app
+from pkgskills import Doc, Host, Skill, typer_app
 
 HOST = Host(
     dist="multihost",

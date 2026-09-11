@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import typer
 
-from mli import Agent, Host, Rule, Skill, register
+from pkgskills import Agent, Host, Rule, Skill, register
 
 HOST = Host(
     dist="examplehost",

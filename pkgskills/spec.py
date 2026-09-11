@@ -1,7 +1,7 @@
 """The Agent Skills specification, encoded as data and as a check.
 
 ``https://agentskills.io/specification`` is the prose; this module is the part of
-it ``mli`` can enforce. Everything the spec fixes — the entry filename, the
+it ``pkgskills`` can enforce. Everything the spec fixes — the entry filename, the
 directories a skill may hold, the frontmatter fields and their limits, the
 ``name`` grammar and its tie to the parent directory — lives on
 :class:`SkillSpec`, and :data:`SPEC` is the singleton the rest of the package
@@ -15,13 +15,13 @@ renderer happened to touch it first. :meth:`SkillSpec.check_host` collects
 *every* violation rather than stopping at the first, because a source that is
 wrong in one way is usually wrong in two.
 
-``metadata`` is checked too, though :func:`mli.frontmatter.parse_fields`
+``metadata`` is checked too, though :func:`pkgskills.frontmatter.parse_fields`
 flattens it to an empty string: the spec calls it *a map from string keys to
-string values*, and :func:`mli.frontmatter.find_block` hands back the raw
+string values*, and :func:`pkgskills.frontmatter.find_block` hands back the raw
 mapping so the map-ness can be inspected. The rule that earns its keep is the
 value one — the spec's own example writes ``version: "1.0"`` with the quotes
-because unquoted it is a float, and ``mli`` quotes the two keys it writes there
-(:mod:`mli.stamp`) for exactly that reason.
+because unquoted it is a float, and ``pkgskills`` quotes the two keys it writes there
+(:mod:`pkgskills.stamp`) for exactly that reason.
 
 What is *not* checked is the spec's recommendations, as against its
 constraints: that a description name what the skill does *and* when to use it,
@@ -38,10 +38,10 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
-from mli.frontmatter import Block, Frontmatter, find_block, split_frontmatter
+from pkgskills.frontmatter import Block, Frontmatter, find_block, split_frontmatter
 
 if TYPE_CHECKING:
-    from mli.host import Host, Skill
+    from pkgskills.host import Host, Skill
 
 #: The reference validator the spec points at, named in the repair advice.
 VALIDATOR = "skills-ref validate"
@@ -227,7 +227,7 @@ class SkillSpec:
         """Violations in the ``metadata`` block itself, already located.
 
         Split from :meth:`check_metadata` so a caller holding the block —
-        :func:`mli.rendering.with_metadata` splices into it — can ask what is
+        :func:`pkgskills.rendering.with_metadata` splices into it — can ask what is
         wrong with it without re-finding it.
         """
 
@@ -323,7 +323,7 @@ class SkillSpec:
     def check_layout(self, source: str) -> list[Violation]:
         """Violations in where a source is stored.
 
-        A flat source is a departure from the spec but not an error ``mli``
+        A flat source is a departure from the spec but not an error ``pkgskills``
         raises on: hosts predating the layout keep working, and the rule slug
         lets a caller decide how loudly to say so.
         """
@@ -356,7 +356,7 @@ class SkillSpec:
         """Violations in an already-split frontmatter block.
 
         The parsed form is the parameter because a caller that needs the block
-        *and* its violations — :func:`mli.rendering.stub_frontmatter` renders
+        *and* its violations — :func:`pkgskills.rendering.stub_frontmatter` renders
         the one and reports the other — would otherwise split the same text
         twice.
         """
@@ -453,7 +453,7 @@ class SkillSpec:
         return [v for skill in host.skills for v in self.check_skill(host, skill)]
 
 
-#: The spec as written, and what every caller in ``mli`` uses.
+#: The spec as written, and what every caller in ``pkgskills`` uses.
 SPEC = SkillSpec()
 
 

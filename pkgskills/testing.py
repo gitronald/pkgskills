@@ -1,9 +1,9 @@
 """Helpers for host test suites.
 
-Everything ``mli`` does is relative to two roots, the home directory and the
+Everything ``pkgskills`` does is relative to two roots, the home directory and the
 repository root, and both are discovered from the environment. Tests that
 forget to pin them read and write the developer's real ``~/.claude`` tree.
-``sandbox`` pins both in one call, and ``mli_sandbox`` is the same as a pytest
+``sandbox`` pins both in one call, and ``pkgskills_sandbox`` is the same as a pytest
 fixture for suites that import it into their ``conftest``.
 
 ``wheel_files`` builds a real wheel in-process, because an editable install
@@ -11,7 +11,7 @@ resolves package data straight to the checkout and passes whether or not the
 build ships it.
 
 ``prompt_commands`` and ``assert_prompt_commands`` close the loop the whole
-pattern exists for: prose about a CLI goes stale. ``mli`` renders ``{cli}``
+pattern exists for: prose about a CLI goes stale. ``pkgskills`` renders ``{cli}``
 but nothing otherwise checks that what follows it is a command the host
 actually has.
 """
@@ -25,9 +25,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from mli.harness import Kind
-from mli.host import CLI_TOKEN, Host, Skill
-from mli.spec import SPEC, VALIDATOR, report
+from pkgskills.harness import Kind
+from pkgskills.host import CLI_TOKEN, Host, Skill
+from pkgskills.spec import SPEC, VALIDATOR, report
 
 if TYPE_CHECKING:
     import pytest
@@ -288,12 +288,14 @@ def assert_prompt_commands(host: Host, app: typer.Typer) -> None:
 def __getattr__(name: str) -> object:
     # The fixture is created on first access so importing this module never
     # requires pytest.
-    if name == "mli_sandbox":
+    if name == "pkgskills_sandbox":
         import pytest as _pytest
 
         @_pytest.fixture
-        def mli_sandbox(tmp_path: Path, monkeypatch: _pytest.MonkeyPatch) -> Sandbox:
+        def pkgskills_sandbox(
+            tmp_path: Path, monkeypatch: _pytest.MonkeyPatch
+        ) -> Sandbox:
             return sandbox(tmp_path, monkeypatch)
 
-        return mli_sandbox
+        return pkgskills_sandbox
     raise AttributeError(name)

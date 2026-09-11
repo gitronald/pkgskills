@@ -122,7 +122,7 @@ class Block:
 
     :func:`parse_fields` flattens a nested mapping to an empty string, because
     no prompt kind needs to *read* one. Two callers need to inspect one anyway
-    — ``mli`` splices its own version keys into ``metadata``, and the spec
+    — ``pkgskills`` splices its own version keys into ``metadata``, and the spec
     check asks whether that mapping is the string-to-string map the
     specification requires — so the raw lines are offered here rather than
     walked separately in each place.

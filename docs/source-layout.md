@@ -1,6 +1,6 @@
 # Source layout
 
-How a host arranges the prompt files it ships, and what `mli` reads out of
+How a host arranges the prompt files it ships, and what `pkgskills` reads out of
 their paths.
 
 The [Agent Skills specification](https://agentskills.io/specification) makes a
@@ -59,9 +59,10 @@ to no skill has nowhere to live either, and stays wherever the host puts it.
 
 ### The `skills/` group is optional
 
-`mli` never looks for a `skills/` segment; a source's path matters only in that
-its last two components are `<name>/SKILL.md`. The group earns its keep when a
-host ships rules or agents too, and it is noise when a host ships only skills:
+`pkgskills` never looks for a `skills/` segment; a source's path matters only in
+that its last two components are `<name>/SKILL.md`. The group earns its keep
+when a host ships rules or agents too, and it is noise when a host ships only
+skills:
 
 ```
 yourtool/
@@ -81,7 +82,7 @@ Both arrangements are conformant. Pick whichever leaves the tree readable.
 
 ## How a source gets its name
 
-`mli` needs a name per source: a dispatcher advertises one subcommand per
+`pkgskills` needs a name per source: a dispatcher advertises one subcommand per
 source, and `<cli> skill <subcommand>` routes back to the body behind it.
 
 That name is the source's **parent directory** when the file is named exactly
@@ -99,7 +100,7 @@ skill's own name.
 Nothing forces the migration. A host that ships `skills/tidy.md` keeps working
 exactly as before — the stem names it — and a host may mix the two layouts.
 The only thing the flat layout costs is spec conformance of the source tree
-itself, which matters when a linter is pointed at the package. `mli`'s own
+itself, which matters when a linter is pointed at the package. `pkgskills`'s own
 exemplary fixture hosts are all conformant, since what they ship is what a host
 author copies; the flat layout lives in `brokenhost`, the fixture whose whole
 purpose is to be wrong, and in tests that declare it inline.
@@ -128,11 +129,11 @@ by the skill that owns them (`add/fields`).
 
 ## Checking a host against the spec
 
-`mli.spec` holds the specification as data — the entry filename, the optional
-directories, every frontmatter field with its limit, and the `name` grammar —
-on a `SkillSpec` dataclass, with `mli.SPEC` as the instance everything uses.
-Holding it as data rather than as scattered conditionals is what lets a failure
-say which rule broke and what to do:
+`pkgskills.spec` holds the specification as data — the entry filename, the
+optional directories, every frontmatter field with its limit, and the `name`
+grammar — on a `SkillSpec` dataclass, with `pkgskills.SPEC` as the instance
+everything uses. Holding it as data rather than as scattered conditionals is
+what lets a failure say which rule broke and what to do:
 
 ```
 brokenhost ships skills that do not follow the Agent Skills specification
@@ -155,14 +156,14 @@ Three surfaces report it, at the three moments a problem can be caught:
 Construction deliberately reads no files: a host is declared at import time, so
 walking the prompt package there would put a file scan on every invocation of
 the CLI. `Host.check_spec()` returns the full list of `Violation`s for a caller
-that wants them as data, and `mli.testing.assert_spec_conformant(host)` is the
-one-line form for a host's own test suite — the counterpart to
+that wants them as data, and `pkgskills.testing.assert_spec_conformant(host)` is
+the one-line form for a host's own test suite — the counterpart to
 `assert_prompt_commands`, and there for the same reason: what a host bundles is
 read by a harness and by whatever linter a consumer points at the package, and
 neither of those is running while the host's suite is.
 
 ```python
-from mli.testing import assert_prompt_commands, assert_spec_conformant
+from pkgskills.testing import assert_prompt_commands, assert_spec_conformant
 
 
 def test_prompts_are_well_formed() -> None:
@@ -189,10 +190,10 @@ metadata:
     team: platform
 ```
 
-`mli.frontmatter.parse_fields` flattens a nested block, but
-`mli.frontmatter.find_block` hands back the raw mapping, which is what the
-check reads. It is the same helper `mli` uses to splice its own two version
-keys into `metadata` — both of which it quotes, for the reason above.
+`pkgskills.frontmatter.parse_fields` flattens a nested block, but
+`pkgskills.frontmatter.find_block` hands back the raw mapping, which is what the
+check reads. It is the same helper `pkgskills` uses to splice its own two
+version keys into `metadata` — both of which it quotes, for the reason above.
 
 What is *not* checked is the spec's **recommendations**, as against its
 constraints: that a description say what a skill does *and* when to use it,
@@ -203,5 +204,5 @@ style the specification does not. The reference validator the spec ships,
 
 ## Related
 
-- [Frontmatter](frontmatter.md) — what `mli` writes into a generated stub's
-  frontmatter, and the rules for a source prompt's own.
+- [Frontmatter](frontmatter.md) — what `pkgskills` writes into a generated
+  stub's frontmatter, and the rules for a source prompt's own.

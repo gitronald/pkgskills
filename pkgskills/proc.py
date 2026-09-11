@@ -1,7 +1,7 @@
 """Subprocess calls pinned to a repo root, immune to git's location variables.
 
-``mli`` itself runs no subprocesses. :attr:`Host.after_install
-<mli.host.Host.after_install>` exists so a host can, and the motivating case —
+``pkgskills`` itself runs no subprocesses. :attr:`Host.after_install
+<pkgskills.host.Host.after_install>` exists so a host can, and the motivating case —
 wiring a pre-commit hook — shells out to git. Every host that does hits the same
 hazard, so the guard belongs here rather than in each of them.
 
@@ -17,7 +17,7 @@ where an earlier command left the variable set inherits it. Nothing warns.
 repository is named by ``root``, and only by ``root``. Honoring the variable would
 put the files in one repo and the commit in another, which is the bug itself.
 
-:func:`mli.artifacts.find_repo_root` has the matching posture on the read side: it
+:func:`pkgskills.artifacts.find_repo_root` has the matching posture on the read side: it
 walks the filesystem for ``.git`` rather than asking git where it is. Between them,
 neither the location a host reads nor the repository it writes to can be moved by
 the environment.

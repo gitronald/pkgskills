@@ -2,9 +2,9 @@
 
 A *host* is a package that bundles prompts as package data and exposes them
 through its own CLI. It declares itself once, as a :class:`Host`, and mounts
-the shared commands with :func:`mli.cli.register`. Everything ``mli`` renders,
-writes, or checks derives from that declaration plus the installed package
-version, so nothing about the host is restated anywhere else.
+the shared commands with :func:`pkgskills.cli.register`. Everything
+``pkgskills`` renders, writes, or checks derives from that declaration plus the
+installed package version, so nothing about the host is restated anywhere else.
 
 Artifacts come in three kinds. A :class:`Skill` is materialized as a thin
 *stub* that tells the model to print the real instructions with
@@ -31,14 +31,14 @@ from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Literal
 
-from mli.harness import CLAUDE_CODE, Harness, Kind
-from mli.permissions import LEVELS, Level
-from mli.spec import SPEC, SpecError, Violation
+from pkgskills.harness import CLAUDE_CODE, Harness, Kind
+from pkgskills.permissions import LEVELS, Level
+from pkgskills.spec import SPEC, SpecError, Violation
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from mli.artifacts import InstallReport
+    from pkgskills.artifacts import InstallReport
 
 Mode = Literal["global", "local"]
 MODES: tuple[Mode, ...] = ("global", "local")
@@ -167,7 +167,7 @@ Declared = Artifact | Doc
 
 @dataclass(frozen=True)
 class ExtraCheck:
-    """A host-specific row in the check table, over state ``mli`` cannot see.
+    """A host-specific row in the check table, over state ``pkgskills`` cannot see.
 
     Some of what a host must surface is per-clone, and a correct consumer may
     legitimately lack it — a registered pre-commit hook is the canonical case.
@@ -176,7 +176,7 @@ class ExtraCheck:
     correctly installed consumer broken. Hence ``gates``, which lets a row
     report without gating.
 
-    ``status`` is the host's own vocabulary, not :data:`mli.artifacts.Status`.
+    ``status`` is the host's own vocabulary, not :data:`pkgskills.artifacts.Status`.
     Two rules earned the hard way:
 
     * **Check the artifact, not a proxy for it.** Ask whether *this* host's
@@ -228,11 +228,11 @@ class Host:
       host-specific follow-up such as wiring a pre-commit hook.
     * ``extra_checks`` is its symmetric counterpart on the read side: called
       with ``(host, root, mode)`` during ``install --check``, it returns the
-      rows for state ``mli`` cannot derive, so a host with extra state keeps
+      rows for state ``pkgskills`` cannot derive, so a host with extra state keeps
       the shared table instead of writing its own ``install`` command.
-    * ``permissions`` maps each :class:`~mli.permissions.Level` to the Bash
+    * ``permissions`` maps each :class:`~pkgskills.permissions.Level` to the Bash
       allow-rules that level *adds* over the one below it; declaring any of
-      them mounts the ``permissions`` command. See :mod:`mli.permissions` for
+      them mounts the ``permissions`` command. See :mod:`pkgskills.permissions` for
       what the ladder's rungs mean.
     """
 
@@ -359,7 +359,7 @@ class Host:
     def supports_mode(self, mode: Mode) -> bool:
         """True when ``mode`` is one this host installs in.
 
-        Spelled out rather than ``supports`` because :class:`~mli.harness.Harness`
+        Spelled out rather than ``supports`` because :class:`~pkgskills.harness.Harness`
         already has one, over artifact kinds; the two answer different questions.
         """
         return mode in self.modes
@@ -412,7 +412,7 @@ class Host:
 
         Reads each source, so it is a deliberate call rather than something
         :meth:`validate` does on import. A host's own test suite is where this
-        belongs — see :func:`mli.testing.assert_spec_conformant`.
+        belongs — see :func:`pkgskills.testing.assert_spec_conformant`.
         """
         return SPEC.check_host(self)
 
