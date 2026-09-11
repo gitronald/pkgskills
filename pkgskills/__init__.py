@@ -1,14 +1,14 @@
-"""mli: the model line interface.
+"""pkgskills: skills that ship inside a CLI's own package.
 
 A package that ships prompts as package data declares itself as a
-:class:`Host`, and ``mli`` gives it a ``skill`` command that prints those
+:class:`Host`, and ``pkgskills`` gives it a ``skill`` command that prints those
 prompts on demand, an ``install`` command that materializes thin,
 version-stamped files where the harness reads them, and a drift check that
 tells the two apart. A :class:`Doc` is the same print-on-demand delivery for a
 reference document a body loads mid-step, with nothing installed at all.
 """
 
-from mli.artifacts import (
+from pkgskills.artifacts import (
     Check,
     ForeignArtifactError,
     InstallReport,
@@ -19,14 +19,14 @@ from mli.artifacts import (
     installed_mode,
     printing_mode,
 )
-from mli.cli import register, typer_app
-from mli.frontmatter import Block, Frontmatter, find_block, split_frontmatter
-from mli.harness import CLAUDE_CODE, Harness, Kind
-from mli.host import Agent, Artifact, Doc, ExtraCheck, Host, Mode, Rule, Skill
-from mli.permissions import Level
-from mli.proc import LOCATION_ENV, run
-from mli.rendering import render, render_prompt
-from mli.spec import SPEC, Field, SkillSpec, SpecError, Violation
+from pkgskills.cli import register, typer_app
+from pkgskills.frontmatter import Block, Frontmatter, find_block, split_frontmatter
+from pkgskills.harness import CLAUDE_CODE, Harness, Kind
+from pkgskills.host import Agent, Artifact, Doc, ExtraCheck, Host, Mode, Rule, Skill
+from pkgskills.permissions import Level
+from pkgskills.proc import LOCATION_ENV, run
+from pkgskills.rendering import render, render_prompt
+from pkgskills.spec import SPEC, Field, SkillSpec, SpecError, Violation
 
 __all__ = [
     "CLAUDE_CODE",

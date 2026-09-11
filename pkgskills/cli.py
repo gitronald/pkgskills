@@ -3,11 +3,11 @@
 A host calls :func:`register` once and gains ``skill``, ``install``, and, when
 it declares them, ``doc``, ``rule``, ``agent``, and ``permissions``. Hosts with
 extra needs keep writing
-their own commands on top of :mod:`mli.artifacts`; the grammar here is the part
+their own commands on top of :mod:`pkgskills.artifacts`; the grammar here is the part
 that should read the same across every tool.
 
-The ``mli`` console script is the cross-host view: it discovers installed
-hosts through the ``mli.hosts`` entry-point group and checks them all.
+The ``pkgskills`` console script is the cross-host view: it discovers installed
+hosts through the ``pkgskills.hosts`` entry-point group and checks them all.
 """
 
 from __future__ import annotations
@@ -19,14 +19,14 @@ from pathlib import Path
 
 import typer
 
-from mli import artifacts as install_mod
-from mli import permissions as perms
-from mli.harness import Kind
-from mli.host import Agent, Host, Mode, Rule
-from mli.rendering import doc_body, render_copy, skill_body
-from mli.stamp import mli_version
+from pkgskills import artifacts as install_mod
+from pkgskills import permissions as perms
+from pkgskills.harness import Kind
+from pkgskills.host import Agent, Host, Mode, Rule
+from pkgskills.rendering import doc_body, render_copy, skill_body
+from pkgskills.stamp import pkgskills_version
 
-ENTRY_POINT_GROUP = "mli.hosts"
+ENTRY_POINT_GROUP = "pkgskills.hosts"
 
 
 def _err(message: str) -> None:
@@ -166,12 +166,12 @@ def _relative(path: Path, root: Path) -> Path:
 def run_check(host: Host, root: Path, mode: Mode | None) -> bool:
     """Print the drift table for ``host`` and return whether all rows are ok.
 
-    The host's own :attr:`Host.extra_checks <mli.host.Host.extra_checks>` rows
+    The host's own :attr:`Host.extra_checks <pkgskills.host.Host.extra_checks>` rows
     print in the same table; only the ones that say they gate fold into the
     verdict.
     """
     typer.echo(
-        f"{host.dist} {host.resolved_version()} via mli {mli_version()}, "
+        f"{host.dist} {host.resolved_version()} via pkgskills {pkgskills_version()}, "
         f"harness {host.harness.name}"
     )
     rows = install_mod.check(host, root, mode)
@@ -431,11 +431,11 @@ def typer_app(host: Host) -> typer.Typer:
     return app
 
 
-# -- the cross-host `mli` script -------------------------------------------
+# -- the cross-host `pkgskills` script -------------------------------------------
 
 
 def discover() -> list[Host]:
-    """Every host registered under the ``mli.hosts`` entry-point group."""
+    """Every host registered under the ``pkgskills.hosts`` entry-point group."""
     from importlib import metadata
 
     hosts: list[Host] = []
@@ -446,27 +446,31 @@ def discover() -> list[Host]:
     return hosts
 
 
-mli_app = typer.Typer(help="Cross-host view of installed prompt packages.")
+NO_HOSTS = f"no hosts registered under the {ENTRY_POINT_GROUP} entry-point group"
+
+pkgskills_app = typer.Typer(help="Cross-host view of installed prompt packages.")
 
 
-@mli_app.callback(invoke_without_command=True)
+@pkgskills_app.callback(invoke_without_command=True)
 def _root(
     ctx: typer.Context,
-    version: bool = typer.Option(False, "--version", help="Print the mli version."),
+    version: bool = typer.Option(
+        False, "--version", help="Print the pkgskills version."
+    ),
 ) -> None:
     if version:
-        typer.echo(f"mli {mli_version()}")
+        typer.echo(f"pkgskills {pkgskills_version()}")
         raise typer.Exit()
     if ctx.invoked_subcommand is None:
         typer.echo(ctx.get_help())
 
 
-@mli_app.command("hosts")
+@pkgskills_app.command("hosts")
 def _hosts() -> None:
     """List the hosts registered in this environment."""
     found = discover()
     if not found:
-        typer.echo("no hosts registered under the mli.hosts entry-point group")
+        typer.echo(NO_HOSTS)
         return
     for host in found:
         kinds = ", ".join(
@@ -477,12 +481,12 @@ def _hosts() -> None:
         typer.echo(f"{host.dist} {host.resolved_version()}  ({kinds})")
 
 
-@mli_app.command("check")
+@pkgskills_app.command("check")
 def _check() -> None:
     """Run every registered host's drift check from the current repo."""
     found = discover()
     if not found:
-        typer.echo("no hosts registered under the mli.hosts entry-point group")
+        typer.echo(NO_HOSTS)
         raise typer.Exit(1)
     ok = True
     for host in found:

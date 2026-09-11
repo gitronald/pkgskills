@@ -1,7 +1,7 @@
 [project]
-name = "mli"
-version = "0.1.0"
-description = "Model line interface: ship prompts inside a CLI package and install thin, version-stamped stubs where the harness reads them."
+name = "pkgskills"
+version = "0.2.0"
+description = "Ship prompts inside a CLI package and install thin, version-stamped stubs where the harness reads them."
 authors = [
     {name = "gitronald", email = "gitronald@users.noreply.github.com"}
 ]
@@ -13,10 +13,17 @@ readme = "README.md"
 license = "MIT"
 
 [project.urls]
-repository = "https://github.com/gitronald/mli"
+repository = "https://github.com/gitronald/pkgskills"
 
 [project.scripts]
-mli = "mli.cli:mli_app"
+pkgskills = "pkgskills.cli:pkgskills_app"
+
+# Which proj-template release this repo was scaffolded from, stamped by
+# proj-init.sh and re-stamped by the install-template skill on upgrade. Inert to
+# consumers: build backends translate only [project], so this never reaches the
+# wheel or the PyPI metadata. Read it to audit template drift across repos.
+[tool.proj-template]
+version = "0.10.0"
 
 [build-system]
 requires = ["hatchling"]
@@ -27,8 +34,15 @@ build-backend = "hatchling.build"
 # filenames don't glob at every depth — this keeps internal plan files
 # (.planners/), guides (docs/), the .claude/ holder, tests, and tooling out of
 # the published sdist.
+#
+# Not exhaustive: hatchling force-includes pyproject.toml, PKG-INFO, and
+# .gitignore in every sdist regardless of this list, and neither `exclude` nor
+# `ignore-vcs` drops them. Wheels are unaffected — they carry only the package
+# and .dist-info — so treat anything in this file as sdist-visible and keep
+# secrets out of it. Adding a path here does not make it importable; wheel
+# contents come from the package dir, not this list.
 only-include = [
-    "/mli",
+    "/pkgskills",
     "/README.md",
     "/CHANGELOG.md",
     "/LICENSE",
@@ -78,7 +92,7 @@ pythonpath = ["tests/fixtures"]
 addopts = "--cov --cov-report=term-missing"
 
 [tool.coverage.run]
-source = ["mli"]
+source = ["pkgskills"]
 branch = true
 
 [tool.coverage.report]

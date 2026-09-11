@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from mli.testing import Sandbox, sandbox
+from pkgskills.testing import Sandbox, sandbox
 
 
 @pytest.fixture

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from mli.frontmatter import (
+from pkgskills.frontmatter import (
     body_only,
     find_block,
     parse_fields,

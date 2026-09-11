@@ -7,10 +7,10 @@ from examplehost.cli import HOST as EXAMPLE
 from multihost.cli import HOST as MULTI
 from solohost.cli import HOST as SOLO
 
-from mli.frontmatter import split_frontmatter
-from mli.harness import CLAUDE_CODE, Harness, Kind
-from mli.host import Agent, Doc, Host, Rule, Skill, source_name
-from mli.spec import SPEC, SpecError
+from pkgskills.frontmatter import split_frontmatter
+from pkgskills.harness import CLAUDE_CODE, Harness, Kind
+from pkgskills.host import Agent, Doc, Host, Rule, Skill, source_name
+from pkgskills.spec import SPEC, SpecError
 
 
 def test_source_name_reads_the_directory_of_a_conformant_skill() -> None:
@@ -279,9 +279,9 @@ def test_conformant_sources_match_the_spec_layout(host: Host) -> None:
     """Every skill source is `<name>/SKILL.md` with matching frontmatter.
 
     The spec ties a skill's frontmatter `name` to its parent directory, and
-    `mli` derives the source's name from that directory — so a source that
+    `pkgskills` derives the source's name from that directory — so a source that
     drifted apart would key a body under one name while a skills linter read
-    another. `mli` still accepts a flat source, but no fixture ships one: the
+    another. `pkgskills` still accepts a flat source, but no fixture ships one: the
     tree these hosts bundle is what a host author copies, and it has to pass a
     linter as it stands.
     """

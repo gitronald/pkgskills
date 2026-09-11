@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-11
+
+### Changed
+
+- Renamed the package from `mli` to `pkgskills`, since PyPI refuses `mli` as
+  too similar to an existing project. The distribution, the import package, the
+  console script, the `pkgskills.hosts` entry-point group, and the
+  `pkgskills_sandbox` fixture all carry the new name.
+- The stamp now reads `via pkgskills X` and skill stubs carry
+  `metadata.pkgskills-version`, so every stub installed under the old name
+  reports drift once; reinstall it with `--force`.
+
+### Fixed
+
+- `Host.permissions` defaults through a factory, so importing the package no
+  longer fails on Python 3.11-3.13 with a mutable-default dataclass error.
+
 ## [0.1.0] - 2026-09-09
 
 ### Added

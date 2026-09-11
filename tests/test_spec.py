@@ -1,4 +1,4 @@
-"""Tests for the Agent Skills specification encoded in `mli.spec`.
+"""Tests for the Agent Skills specification encoded in `pkgskills.spec`.
 
 `brokenhost` is the fixture with the failing cases in it; the other three are
 exemplary and must stay silent under every check here.
@@ -13,10 +13,10 @@ from examplehost.cli import HOST as EXAMPLE
 from multihost.cli import HOST as MULTI
 from solohost.cli import HOST as SOLO
 
-from mli.frontmatter import Block, find_block, split_frontmatter
-from mli.host import Doc, Host, Skill
-from mli.spec import SPEC, SkillSpec, SpecError, Violation, report
-from mli.testing import assert_spec_conformant
+from pkgskills.frontmatter import Block, find_block, split_frontmatter
+from pkgskills.host import Doc, Host, Skill
+from pkgskills.spec import SPEC, SkillSpec, SpecError, Violation, report
+from pkgskills.testing import assert_spec_conformant
 
 BROKEN = Host(
     dist="brokenhost",
@@ -353,7 +353,7 @@ def test_a_sequence_of_pairs_is_still_a_sequence() -> None:
     """`- key: value` carries a colon but opens a list, not a mapping.
 
     Reading it as a pair let the whole wrong shape pass, and `with_metadata`
-    then spliced mli's keys above the items into frontmatter YAML rejects.
+    then spliced pkgskills's keys above the items into frontmatter YAML rejects.
     """
     (violation,) = metadata_check("metadata:\n  - key: value\n  - other: text\n")
     assert violation.rule == "metadata-not-a-mapping"

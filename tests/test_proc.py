@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from mli import proc
+from pkgskills import proc
 
 
 def test_pinned_env_strips_only_the_location_variables(
@@ -44,7 +44,7 @@ def test_run_never_checks_or_shells_out(tmp_path: Path) -> None:
     # A missing binary raises rather than returning a status, so callers can
     # translate it into their own idiom.
     with pytest.raises(FileNotFoundError):
-        proc.run(tmp_path, ["mli-no-such-binary-exists"])
+        proc.run(tmp_path, ["pkgskills-no-such-binary-exists"])
 
 
 def test_run_returns_text_output(tmp_path: Path) -> None:

@@ -9,10 +9,10 @@ from pathlib import Path
 import pytest
 from solohost.cli import HOST as SOLO
 
-from mli import permissions as perms
-from mli.host import Host
-from mli.permissions import Level
-from mli.testing import Sandbox
+from pkgskills import permissions as perms
+from pkgskills.host import Host
+from pkgskills.permissions import Level
+from pkgskills.testing import Sandbox
 
 INCREMENTS = {
     Level.assist: ("Bash(git add:*)", "Bash(git commit:*)", "Bash(uv run:*)"),

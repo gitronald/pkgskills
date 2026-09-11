@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from mli import Host, Skill, typer_app
+from pkgskills import Host, Skill, typer_app
 
 HOST = Host(
     dist="solohost",
