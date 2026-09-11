@@ -1,6 +1,7 @@
 # Design
 
-Why `pkgskills` exists, what it standardizes, and the decisions behind its shape.
+Why `pkgskills` exists, what it standardizes, and the decisions behind its
+shape.
 
 ## The pattern it extracts
 
@@ -24,9 +25,9 @@ the `{cli}` placeholder, rules, a pre-commit hook), and was trimmed back to a
 single body by citefinder. Their implementations agreed on the shape and
 disagreed on details: an HTML-comment stamp versus a frontmatter `version:`
 key, masked versus byte-for-byte drift, refuse-foreign versus skip-existing,
-and local-only versus global-and-local modes. `pkgskills` picks one answer to each —
-except the last, which turned out to be a property of the host rather than of
-the machinery, and is declared per host (see Decisions).
+and local-only versus global-and-local modes. `pkgskills` picks one answer to
+each — except the last, which turned out to be a property of the host rather
+than of the machinery, and is declared per host (see Decisions).
 
 Between them the three carried roughly 1,800 lines of delivery machinery and a
 similar weight of tests, all of it hand-kept in parallel. That number alone did
@@ -46,8 +47,8 @@ stays in the host, reached through `after_install` and the library functions.
 
 **Integration shape.** A library plus `register(app, host)`, which mounts the
 grammar on the host's own typer app so extra host commands sit beside the
-shared ones. An entry-point group (`pkgskills.hosts`) lets the standalone `pkgskills`
-script check every host at once.
+shared ones. An entry-point group (`pkgskills.hosts`) lets the standalone
+`pkgskills` script check every host at once.
 
 **One contract.** The stamp is an HTML comment after the frontmatter naming
 both versions, the mode, and the repair command. Drift masks every version
@@ -103,14 +104,15 @@ subdirectory ends up where the harness loads from.
 **Version coupling.** A change to `pkgskills`'s rendered text would flip every
 host's files to drifted with no host change. Masking both versions removes
 the common case; hosts should pin a compatible range so patches flow without
-host releases. A stub also has two producers now, the host and `pkgskills`; the stamp
-names both versions so a bad render is attributable to one of them.
+host releases. A stub also has two producers now, the host and `pkgskills`;
+the stamp names both versions so a bad render is attributable to one of them.
 
 **Commands in prompts are checked, not trusted.** The reason `{cli}` exists is
 that prose about a CLI goes stale, and substituting it correctly says nothing
-about whether the command after it is real. `pkgskills.testing.assert_prompt_commands`
-resolves every mention against the host's own typer app, which is why it ships
-here rather than in each host: the check is the same everywhere, and a host that
+about whether the command after it is real.
+`pkgskills.testing.assert_prompt_commands` resolves every mention against the
+host's own typer app, which is why it ships here rather than in each host: the
+check is the same everywhere, and a host that
 writes its own version writes it once per host. Two choices carry it. A mention
 counts only where it is written as code — inside backticks or a fenced block —
 because a body that names the bare placeholder in a sentence is talking about
@@ -157,10 +159,11 @@ CLI prints, and each has a test.
   tagged `flag`, `project`, `location`, or `default`. The note about a global
   copy shadowing a per-repo one becomes one row of that table rather than a
   line on stderr.
-- A fingerprint test over the rendered text, so a change to what `pkgskills` writes
-  cannot land without a deliberate version bump. Masking makes such a change
-  cheap for hosts; it should still be a decision rather than a side effect.
+- A fingerprint test over the rendered text, so a change to what `pkgskills`
+  writes cannot land without a deliberate version bump. Masking makes such a
+  change cheap for hosts; it should still be a decision rather than a side
+  effect.
 - Recording the harness adapter's name in the stamp, so an artifact installed
   for one harness cannot pass a check against another.
-- `pkgskills` shipping a skill of its own, dogfooding the pattern on the package that
-  defines it.
+- `pkgskills` shipping a skill of its own, dogfooding the pattern on the
+  package that defines it.

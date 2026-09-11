@@ -59,9 +59,10 @@ to no skill has nowhere to live either, and stays wherever the host puts it.
 
 ### The `skills/` group is optional
 
-`pkgskills` never looks for a `skills/` segment; a source's path matters only in that
-its last two components are `<name>/SKILL.md`. The group earns its keep when a
-host ships rules or agents too, and it is noise when a host ships only skills:
+`pkgskills` never looks for a `skills/` segment; a source's path matters only in
+that its last two components are `<name>/SKILL.md`. The group earns its keep
+when a host ships rules or agents too, and it is noise when a host ships only
+skills:
 
 ```
 yourtool/
@@ -128,11 +129,11 @@ by the skill that owns them (`add/fields`).
 
 ## Checking a host against the spec
 
-`pkgskills.spec` holds the specification as data — the entry filename, the optional
-directories, every frontmatter field with its limit, and the `name` grammar —
-on a `SkillSpec` dataclass, with `pkgskills.SPEC` as the instance everything uses.
-Holding it as data rather than as scattered conditionals is what lets a failure
-say which rule broke and what to do:
+`pkgskills.spec` holds the specification as data — the entry filename, the
+optional directories, every frontmatter field with its limit, and the `name`
+grammar — on a `SkillSpec` dataclass, with `pkgskills.SPEC` as the instance
+everything uses. Holding it as data rather than as scattered conditionals is
+what lets a failure say which rule broke and what to do:
 
 ```
 brokenhost ships skills that do not follow the Agent Skills specification
@@ -155,8 +156,8 @@ Three surfaces report it, at the three moments a problem can be caught:
 Construction deliberately reads no files: a host is declared at import time, so
 walking the prompt package there would put a file scan on every invocation of
 the CLI. `Host.check_spec()` returns the full list of `Violation`s for a caller
-that wants them as data, and `pkgskills.testing.assert_spec_conformant(host)` is the
-one-line form for a host's own test suite — the counterpart to
+that wants them as data, and `pkgskills.testing.assert_spec_conformant(host)` is
+the one-line form for a host's own test suite — the counterpart to
 `assert_prompt_commands`, and there for the same reason: what a host bundles is
 read by a harness and by whatever linter a consumer points at the package, and
 neither of those is running while the host's suite is.
@@ -191,8 +192,8 @@ metadata:
 
 `pkgskills.frontmatter.parse_fields` flattens a nested block, but
 `pkgskills.frontmatter.find_block` hands back the raw mapping, which is what the
-check reads. It is the same helper `pkgskills` uses to splice its own two version
-keys into `metadata` — both of which it quotes, for the reason above.
+check reads. It is the same helper `pkgskills` uses to splice its own two
+version keys into `metadata` — both of which it quotes, for the reason above.
 
 What is *not* checked is the spec's **recommendations**, as against its
 constraints: that a description say what a skill does *and* when to use it,
@@ -203,5 +204,5 @@ style the specification does not. The reference validator the spec ships,
 
 ## Related
 
-- [Frontmatter](frontmatter.md) — what `pkgskills` writes into a generated stub's
-  frontmatter, and the rules for a source prompt's own.
+- [Frontmatter](frontmatter.md) — what `pkgskills` writes into a generated
+  stub's frontmatter, and the rules for a source prompt's own.

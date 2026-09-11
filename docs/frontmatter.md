@@ -24,8 +24,8 @@ metadata:
   harness reads to decide when a skill fires.
 - `metadata.version` is the **host release** the stub was rendered from: the
   skill's own version, and the key the spec's own example uses.
-- `metadata.pkgskills-version` is the `pkgskills` release that rendered it, prefixed
-  because it belongs to a second package.
+- `metadata.pkgskills-version` is the `pkgskills` release that rendered it,
+  prefixed because it belongs to a second package.
 
 Both values are quoted. A version is a string, and an unquoted `1.0` reads back
 as a float.
@@ -51,15 +51,16 @@ frontmatter is passed through untouched.
 `install --check` masks every version token before comparing, in the metadata
 as well as the stamp, so upgrading either package never reports drift on a file
 whose content did not change. The metadata pattern is anchored to a
-two-space-indented line with a quoted value — the exact shape `pkgskills` writes.
+two-space-indented line with a quoted value — the exact shape `pkgskills`
+writes.
 
 ## Writing a source prompt
 
-- Do not put `version` or `pkgskills-version` under `metadata` in a source prompt.
-  `pkgskills` writes those keys, and a source that also declares one is rejected with
-  an error rather than emitted as a duplicate YAML key.
-- Any other `metadata` keys a source declares are kept; `pkgskills`'s two entries are
-  inserted at the top of the mapping.
+- Do not put `version` or `pkgskills-version` under `metadata` in a source
+  prompt. `pkgskills` writes those keys, and a source that also declares one is
+  rejected with an error rather than emitted as a duplicate YAML key.
+- Any other `metadata` keys a source declares are kept; `pkgskills`'s two
+  entries are inserted at the top of the mapping.
 - A source that declares no `metadata` gets the block opened for it, just
   before the closing fence. Every other line of the block is copied byte for
   byte.
