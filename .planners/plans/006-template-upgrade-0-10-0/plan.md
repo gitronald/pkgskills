@@ -1,11 +1,11 @@
 ---
 id: 6
 slug: template-upgrade-0-10-0
-status: active
+status: done
 branch: feature/template-upgrade-0-10-0
 created: 2026-09-11T10:42:20-07:00
-concluded:
-pr:
+concluded: 2026-09-11T10:44:07-07:00
+pr: https://github.com/gitronald/pkgskills/pull/2
 ---
 
 # Sync tooling to proj-template 0.10.0
@@ -72,3 +72,20 @@ produce an sdist and a wheel that hold only the package and top-level docs.
   it as public API for host packages' tests. Nothing further to exclude.
 - All checks passed (229 tests, 98.17% coverage), so the stamp was written
   as `0.10.0`.
+- 2026-09-11 review follow-up: a minimal inline pass over the PR diff (at the
+  owner's request, no reviewer fan-out) raised no findings. CI passed on
+  Python 3.11-3.14.
+
+## Retrospective
+
+- Most of this upgrade was already done: plan 001 had brought the repo close to
+  the template, so the diff came down to one action-pin bump, one CI flag, and
+  comments.
+- The divergence triage paid off. Every repo-side difference was a pure
+  addition, so no merge needed a question and none of the repo's customizations
+  were at risk.
+- Building the dists answered the exclusion question better than reading the
+  config would have. That check is cheap enough to repeat on every upgrade.
+- Leftover state from the earlier rename (a venv and a pre-commit hook still
+  pointing at the old path) was found and fixed just before this upgrade. A
+  directory rename needs its own cleanup pass.
