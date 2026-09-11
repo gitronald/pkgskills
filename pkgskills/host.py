@@ -250,7 +250,9 @@ class Host:
     extra_checks: Callable[[Host, Path, Mode | None], Sequence[ExtraCheck]] | None = (
         None
     )
-    permissions: Mapping[Level, tuple[str, ...]] = MappingProxyType({})
+    permissions: Mapping[Level, tuple[str, ...]] = field(
+        default_factory=lambda: MappingProxyType(dict[Level, tuple[str, ...]]())
+    )
 
     def __post_init__(self) -> None:
         self.validate()
