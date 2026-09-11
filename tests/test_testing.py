@@ -14,8 +14,8 @@ from multihost.cli import app as multi_app
 from solohost.cli import HOST as SOLO
 from solohost.cli import app as solo_app
 
-from mli import Doc, Host, typer_app
-from mli.testing import (
+from pkgskills import Doc, Host, typer_app
+from pkgskills.testing import (
     PromptCommand,
     Sandbox,
     assert_prompt_commands,
@@ -35,8 +35,8 @@ def test_sandbox_pins_home_and_cwd(box: Sandbox) -> None:
 
 def test_wheel_ships_the_package(tmp_path: Path) -> None:
     files = wheel_files(PROJECT, tmp_path / "dist")
-    assert "mli/rendering.py" in files
-    assert "mli/py.typed" in files
+    assert "pkgskills/rendering.py" in files
+    assert "pkgskills/py.typed" in files
     assert not any(name.startswith("tests/") for name in files)
 
 

@@ -12,7 +12,7 @@ and carried to the other location reads as drifted, because the commands
 embedded in it are wrong where it sits.
 
 Which of the two a given host uses is the host's to declare: everything here
-walks :attr:`Host.modes <mli.host.Host.modes>` rather than both, so a host that
+walks :attr:`Host.modes <pkgskills.host.Host.modes>` rather than both, so a host that
 supports one mode is never checked at, or written to, the other's location.
 
 Every write is guarded. A path occupied by anything that is not a plain file
@@ -28,10 +28,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from mli.harness import Harness
-from mli.host import Artifact, Host, Mode, Skill
-from mli.rendering import render
-from mli.stamp import is_stamped, mask_versions, stamped_by, stamped_mode
+from pkgskills.harness import Harness
+from pkgskills.host import Artifact, Host, Mode, Skill
+from pkgskills.rendering import render
+from pkgskills.stamp import is_stamped, mask_versions, stamped_by, stamped_mode
 
 Status = Literal["ok", "drifted", "stale", "missing", "foreign"]
 
@@ -93,7 +93,7 @@ def find_repo_root(start: Path | None = None, harness: Harness | None = None) ->
 
     Deliberately a filesystem walk, never a question put to git: an ambient
     ``GIT_DIR`` would otherwise name a repository the user is not looking at.
-    :mod:`mli.proc` keeps the same posture on the write side.
+    :mod:`pkgskills.proc` keeps the same posture on the write side.
     """
     base = (start or Path.cwd()).resolve()
     marker = harness.config_dir if harness else None
@@ -249,7 +249,7 @@ def installed_mode(host: Host, root: Path) -> Mode | None:
 
     ``None`` means *nothing is installed* and is deliberately not folded into a
     default here: callers that need a mode to print with substitute the host's
-    :attr:`~mli.host.Host.default_mode` themselves, while callers asking "has
+    :attr:`~pkgskills.host.Host.default_mode` themselves, while callers asking "has
     this repo been pinned to global?" need the difference.
     """
     for art in host.skills or host.artifacts:
@@ -263,7 +263,7 @@ def printing_mode(host: Host, root: Path) -> Mode:
     """The mode a *printed* body should render ``{cli}`` for.
 
     :func:`installed_mode` when anything is installed, the host's
-    :attr:`~mli.host.Host.default_mode` when nothing is — which is the whole
+    :attr:`~pkgskills.host.Host.default_mode` when nothing is — which is the whole
     of the "which prefix do I print?" decision, exported because a host that
     keeps a print command of its own has to make it the same way ``skill`` and
     ``doc`` do or the commands it prints will not run.

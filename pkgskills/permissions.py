@@ -5,7 +5,7 @@ whether each command runs unprompted depends on the ambient Claude Code
 permission config, which the skill prompts never declare. Nothing about the
 solution is host-specific except the rule list, so the ladder, the merge, and the
 file layout live here and the host declares only its own per-level increments as
-:attr:`Host.permissions <mli.host.Host.permissions>`.
+:attr:`Host.permissions <pkgskills.host.Host.permissions>`.
 
 Levels form an escalating, superset ladder named by supervision posture rather
 than by any one host's commands:
@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from mli.host import Host, Mode
+    from pkgskills.host import Host, Mode
 
 __all__ = [
     "LEVELS",
@@ -92,7 +92,7 @@ def parse_level(name: str) -> Level:
 def invocation_rule(host: Host, mode: Mode) -> str:
     """The allow-rule that lets the model call ``host``'s own CLI.
 
-    Derived from :meth:`Host.invocation <mli.host.Host.invocation>`, so it is
+    Derived from :meth:`Host.invocation <pkgskills.host.Host.invocation>`, so it is
     mode-aware for the same reason everything else here is: a global install is
     invoked as bare ``<cli>`` and needs its own grant, while a local install runs
     ``uv run <cli>`` and is already covered by the broader ``Bash(uv run:*)``

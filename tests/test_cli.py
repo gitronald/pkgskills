@@ -18,13 +18,13 @@ from solohost.cli import HOST as SOLO
 from solohost.cli import app as solo_app
 from typer.testing import CliRunner
 
-from mli import artifacts as inst
-from mli.cli import typer_app
-from mli.harness import Kind
-from mli.host import ExtraCheck, Host, Mode
-from mli.permissions import Level
-from mli.rendering import render
-from mli.testing import Sandbox
+from pkgskills import artifacts as inst
+from pkgskills.cli import typer_app
+from pkgskills.harness import Kind
+from pkgskills.host import ExtraCheck, Host, Mode
+from pkgskills.permissions import Level
+from pkgskills.rendering import render
+from pkgskills.testing import Sandbox
 
 runner = CliRunner()
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -243,7 +243,7 @@ def test_check_reports_each_status_and_exit_codes(box: Sandbox) -> None:
     ok = runner.invoke(solo_app, ["install", "--check"])
     assert ok.exit_code == 0, ok.output
     assert "ok      local  .claude/skills/use-solo/SKILL.md" in ok.output
-    assert "solohost 0.9.0 via mli" in ok.output
+    assert "solohost 0.9.0 via pkgskills" in ok.output
 
     stub = box.repo / ".claude/skills/use-solo/SKILL.md"
     stub.write_text(stub.read_text() + "tampered\n")
