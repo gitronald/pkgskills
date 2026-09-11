@@ -2,7 +2,7 @@
 
 | # | Plan | Status | Concluded | PR |
 |---|---|---|---|---|
-| 006 | [Sync tooling to proj-template 0.10.0](plans/006-template-upgrade-0-10-0/plan.md) | draft | — | — |
+| 006 | [Sync tooling to proj-template 0.10.0](plans/006-template-upgrade-0-10-0/plan.md) | active | — | — |
 | 004 | [Decide whether a stub carries a per-skill version and a host-namespaced key](plans/004-per-skill-and-host-versions/plan.md) | draft | — | — |
 | 005 | [Rename the package to pkgskills](plans/005-rename-to-pkgskills/plan.md) | done | 2026-09-11 10:32 PT | [#1](https://github.com/gitronald/pkgskills/pull/1) |
 | 003 | [Store skill sources as spec-conformant SKILL.md directories](plans/003-spec-conformant-skill-sources/plan.md) | done | 2026-09-09 23:13 PT | — |
