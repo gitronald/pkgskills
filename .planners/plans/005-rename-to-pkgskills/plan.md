@@ -69,12 +69,15 @@ One name everywhere: distribution, import package, and console script.
 
 ### Implementation order
 
-1. Add a pending trusted publisher for `pkgskills` on PyPI first. It runs the same name
-   check that refused `mli`, so the rename is not done against a name that gets
-   refused too. A pending publisher does not reserve the name, so publish soon after.
-2. Package move and import rewrite; run the test suite.
-3. pyproject, version lookup, and stamp format; update the tests that assert the
+1. Rename the GitHub repo and the local `origin` remote. The trusted publisher in
+   step 2 is bound to an owner/repo name, so the repo must carry its final name
+   before the publisher is configured.
+2. Add a pending trusted publisher for `pkgskills` on PyPI, pointing at the renamed
+   repo. It runs the same name check that refused `mli`, so the rename is not done
+   against a name that gets refused too. A pending publisher does not reserve the
+   name, so publish soon after.
+3. Package move and import rewrite; run the test suite.
+4. pyproject, version lookup, and stamp format; update the tests that assert the
    stamp text.
-4. Prose and docs; grep the tracked tree for leftover `mli` outside `.planners/` and
+5. Prose and docs; grep the tracked tree for leftover `mli` outside `.planners/` and
    past changelog entries.
-5. Rename the GitHub repo and the remote.
