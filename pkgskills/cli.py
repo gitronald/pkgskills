@@ -164,6 +164,14 @@ def _relative(path: Path, root: Path) -> Path:
         return path
 
 
+def _leftover_note(path: Path, root: Path) -> str:
+    """The note for an unstamped file at a previous name; check and install share it."""
+    return (
+        f"note: {_relative(path, root)} sits at a name this host no longer "
+        "installs under, but carries no stamp; remove it by hand if it is stale"
+    )
+
+
 def run_check(host: Host, root: Path, mode: Mode | None) -> bool:
     """Print the drift table for ``host`` and return whether all rows are ok.
 
@@ -181,6 +189,17 @@ def run_check(host: Host, root: Path, mode: Mode | None) -> bool:
         if row.reason:
             line += f"  ({row.reason})"
         typer.echo(line)
+    # The mode column is blank: a line lives in the repo whatever the mode.
+    lines = install_mod.check_lines(host, root)
+    for found in lines:
+        text = f"{found.status:<8}{'':<7}{_relative(found.path, root)}"
+        if found.status == "drifted":
+            text += f"  (gives `{found.found}`, not `{found.line.text}`)"
+        elif found.status == "missing":
+            text += f"  (no `{found.line.text}` line)"
+        elif found.status == "unreadable":
+            text += "  (cannot be read; fix the file, then reinstall)"
+        typer.echo(text)
     extras = tuple(host.extra_checks(host, root, mode)) if host.extra_checks else ()
     for extra in extras:
         # The mode column is blank: these rows are about the clone, not about a
@@ -194,6 +213,14 @@ def run_check(host: Host, root: Path, mode: Mode | None) -> bool:
             f"note: a global copy shadows the per-repo stub at "
             f"{_relative(path, root)}; the global one is what loads"
         )
+    # The same scope as the rows above: one mode when asked, else every mode.
+    leftover = [
+        path
+        for m in ((mode,) if mode is not None else host.modes)
+        for path in install_mod.leftover_previous(host, m, root)
+    ]
+    for path in leftover:
+        _err(_leftover_note(path, root))
     bad = [row for row in rows if not row.ok]
     # A stale row is not repaired by rewriting the file — the file is the
     # problem. Point at the removal instead of the reinstall that recreates it.
@@ -201,9 +228,15 @@ def run_check(host: Host, root: Path, mode: Mode | None) -> bool:
         if row.status == "stale":
             _err(f"remove: {_relative(row.path, root)}")
     hinted = {row.mode for row in bad if row.status != "stale"}
+    bad_lines = [found for found in lines if not found.ok]
+    # A line is repaired by the install of whichever mode the repo is in — the
+    # --force form, since that is what rewrites a drifted one. An unreadable
+    # file is repaired by no install at all, and its row already says so.
+    if any(found.status in ("missing", "drifted") for found in bad_lines):
+        hinted.add(mode or install_mod.printing_mode(host, root))
     for m in sorted(hinted):
         _err(f"repair: {host.install_command(m, force=True)}")
-    return not bad and not any(extra.gates for extra in extras)
+    return not bad and not bad_lines and not any(extra.gates for extra in extras)
 
 
 def run_install(host: Host, root: Path, mode: Mode, *, force: bool) -> None:
@@ -228,6 +261,25 @@ def run_install(host: Host, root: Path, mode: Mode, *, force: bool) -> None:
         typer.echo(f"wrote {_relative(path, root)}")
     for path in report.removed:
         typer.echo(f"removed stale local {_relative(path, root)}")
+    for path in report.renamed:
+        typer.echo(f"removed {_relative(path, root)} (a previous name)")
+    for done in report.lines:
+        where = _relative(done.check.path, root)
+        if done.written:
+            typer.echo(f"wrote `{done.check.line.text}` in {where}")
+        elif done.check.status == "drifted":
+            _err(
+                f"note: {where} gives `{done.check.found}`, not "
+                f"`{done.check.line.text}`; left alone as deliberate repo "
+                "content. Re-run with --force to rewrite that line."
+            )
+        elif done.check.status == "unreadable":
+            _err(
+                f"note: {where} exists but cannot be read, so it was left "
+                f"alone rather than overwritten; fix the file, then re-run."
+            )
+    for path in report.leftover:
+        _err(_leftover_note(path, root))
     for path in report.shadowed:
         _err(
             f"note: a global copy shadows the per-repo stub at "

@@ -21,7 +21,7 @@ from typer.testing import CliRunner
 from pkgskills import artifacts as inst
 from pkgskills.cli import typer_app
 from pkgskills.harness import Kind
-from pkgskills.host import ExtraCheck, Host, Mode
+from pkgskills.host import ExtraCheck, Host, Line, Mode
 from pkgskills.permissions import Level
 from pkgskills.rendering import render
 from pkgskills.testing import Sandbox
@@ -540,3 +540,79 @@ def test_skill_survives_a_non_utf8_stdout(box: Sandbox) -> None:
     assert proc.returncode == 0, proc.stderr.decode(errors="replace")
     assert b"ADD-BODY-SENTINEL" in proc.stdout
     assert b"Traceback" not in proc.stderr
+
+
+def test_lines_share_the_check_table_and_gate(box: Sandbox) -> None:
+    line = Line(".gitattributes", "docs/README.md", "merge=union")
+    host = dataclasses.replace(SOLO, lines=(line,))
+    app = typer_app(host)
+    path = box.repo / ".gitattributes"
+
+    result = runner.invoke(app, ["install", "--local"])
+    assert "wrote `docs/README.md merge=union` in .gitattributes" in result.output
+    result = runner.invoke(app, ["install", "--check"])
+    assert "ok             .gitattributes" in result.output
+    assert result.exit_code == 0
+
+    path.write_text("docs/README.md merge=ours\n")
+    result = runner.invoke(app, ["install", "--local"])
+    assert "left alone as deliberate repo content" in result.output
+    assert "--force" in result.output
+    assert path.read_text() == "docs/README.md merge=ours\n"
+    result = runner.invoke(app, ["install", "--check"])
+    assert (
+        "drifted        .gitattributes  (gives `docs/README.md merge=ours`, "
+        "not `docs/README.md merge=union`)"
+    ) in result.output
+    assert "repair: uv run solohost install --local --force" in result.output
+    assert result.exit_code == 1
+    runner.invoke(app, ["install", "--local", "--force"])
+    assert path.read_text() == "docs/README.md merge=union\n"
+
+    path.unlink()
+    result = runner.invoke(app, ["install", "--check"])
+    assert "missing        .gitattributes  (no `docs/README.md merge=union` line)" in (
+        result.output
+    )
+    assert result.exit_code == 1
+
+    path.write_bytes(b"\xff\xfe not utf-8")
+    result = runner.invoke(app, ["install", "--local"])
+    assert "cannot be read, so it was left alone" in result.output
+    result = runner.invoke(app, ["install", "--check"])
+    # The one status wider than its column; it overflows rather than truncates.
+    assert "unreadable       .gitattributes  (cannot be read" in result.output
+    # No install repairs it, so none is suggested.
+    assert "repair:" not in result.output
+    assert result.exit_code == 1
+
+
+def test_previous_names_are_narrated(box: Sandbox) -> None:
+    runner.invoke(example_app, ["install", "--local"])
+    # The dispatcher, since it generates its own frontmatter: a single-source
+    # skill's stub lifts the source's `name`, so renaming it means editing the
+    # source too.
+    skill = dataclasses.replace(
+        EXAMPLE.skills[0], name="fresh", previous_names=("example",)
+    )
+    renamed = dataclasses.replace(EXAMPLE, artifacts=(skill, *EXAMPLE.artifacts[1:]))
+    app = typer_app(renamed)
+
+    result = runner.invoke(app, ["install", "--check"])
+    assert "stale   local  .claude/skills/example/SKILL.md" in result.output
+    assert "remove: .claude/skills/example/SKILL.md" in result.output
+    assert result.exit_code == 1
+
+    result = runner.invoke(app, ["install", "--local"])
+    assert "removed .claude/skills/example/SKILL.md (a previous name)" in result.output
+    assert runner.invoke(app, ["install", "--check"]).exit_code == 0
+
+    old = box.repo / ".claude/skills/example/SKILL.md"
+    old.parent.mkdir()
+    old.write_text("mine\n")
+    result = runner.invoke(app, ["install", "--local"])
+    assert "carries no stamp; remove it by hand" in result.output
+    assert old.read_text() == "mine\n"
+    result = runner.invoke(app, ["install", "--check"])
+    assert "carries no stamp" in result.output
+    assert result.exit_code == 0

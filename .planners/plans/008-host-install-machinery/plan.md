@@ -1,11 +1,11 @@
 ---
 id: 8
 slug: host-install-machinery
-status: active
+status: done
 branch: feature/host-install-machinery
 created: 2026-09-11T19:38:49-07:00
-concluded:
-pr:
+concluded: 2026-09-11T20:46:39-07:00
+pr: https://github.com/gitronald/pkgskills/pull/8
 ---
 
 # Move hook wiring, in-place line artifacts, and superseded paths upstream
@@ -141,3 +141,99 @@ already has.
 Host-declared install options (plan 007 deferred them; still one host).
 Running any subprocess outside a host's explicit `after_install` or
 `extra_checks`. Any hook framework other than pre-commit.
+
+## Log
+
+### 2026-09-11 — steps 1–4 implemented on `feature/host-install-machinery`
+
+1. `pkgskills.precommit`: `Hook`, `wire`, `checks`, `add_dependency`, plus
+   the read-only helpers (`hook_state`, `hooks_dir`, `registered`,
+   `hookspath_set`). Tests drive `wire` with a fake `pre-commit` passed as
+   `precommit=(python, script)` rather than placed on `PATH`, since the
+   default invocation is `uv run pre-commit` in local mode and faking `uv`
+   would be awkward; two tests need a real `git` for `core.hooksPath` and skip
+   without one. `GIT_CONFIG_GLOBAL`/`GIT_CONFIG_SYSTEM` are pinned to devnull
+   in the fixture so a developer's own `core.hooksPath` cannot leak in.
+2. `Line` on `Host.lines`, with `LineStatus`, `LineCheck`, `LineWrite`,
+   `check_line(s)`, `write_line(s)`. `run_check` prints line rows with a blank
+   mode column and gates on them; an unreadable line file suggests no repair.
+3. `previous_names` on `Skill`, `Rule`, `Agent`; `previous_paths`,
+   `remove_previous`, `leftover_previous`. `check` adds a `stale` row per
+   stamped leftover; a renamed skill's emptied directory is removed with it.
+4. README sections for lines, hooks, and the rename recipe; changelog entries.
+
+Decisions made while implementing, beyond the plan text:
+
+- **`InstallReport.previous`.** The plan's resync rule ("re-syncs an entry
+  that names the other mode, leaves a deliberately different one alone")
+  cannot distinguish the first host's dev-repo case — `uv run <cli>` kept on
+  purpose under a global stub — from a stale entry, because both name the
+  other mode. The first host resolved this by resyncing only on a genuine mode
+  switch, which needs the mode installed *before* the write. `install` now
+  records it as `previous` (a `None` first install never resyncs either), and
+  `wire` derives the rule from that instead of taking a `resync` flag.
+- **Lines live at the repo root in every mode.** "Local mode only" in the
+  plan is read as "never under `$HOME`", not "skipped on a global install": a
+  global install of the first host still wires its `.gitattributes` line, and
+  the line is repo content whatever the mode.
+- **`unreadable` overflows the status column** rather than the table widening:
+  the eight-character column is pinned by existing tests and the case is rare.
+- **`hookspath_blocked` / `blocked`** are kept as a fifth state on both sides,
+  since the first host needed the distinction to name the real cause.
+- **A single-source skill cannot be renamed from the declaration alone**: its
+  stub lifts the source's `name`. Documented in the README; the tests rename
+  the dispatcher.
+
+### 2026-09-11 — review follow-up and close
+
+Review of PR #8 at medium level raised nine findings; all were actioned in
+`ed8c272`, each with a regression test, and the README and changelog were
+brought in step in `9517c3f`.
+
+- **Config with no content.** `wire` seeded `repos:` only when the file was
+  absent, so an empty or comments-only config received a hooks block with
+  nothing to hang under. Now seeded whenever the config has no content line.
+- **Hook presence by substring.** `hook.id in text` read `x-index` as present
+  next to `x-index-all`, in both `wire` and `hook_state`. Presence is now the
+  `- id:` line, matched with an anchored pattern.
+- **Unquoted YAML scalars.** `name` and `files` are free text that may carry
+  `: ` or ` #`; both are now single-quoted, with `'` doubled. Flagged as
+  plausible rather than reproduced, fixed because the regex case is realistic.
+- **Git once per call.** `checks` and `wire` re-ran `git rev-parse` and
+  `git config` per hook or per stage; a `Clone` snapshot now reads the clone
+  once, and `hook_state` accepts it along with the config text.
+- **One read per edit.** `write_line` and `leftover_previous` read each file
+  twice; the verdict and the edit now share one read, which also removes the
+  window the force-branch assertion sat in.
+- **Duplicated note text** in the CLI folded into one helper; a dead
+  duplicate `write_text` line dropped from a test.
+
+Conscious no-op: the `--force` repair hint for a merely `missing` line. It
+matches the pre-existing hint for a missing artifact, and `--force` is inert
+when nothing else needs overwriting.
+
+`pyyaml` was added to the dev group explicitly, since the new quoting test
+parses a rendered block; before, it arrived only through `pre-commit`.
+
+## Retrospective
+
+- **The plan's resync rule was underspecified**, and the first host's own
+  history supplied the missing case (a dev repo keeping `uv run <cli>` under a
+  global stub). Recording the previous mode on the report was the smallest
+  thing that made the rule decidable; reading the host that motivated a
+  feature before generalizing it is worth the detour.
+- **Text-append editing without a parser** is the right trade for a file the
+  host does not own, but every substring test in it is a hazard. The review
+  found two (`id` as a prefix, an empty file with no root key) that the
+  original tests did not, because the tests only ever started from a config
+  the code itself had written. Seed negative tests from files the tool did not
+  create.
+- **Per-item helpers hide per-call cost.** `registered`, `hookspath_set`, and
+  `hooks_dir` each read naturally in isolation and each cost a subprocess;
+  composing them per hook multiplied that silently. A snapshot object with the
+  same public helpers kept the API and removed the multiplier.
+- **"Local mode only" needed a second reading** before it meant anything
+  concrete; deciding it meant "never under `$HOME`" rather than "skipped on a
+  global install" was the right call, and belonged in the plan text sooner.
+- **Next**: cut the minor release, then let the first host delete its
+  remaining hook, line, and rename machinery against the new API.
