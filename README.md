@@ -324,14 +324,17 @@ HOST = Host(
 ```
 
 `wire` appends a `repo: local` block naming the hooks that are missing from
-`.pre-commit-config.yaml` (creating the file when absent), and runs
+`.pre-commit-config.yaml` (creating the file when absent, and seeding `repos:`
+in one that is empty or comments only), and runs
 `pre-commit install --hook-type <stage>` for each distinct stage. Each hook's
 `entry` is the host's invocation for the install mode plus the hook's `args`,
-so it can only be mode-correct. Three rules keep it from clobbering repo
-content:
+so it can only be mode-correct; `name` and `files` are single-quoted, so a
+regex or a display name may carry `: ` or ` #`. Three rules keep it from
+clobbering repo content:
 
-- **A hook already present is keyed on its id**, so a customized entry counts
-  as present and is not duplicated.
+- **A hook already present is keyed on its `- id:` line**, so a customized
+  entry counts as present and is not duplicated, and an id that is a prefix
+  of another (`x-index` next to `x-index-all`) is not mistaken for it.
 - **An entry naming the other mode is resynced only on a genuine switch** —
   when `InstallReport.previous`, the mode resolved before the write, differs
   from the mode being installed. A same-mode refresh leaves it: a host's own

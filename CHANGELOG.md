@@ -16,8 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `unregistered`, `missing`, `no_git_repo`, `blocked`) with a note naming the
   fix. The `entry` is derived from the host's invocation, an entry naming the
   other mode is resynced only on a genuine mode switch, a customized entry is
-  left alone, and an unreadable config is never rewritten. `add_dependency`
-  runs `uv add --dev pre-commit` as a separate, opt-in step.
+  left alone, an empty config is seeded with `repos:`, and an unreadable
+  config is never rewritten. Presence is judged by the `- id:` line, `name`
+  and `files` are quoted for YAML, and the clone is consulted once per call.
+  `add_dependency` runs `uv add --dev pre-commit` as a separate, opt-in step.
 - `Line(path, key, value)` on `Host.lines`: one line the host needs in a
   repository file it does not own, such as a `merge=union` attribute for a
   generated index. `install` appends it when missing and rewrites a drifted
