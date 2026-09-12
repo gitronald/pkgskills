@@ -141,3 +141,48 @@ one — but this does not warrant more than a normal entry.
 2. Update the tests as above, and the `stamp.py` module docstring, which currently
    documents the mirror.
 3. Changelog entry, then `--force` reinstall across the known hosts.
+
+## Log
+
+### 2026-09-11 - implemented
+
+Followed the order as written, on `feature/per-skill-and-host-versions`.
+
+- `stamp.py`: dropped `METADATA_KEYS`, `INDENT`, `_META_RE`, and `metadata_lines`.
+  `mask_versions` is back to the stamp line alone, and the module docstring now says
+  the stamp is the sole home of provenance rather than documenting a mirror.
+- `rendering.py`: `with_metadata` deleted. `stub_frontmatter` returns `front.raw`
+  unchanged for a single-source skill and the generated two-key block for a
+  dispatcher; the `find_block` import went with it. The inline-`metadata` `SpecError`
+  it used to raise is already reported by `SPEC.check_parsed`, as expected.
+- `spec.py`: `check_metadata_block`'s docstring no longer names a caller.
+
+Beyond the written order, three things the plan implied but did not enumerate:
+
+- **A fixture had to declare a version.** No fixture source carried a conformant
+  `metadata` block, so there was nothing to prove passthrough against.
+  `multihost`'s `audit` source now declares `metadata.version: "2.1"`; `tidy` and
+  `solohost`'s source stay versionless, which covers the no-`metadata` case.
+- **The docs said the old thing in four places.** `docs/frontmatter.md` was mostly
+  about the mirror and was rewritten; `docs/design.md`, `docs/source-layout.md`, and
+  two spots in `README.md` each carried a sentence about the spliced version keys.
+- **Pre-commit gates the whole tree, not the index.** Splitting the source and test
+  changes into two commits failed `pyrefly` on the first: it stashes unstaged work,
+  so the tree it checks had the deleted `with_metadata` and the test that still
+  imported it. The two are one commit for that reason.
+
+Tests: the two collision tests, the inline-splice parametrize, and
+`test_mask_versions_covers_the_stubs_metadata_versions` are gone; in their place a
+verbatim-passthrough test (stub frontmatter compared byte for byte against the
+source's), a no-`metadata` test for a versionless source, a no-`metadata` test for a
+dispatcher, and a masking test asserting a host bump masks while a change to the
+source's own `version` drifts.
+
+Verified: 224 passed, coverage 98.14%; `ruff check`, `ruff format --check`, and
+`pyrefly check` all clean. Rendering the three fixture hosts by hand confirms the
+three conditions in Verify — `audit` keeps `metadata:\n  version: "2.1"` with the
+stamp one line below, `use-solo` and the `example` dispatcher carry no `metadata`
+mapping at all.
+
+Step 3's `--force` reinstall across the known hosts is deliberately left for after
+this merges and a release is cut; there is nothing to reinstall from until then.
