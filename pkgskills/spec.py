@@ -226,9 +226,8 @@ class SkillSpec:
     def check_metadata_block(self, source: str, block: Block) -> list[Violation]:
         """Violations in the ``metadata`` block itself, already located.
 
-        Split from :meth:`check_metadata` so a caller holding the block —
-        :func:`pkgskills.rendering.with_metadata` splices into it — can ask what is
-        wrong with it without re-finding it.
+        Split from :meth:`check_metadata` so a caller that already located the
+        block can ask what is wrong with it without re-finding it.
         """
 
         def wrong(rule: str, detail: str, fix: str) -> Violation:

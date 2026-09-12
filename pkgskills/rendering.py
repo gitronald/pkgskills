@@ -7,10 +7,10 @@ renderer returns is exactly what ``install`` writes and exactly what
 
 from __future__ import annotations
 
-from pkgskills.frontmatter import find_block, split_frontmatter
+from pkgskills.frontmatter import split_frontmatter
 from pkgskills.host import CLI_TOKEN, Agent, Artifact, Doc, Host, Mode, Rule, Skill
 from pkgskills.spec import SPEC, SpecError, Violation
-from pkgskills.stamp import METADATA_KEYS, metadata_lines, place_stamp, render_stamp
+from pkgskills.stamp import place_stamp, render_stamp
 
 
 def render_prompt(text: str, invocation: str | None = None) -> str:
@@ -47,44 +47,14 @@ def _single_line(text: str) -> str:
     return " ".join(text.split())
 
 
-def with_metadata(raw: str, host: Host, skill: Skill) -> str:
-    """``raw`` frontmatter with pkgskills's version keys under ``metadata``.
-
-    The keys join an existing ``metadata`` mapping when the source declares
-    one, and open a new one just before the closing fence otherwise. Every
-    other line is left byte for byte, since the harness reads this block.
-    A source that already declares one of pkgskills's keys is rejected rather than
-    emitted as a duplicate key, and so is one whose ``metadata`` is a scalar
-    or a flow mapping: there is no block for indented keys to join, so
-    splicing them in would emit frontmatter that no longer parses.
-    """
-    lines = raw.splitlines()
-    close = len(lines) - 1
-    block = find_block(raw, "metadata")
-    if block is None:
-        opened = ["metadata:", *metadata_lines(host)]
-        return "\n".join([*lines[:close], *opened, lines[close], ""])
-    if block.inline:
-        raise SpecError(
-            SPEC.check_metadata_block(f"skill {skill.name!r}", block),
-            header=f"skill {skill.name!r} cannot be rendered into a stub",
-        )
-    for _, key, _value in block.entries():
-        if key in METADATA_KEYS:
-            raise ValueError(
-                f"skill {skill.name!r}: source frontmatter already declares "
-                f"metadata.{key}; pkgskills writes that key, so drop it from the source"
-            )
-    at = block.at
-    return "\n".join([*lines[: at + 1], *metadata_lines(host), *lines[at + 1 :], ""])
-
-
 def stub_frontmatter(host: Host, skill: Skill) -> str:
     """The stub's frontmatter block, fences included.
 
-    A single-source skill lifts its source's block so the trigger text has one
-    home. A dispatcher generates its own, from ``description`` or from the
-    subcommand list. Either way the block gains the ``metadata`` versions.
+    A single-source skill lifts its source's block verbatim, so the trigger
+    text -- and any ``metadata`` the source declares, its own ``version``
+    included -- has one home. A dispatcher generates its own block from
+    ``description`` or from the subcommand list; it has no source to carry a
+    version, so it declares no ``metadata`` at all.
     """
     if not skill.dispatches:
         source = skill.sources[0]
@@ -111,15 +81,12 @@ def stub_frontmatter(host: Host, skill: Skill) -> str:
             )
         if violations:
             raise SpecError(violations, header=header)
-        return with_metadata(front.raw, host, skill)
+        return front.raw
     description = skill.description or (
         f"`{host.dist}` toolkit. Invoke as `/{skill.name} <subcommand> [args]`. "
         f"Subcommands: {', '.join(skill.subcommands)}."
     )
-    generated = (
-        f"---\nname: {skill.name}\ndescription: {_single_line(description)}\n---\n"
-    )
-    return with_metadata(generated, host, skill)
+    return f"---\nname: {skill.name}\ndescription: {_single_line(description)}\n---\n"
 
 
 def _subcommand_description(host: Host, source: str) -> str:

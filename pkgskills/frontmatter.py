@@ -121,11 +121,10 @@ class Block:
     """An indented block under one top-level frontmatter key.
 
     :func:`parse_fields` flattens a nested mapping to an empty string, because
-    no prompt kind needs to *read* one. Two callers need to inspect one anyway
-    — ``pkgskills`` splices its own version keys into ``metadata``, and the spec
-    check asks whether that mapping is the string-to-string map the
+    no prompt kind needs to *read* one. The spec check needs to inspect one
+    anyway — it asks whether ``metadata`` is the string-to-string map the
     specification requires — so the raw lines are offered here rather than
-    walked separately in each place.
+    walked at the point of use.
 
     ``at`` indexes the ``key:`` line within ``raw.splitlines()``. ``inline`` is
     whatever followed the colon on that line with any comment stripped, so it
