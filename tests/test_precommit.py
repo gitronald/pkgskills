@@ -28,7 +28,11 @@ VALIDATE = pc.Hook(
     files=r"^things/.*\.md$",
 )
 INDEX = pc.Hook(
-    "solohost-index", stage="post-merge", args=("index", "."), always_run=True
+    "solohost-index",
+    stage="post-merge",
+    args=("index", "."),
+    always_run=True,
+    pass_filenames=False,
 )
 HOOKS = (VALIDATE, INDEX)
 
@@ -71,6 +75,9 @@ def test_hook_entry_is_derived_from_the_invocation() -> None:
     assert "name: 'solohost-index'" in text
     plain = VALIDATE.render("solohost")
     assert "stages:" not in plain and "always_run" not in plain
+    # pre-commit's default is to pass filenames, so a file-scoped hook says
+    # nothing about it: an omitted key is the same as `true`.
+    assert "pass_filenames" not in plain
     assert "files: '^things/.*\\.md$'" in plain
 
 

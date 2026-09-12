@@ -308,10 +308,21 @@ from pkgskills import precommit
 
 HOOKS = (
     Hook("yourtool-validate", args=("validate",), files=r"^docs/plans/.*\.md$"),
-    Hook("yourtool-index", stage="post-merge", args=("index", "."), always_run=True),
+    Hook(
+        "yourtool-index",
+        stage="post-merge",
+        args=("index", "."),
+        always_run=True,
+        pass_filenames=False,
+    ),
 )
+```
 
+`pass_filenames` follows pre-commit's default (true), so a file-scoped hook
+like `validate` gets the matched paths on its command line; a whole-repo hook
+that takes none, like the `post-merge` index above, turns it off explicitly.
 
+```python
 def after_install(report: InstallReport) -> None:
     precommit.wire(report, HOOKS)
 
