@@ -225,7 +225,10 @@ class Host:
       ``$HOME`` and shadow the per-repo ones.
     * ``version`` overrides the metadata lookup; leave it unset in real hosts.
     * ``after_install`` runs once an install has written every artifact, for
-      host-specific follow-up such as wiring a pre-commit hook.
+      host-specific follow-up such as wiring a pre-commit hook. Its report
+      carries ``force``, the user's consent to overwrite: a hook that edits a
+      file in place honors it before replacing a line it did not write, while
+      a hook that only creates files may ignore it.
     * ``extra_checks`` is its symmetric counterpart on the read side: called
       with ``(host, root, mode)`` during ``install --check``, it returns the
       rows for state ``pkgskills`` cannot derive, so a host with extra state keeps

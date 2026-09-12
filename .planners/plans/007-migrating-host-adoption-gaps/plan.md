@@ -1,11 +1,11 @@
 ---
 id: 7
 slug: migrating-host-adoption-gaps
-status: active
+status: done
 branch: feature/migrating-host-adoption-gaps
 created: 2026-09-11T18:51:47-07:00
-concluded:
-pr:
+concluded: 2026-09-11T19:15:59-07:00
+pr: https://github.com/gitronald/pkgskills/pull/6
 ---
 
 # Close the gaps a migrating host hits on adoption
@@ -90,3 +90,89 @@ mention in a prompt body.
 
 Host-declared install options (see section 2), and any change to the stamp
 format itself. A pre-pkgskills stamp stays `foreign`; only its reason changes.
+
+## Log
+
+### 2026-09-11 — all three sections implemented
+
+All three landed in one commit, in the planned order; PR #6.
+
+1. `classify` now splits on `stamped_by(text) == host.dist` with `is_stamped`
+   false and reports `stamped by an earlier <dist> release, before pkgskills;
+   --force replaces it`. `stamped_by` is untouched. `test_foreign_shapes`
+   gained a row for the same-dist case and still asserts the different-dist
+   message verbatim.
+2. `InstallReport.force` is a trailing field defaulting to `False`, populated
+   positionally by `install`. Documented on the dataclass and in the
+   `after_install` bullet of the `Host` docstring.
+   `test_after_install_hook_sees_force` installs twice and asserts the hook saw
+   `[False, True]`.
+3. Bare `<cli> skill` lists when the host ships **more than one** body. The
+   zero-body case is not folded in: a docs-only host would otherwise print
+   nothing and exit 0, so it keeps an error, now reading `<cli> ships no skill
+   bodies`. `test_skill_without_name_on_a_dispatcher_is_an_error` became
+   `..._lists` and asserts the bare output equals `--list`'s;
+   `test_skill_on_a_host_shipping_none_is_an_error` covers the remaining error.
+   `assert_prompt_commands` needed no change — a bare `{cli} skill` mention
+   carries no argument, so `_unresolved` already let it through.
+
+Changelog: one Fixed (the message) and two Changed (the field, the listing)
+under `[Unreleased]`, each saying why no host breaks.
+
+**Open question, deferred:** host-declared install options — a switch such as
+"skip the hook" or "also install the tool" that a host adds to `install`.
+That is a design decision about whether `after_install` side effects are
+opt-in or opt-out, and it widens the CLI surface. One host's flags are not a
+pattern; take it up only if a second host asks.
+
+### 2026-09-11 — review follow-up
+
+The close gate's review (medium) raised two findings, both on the section 1
+message, both confirmed and both fixed in `201b534`. Neither touched sections
+2 or 3, which the review swept separately and left alone.
+
+- **The reason overclaimed provenance the code cannot establish.** `stamped_by`
+  matching while `is_stamped` fails has three causes, not one: the
+  pre-pkgskills stamp the plan had in mind, a genuine pkgskills stamp a
+  formatter line-wrapped, and one whose `mode=` token was corrupted. Probing
+  all three against `solohost` gave the same `is_stamped=False,
+  stamped_by='solohost'`, so the planned wording told two of them they predate
+  adoption — the same kind of false statement this section set out to delete.
+  The reason now claims only what the line still records: `a <dist> stamp
+  pkgskills did not write; hand-edited, or from a release before <dist> adopted
+  pkgskills`. `test_foreign_shapes` covers all three shapes as a loop.
+- **The reason repeated the remedy.** It ended `--force replaces it`, but
+  `run_install` already appends `Re-run with --force to replace it.` to every
+  foreign reason, so this branch alone said it twice while its three siblings
+  state only the cause. Dropped, pinned by `assert "--force" not in row.reason`.
+
+The plan had specified that wording verbatim, so the fix is a small correction
+to the plan's own text, not to its implementation.
+
+No conscious no-ops. Gate mirroring CI is green: `ruff check`,
+`ruff format --check`, `pyrefly check`, `pytest` (226 passed, 98.14%).
+
+## Retrospective
+
+- All three sections landed as specified; the only thing that moved was one
+  message string, and it moved because the plan had written it wrong rather
+  than because the implementation drifted.
+- The instructive miss: section 1 diagnosed `classify` as conflating two cases
+  and prescribed exact replacement text. There were three cases. Writing the
+  literal string into the plan made it feel settled and carried it into the
+  code unexamined — the review had to rediscover from the regexes what the plan
+  should have derived. Specifying the *predicate* to split on is safe; dictating
+  the prose the split emits invites exactly this.
+- The generalizable rule the fix encodes: a reason string may only assert what
+  the artifact still records. `is_stamped` false plus `stamped_by == dist` records
+  "this stamp is not one pkgskills wrote" and nothing about why — so the reason
+  says that and enumerates the possibilities rather than picking one.
+- Sections 2 and 3 came through clean, and both were scoped by *refusing* an
+  adjacent generalization: `force` as a bare field rather than a host-declared
+  options system, and listing for the many-body case only rather than folding in
+  the zero-body host. Each refusal is written down with its trigger ("if a second
+  host asks"), which is what makes them deferrals rather than omissions.
+- Worth keeping: the two deliberate non-foldings in section 3 (zero bodies keeps
+  its error) came from asking what the *degenerate* input does, not just the
+  motivating one. The same question applied to section 1 would have caught the
+  third stamp shape before the review did.
