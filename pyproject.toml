@@ -1,6 +1,6 @@
 [project]
 name = "pkgskills"
-version = "0.5.1"
+version = "0.5.2a0"
 description = "Ship prompts inside a CLI package and install thin, version-stamped stubs where the harness reads them."
 authors = [
     {name = "gitronald", email = "gitronald@users.noreply.github.com"}
