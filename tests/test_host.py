@@ -324,3 +324,51 @@ def test_a_skills_references_live_inside_its_own_directory(host: Host) -> None:
             f"doc {doc.name!r} is sourced from {doc.source!r}, outside "
             f"the {directories[owner]!r} skill directory"
         )
+
+
+def test_previous_names_are_validated() -> None:
+    with pytest.raises(ValueError, match="lists 'x' as a previous name"):
+        Host("d", "c", "p", artifacts=(Rule("x", "r.md", previous_names=("x",)),))
+    with pytest.raises(ValueError, match="as a previous name"):
+        Host("d", "c", "p", artifacts=(Rule("x", "r.md", previous_names=("",)),))
+    with pytest.raises(ValueError, match="still installs under it"):
+        Host(
+            "d",
+            "c",
+            "p",
+            artifacts=(
+                Rule("old", "a.md"),
+                Rule("new", "b.md", previous_names=("old",)),
+            ),
+        )
+    # A previous name of one kind may still be a live name of another.
+    Host(
+        "d",
+        "c",
+        "p",
+        artifacts=(
+            Rule("shared", "a.md"),
+            Agent("fresh", "b.md", previous_names=("shared",)),
+        ),
+    )
+
+
+def test_lines_are_validated() -> None:
+    from pkgskills.host import Line
+
+    Host("d", "c", "p", lines=(Line(".gitattributes", "docs/x.md", "merge=union"),))
+    assert Line(".gitattributes", "docs/x.md", "merge=union").text == (
+        "docs/x.md merge=union"
+    )
+    with pytest.raises(ValueError, match="repo-relative"):
+        Host("d", "c", "p", lines=(Line("/etc/x", "k", "v"),))
+    with pytest.raises(ValueError, match="repo-relative"):
+        Host("d", "c", "p", lines=(Line("", "k", "v"),))
+    with pytest.raises(ValueError, match="one whitespace-free token"):
+        Host("d", "c", "p", lines=(Line("f", "two words", "v"),))
+    with pytest.raises(ValueError, match="one whitespace-free token"):
+        Host("d", "c", "p", lines=(Line("f", "", "v"),))
+    with pytest.raises(ValueError, match="has no value"):
+        Host("d", "c", "p", lines=(Line("f", "k", "  "),))
+    with pytest.raises(ValueError, match="duplicate line"):
+        Host("d", "c", "p", lines=(Line("f", "k", "v"), Line("f", "k", "w")))

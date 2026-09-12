@@ -12,8 +12,11 @@ from pkgskills.artifacts import (
     Check,
     ForeignArtifactError,
     InstallReport,
+    LineCheck,
+    LineWrite,
     artifact_path,
     check,
+    check_lines,
     find_repo_root,
     install,
     installed_mode,
@@ -22,8 +25,19 @@ from pkgskills.artifacts import (
 from pkgskills.cli import register, typer_app
 from pkgskills.frontmatter import Block, Frontmatter, find_block, split_frontmatter
 from pkgskills.harness import CLAUDE_CODE, Harness, Kind
-from pkgskills.host import Agent, Artifact, Doc, ExtraCheck, Host, Mode, Rule, Skill
+from pkgskills.host import (
+    Agent,
+    Artifact,
+    Doc,
+    ExtraCheck,
+    Host,
+    Line,
+    Mode,
+    Rule,
+    Skill,
+)
 from pkgskills.permissions import Level
+from pkgskills.precommit import Hook, HookReport
 from pkgskills.proc import LOCATION_ENV, run
 from pkgskills.rendering import render, render_prompt
 from pkgskills.spec import SPEC, Field, SkillSpec, SpecError, Violation
@@ -42,10 +56,15 @@ __all__ = [
     "ForeignArtifactError",
     "Frontmatter",
     "Harness",
+    "Hook",
+    "HookReport",
     "Host",
     "InstallReport",
     "Kind",
     "Level",
+    "Line",
+    "LineCheck",
+    "LineWrite",
     "Mode",
     "Rule",
     "Skill",
@@ -54,6 +73,7 @@ __all__ = [
     "Violation",
     "artifact_path",
     "check",
+    "check_lines",
     "find_block",
     "find_repo_root",
     "install",

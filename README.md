@@ -114,7 +114,7 @@ yourtool = "yourtool.cli:HOST"
 | `yourtool agent [NAME] [--list]` | Print an agent definition (only when the host ships agents). |
 | `yourtool install` | Write every artifact for the host's default mode — under `~/.claude/` unless the host restricts its `modes`. |
 | `yourtool install --local` / `--global` | Write them under the enclosing repository, or under `~/.claude/`. Naming a mode the host does not declare is an error. |
-| `yourtool install --check` | Report `ok`, `drifted`, `stale`, `missing`, or `foreign` per file; exit 1 unless all ok. |
+| `yourtool install --check` | Report `ok`, `drifted`, `stale`, `missing`, or `foreign` per file (and `unreadable` per declared line); exit 1 unless all ok. |
 | `yourtool install --force` | Replace files the host did not generate. |
 | `yourtool permissions [--level L] [--global] [--apply]` | Print or apply an automation-level allow-rule profile (only when the host declares one). |
 
@@ -229,6 +229,24 @@ file rather than written through. A fresh global install removes per-repo
 copies the host generated earlier; a local install never deletes the global
 copy that serves other repositories.
 
+### Renaming an artifact
+
+A host that renames a rule, skill, or agent leaves the old file behind at
+every consumer — still auto-loading, still stamped as the host's. Declare the
+old name and `install` cleans it up:
+
+```python
+Rule(name="yourtool", source="rules/yourtool.md", previous_names=("plan-files",))
+```
+
+At each previous name, the file that would sit there in the install mode is
+removed **only if it carries this host's stamp** — the same test a stale local
+copy gets. `install --check` reports such a leftover as `stale` and says
+`remove:`. A file at an old name without the stamp is somebody else's: it is
+left alone, mentioned in a note, and never gates. A single-source skill's stub
+lifts the source's `name`, so renaming one means renaming the source's
+frontmatter as well; a dispatcher renames from the declaration alone.
+
 `stale` is the asymmetric case. The harness auto-loads rules and agents from
 the global *and* the local location at once, so a per-repo copy left behind
 after a switch to global is an extra file live in context whatever its content
@@ -240,11 +258,115 @@ kinds load from both bases is declared on the `Harness`. A *global* copy during
 a local install is never flagged: it is shared infrastructure serving every
 other repository.
 
+## One line in a file the host does not own
+
+Some generated files need one line in a file that belongs to the repository:
+the motivating case is a `merge=union` attribute for a generated index, so it
+resolves on merge instead of conflicting. Declare the line and `install`
+keeps it there:
+
+```python
+HOST = Host(
+    ...,
+    lines=(Line(path=".gitattributes", key="docs/README.md", value="merge=union"),),
+)
+```
+
+`key` is the line's first field, the token that identifies it; `value` is the
+rest. `install` appends the line when no line names the key, and rewrites a
+line that names the key with a different value only under `--force` — the
+file is repo content a user may have set deliberately, so a plain install
+reports the difference and leaves it. Other lines are never touched. The line
+goes in the repository whatever the install mode, since it has no meaning
+under `$HOME`.
+
+`install --check` shows each line under its path with a blank mode column:
+
+| Found | Status |
+|---|---|
+| a line naming the key with the value | `ok` |
+| a line naming the key with another value | `drifted` (the check says what the file gives) |
+| no line naming the key, or no file | `missing` |
+| a file that cannot be read | `unreadable` |
+
+All four but `ok` gate. `unreadable` is its own status rather than folding into
+`foreign` because `--force` cannot fix it: an installer that cannot read the
+file refuses to rewrite it, since every edit here is an append or a one-line
+amendment of text it has read, and a status must not imply a remedy the tool
+will not perform. A line is not stamped and not an artifact; it renders from
+nothing, and a stamp has no place inside another tool's file.
+
+## Wiring pre-commit hooks
+
+A host that ships a `validate` or `index` command usually wants it to run as
+a git hook. `pkgskills.precommit` does the wiring; the host declares only the
+hooks and calls it from the two host hooks:
+
+```python
+from pkgskills import Hook, InstallReport
+from pkgskills import precommit
+
+HOOKS = (
+    Hook("yourtool-validate", args=("validate",), files=r"^docs/plans/.*\.md$"),
+    Hook("yourtool-index", stage="post-merge", args=("index", "."), always_run=True),
+)
+
+
+def after_install(report: InstallReport) -> None:
+    precommit.wire(report, HOOKS)
+
+
+HOST = Host(
+    ...,
+    after_install=after_install,
+    extra_checks=lambda host, root, mode: precommit.checks(host, root, mode, HOOKS),
+)
+```
+
+`wire` appends a `repo: local` block naming the hooks that are missing from
+`.pre-commit-config.yaml` (creating the file when absent, and seeding `repos:`
+in one that is empty or comments only), and runs
+`pre-commit install --hook-type <stage>` for each distinct stage. Each hook's
+`entry` is the host's invocation for the install mode plus the hook's `args`,
+so it can only be mode-correct; `name` and `files` are single-quoted, so a
+regex or a display name may carry `: ` or ` #`. Three rules keep it from
+clobbering repo content:
+
+- **A hook already present is keyed on its `- id:` line**, so a customized
+  entry counts as present and is not duplicated, and an id that is a prefix
+  of another (`x-index` next to `x-index-all`) is not mistaken for it.
+- **An entry naming the other mode is resynced only on a genuine switch** —
+  when `InstallReport.previous`, the mode resolved before the write, differs
+  from the mode being installed. A same-mode refresh leaves it: a host's own
+  dev repo keeps `uv run yourtool` while using a global stub, since the host is
+  a local dependency there. An entry naming neither invocation is always left.
+- **An unreadable config is never rewritten**; `HookReport.unreadable` says so.
+
+`wire` returns a `HookReport`: whether the config was created, which hook ids
+were added or resynced, and per stage what registration did — `activated`,
+`already_active`, `skipped` (with `activate=False`), `no_git_repo`,
+`hookspath_blocked` (git's `core.hooksPath` makes `pre-commit install` refuse),
+or `unavailable`. `pre-commit` itself is invoked bare in global mode and
+through the host's `local_prefix` in local mode; pass `precommit=` to
+override. `precommit.add_dependency(root)` runs `uv add --dev pre-commit`, and
+is a separate call because it edits `pyproject.toml`, which a default install
+should not do unasked.
+
+`checks` returns one row per hook — `active`, `unregistered`, `missing` (no
+entry in the config), `no_git_repo`, or `blocked` — none of which gate, since
+registration is per-clone state a fresh clone legitimately lacks. Each row's
+note names the command that fixes it. Registration is judged by the hook
+script pre-commit writes into the effective hooks directory, which honors
+`core.hooksPath` and linked worktrees, so a hook live at a non-default path is
+still found.
+
 ## Hooks for host-specific work
 
-`Host.after_install` receives an `InstallReport` (mode, root, and the paths
-written, removed, and shadowed) once every artifact is on disk. Use it for
-follow-up such as wiring a pre-commit hook; shell out through
+`Host.after_install` receives an `InstallReport` once every artifact is on
+disk: the mode, the root, the paths written, removed, and shadowed, the mode
+that was installed before (`previous`), the user's `force` consent, what
+happened to each declared line, and the files removed or left at previous
+names. Use it for follow-up the library cannot know about; shell out through
 `pkgskills.run(root, argv)`, which pins the call to `root` and strips `GIT_DIR`
 and its siblings, so an inherited location variable cannot aim a commit at
 another repository.

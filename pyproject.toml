@@ -1,6 +1,6 @@
 [project]
 name = "pkgskills"
-version = "0.3.0"
+version = "0.4.0"
 description = "Ship prompts inside a CLI package and install thin, version-stamped stubs where the harness reads them."
 authors = [
     {name = "gitronald", email = "gitronald@users.noreply.github.com"}
@@ -55,6 +55,7 @@ dev = [
     "pyrefly>=1.0.0",
     "pytest>=9.0.3",
     "pytest-cov",
+    "pyyaml>=6.0.3",
     "ruff>=0.15",
 ]
 

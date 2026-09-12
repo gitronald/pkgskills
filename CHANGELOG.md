@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-11
+
+### Added
+
+- `pkgskills.precommit`: `Hook` declares a pre-commit hook, `wire(report,
+  hooks)` appends the missing ones to `.pre-commit-config.yaml` and registers
+  each stage with `pre-commit install --hook-type`, and `checks(host, root,
+  mode, hooks)` returns one non-gating `ExtraCheck` row per hook (`active`,
+  `unregistered`, `missing`, `no_git_repo`, `blocked`) with a note naming the
+  fix. The `entry` is derived from the host's invocation, an entry naming the
+  other mode is resynced only on a genuine mode switch, a customized entry is
+  left alone, an empty config is seeded with `repos:`, and an unreadable
+  config is never rewritten. Presence is judged by the `- id:` line, `name`
+  and `files` are quoted for YAML, and the clone is consulted once per call.
+  `add_dependency` runs `uv add --dev pre-commit` as a separate, opt-in step.
+- `Line(path, key, value)` on `Host.lines`: one line the host needs in a
+  repository file it does not own, such as a `merge=union` attribute for a
+  generated index. `install` appends it when missing and rewrites a drifted
+  one only under `--force`; `install --check` reports `ok`, `drifted`,
+  `missing`, or `unreadable` under the file's path, and `unreadable` is its
+  own status because no install repairs it. Lines are written in the
+  repository whatever the mode, and are neither stamped nor artifacts.
+- `previous_names` on `Skill`, `Rule`, and `Agent`. At each old name,
+  `install` removes the file the host's stamp proves is its own and reports
+  an unstamped one without touching it; `install --check` reports a stamped
+  leftover as `stale`. A previous name that another artifact of the kind still
+  installs under is rejected at construction.
+- `InstallReport.previous`, the mode an install resolved to before this one
+  wrote, plus `lines`, `renamed`, and `leftover` recording what the install
+  did about declared lines and previous names. All additive with empty
+  defaults; no existing host breaks.
+
 ## [0.3.0] - 2026-09-11
 
 ### Fixed

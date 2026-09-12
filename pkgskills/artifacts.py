@@ -28,12 +28,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from pkgskills.harness import Harness
-from pkgskills.host import Artifact, Host, Mode, Skill
+from pkgskills.harness import Harness, Kind
+from pkgskills.host import Artifact, Host, Line, Mode, Skill
 from pkgskills.rendering import render
 from pkgskills.stamp import is_stamped, mask_versions, stamped_by, stamped_mode
 
 Status = Literal["ok", "drifted", "stale", "missing", "foreign"]
+
+#: The verdicts for a :class:`~pkgskills.host.Line`, a file edited in place.
+#: ``unreadable`` is its own status because ``--force`` cannot fix it: the
+#: installer refuses to rewrite a file whose other lines it cannot see, so
+#: both ``foreign`` and ``missing`` would promise a remedy it will not perform.
+LineStatus = Literal["ok", "drifted", "missing", "unreadable"]
 
 
 class ForeignArtifactError(Exception):
@@ -61,15 +67,52 @@ class Check:
 
 
 @dataclass(frozen=True)
+class LineCheck:
+    """The verdict for one declared line, with the line found in its place.
+
+    ``found`` is the whitespace-normalized line that names the key when the
+    status is ``drifted``, so a caller can say what the file grants instead of
+    only that it differs.
+    """
+
+    line: Line
+    path: Path
+    status: LineStatus
+    found: str = ""
+
+    @property
+    def ok(self) -> bool:
+        return self.status == "ok"
+
+
+@dataclass(frozen=True)
+class LineWrite:
+    """What an install did about one line: the verdict before, and whether it wrote."""
+
+    check: LineCheck
+    written: bool
+
+
+@dataclass(frozen=True)
 class InstallReport:
     """What an install did, for the CLI to narrate and hooks to act on.
 
+    ``previous`` is the mode an existing install resolved to before this one
+    wrote anything, or ``None`` on a first install. A hook that keeps repo
+    content in step with the mode — a pre-commit entry, say — needs it to tell
+    a genuine switch from a same-mode refresh, since afterwards the fresh
+    files always read as the requested mode.
+
     ``force`` carries the user's explicit consent to overwrite through to
-    :attr:`Host.after_install <pkgskills.host.Host.after_install>`. Every write
-    here is wholesale, so the flag is already spent by the time a hook runs;
-    it is passed on for a hook that edits a file in place — appending or
-    amending one line of a file the host does not own — which otherwise has no
-    way to tell a line it may replace from one it must leave alone.
+    :attr:`Host.after_install <pkgskills.host.Host.after_install>`. Every
+    artifact write is wholesale, so the flag is already spent by the time a
+    hook runs; it is passed on for a hook that edits a file in place, which
+    otherwise has no way to tell a line it may replace from one it must leave
+    alone. The declared :attr:`~pkgskills.host.Host.lines` honor it the same
+    way, and ``lines`` records what happened to each.
+
+    ``renamed`` lists the stamped files removed from an artifact's previous
+    names; ``leftover`` lists the unstamped files found there and left alone.
     """
 
     host: Host
@@ -79,6 +122,10 @@ class InstallReport:
     removed: tuple[Path, ...] = field(default_factory=tuple)
     shadowed: tuple[Path, ...] = field(default_factory=tuple)
     force: bool = False
+    previous: Mode | None = None
+    lines: tuple[LineWrite, ...] = field(default_factory=tuple)
+    renamed: tuple[Path, ...] = field(default_factory=tuple)
+    leftover: tuple[Path, ...] = field(default_factory=tuple)
 
 
 # -- locations ---------------------------------------------------------------
@@ -120,6 +167,22 @@ def artifact_path(host: Host, art: Artifact, mode: Mode, root: Path) -> Path:
     return base / host.harness.relative_path(art.kind, art.name)
 
 
+def previous_paths(
+    host: Host, art: Artifact, mode: Mode, root: Path
+) -> list[tuple[str, Path]]:
+    """Where ``art`` used to live for ``mode``, one path per previous name."""
+    base = global_base() if mode == "global" else root
+    return [
+        (name, base / host.harness.relative_path(art.kind, name))
+        for name in art.previous_names
+    ]
+
+
+def line_path(line: Line, root: Path) -> Path:
+    """Where ``line``'s file lives: always under ``root``, whatever the mode."""
+    return root / line.path
+
+
 def occupied(path: Path) -> bool:
     """True when something sits at ``path``, a dangling symlink included."""
     return path.is_symlink() or path.exists()
@@ -151,11 +214,10 @@ def classify(path: Path, host: Host, expected: str, mode: Mode) -> tuple[Status,
     ``foreign``, and the CLI points at ``--force``. That is honest only because
     every write here is wholesale: ``--force`` genuinely fixes it. The rule the
     status set obeys is that **a status must not imply a remedy the tool cannot
-    perform** — so an artifact kind that is *edited in place* rather than
-    rewritten (appending or amending one line of a file the host does not own)
-    needs its own ``unreadable`` status from the start. There, an installer that
-    cannot read the file refuses to write it, and both ``foreign`` and
-    ``missing`` would send the user in a circle.
+    perform** — which is why a :class:`~pkgskills.host.Line`, edited in place
+    rather than rewritten, has its own :data:`LineStatus` with ``unreadable``
+    in it. There, an installer that cannot read the file refuses to write it,
+    and both ``foreign`` and ``missing`` would send the user in a circle.
     """
     if not occupied(path):
         return "missing", "not installed"
@@ -240,19 +302,152 @@ def check(host: Host, root: Path, mode: Mode | None = None) -> list[Check]:
     installed = installed_mode(host, root)
     results: list[Check] = []
     for art in host.artifacts:
-        if mode is not None:
+        modes = (mode,) if mode is not None else host.modes
+        if mode is None:
+            found = [
+                check_artifact(host, art, m, root, installed=installed)
+                for m in modes
+                if occupied(artifact_path(host, art, m, root))
+            ]
+            results.extend(
+                found
+                or [
+                    check_artifact(
+                        host, art, host.default_mode, root, installed=installed
+                    )
+                ]
+            )
+        else:
             results.append(check_artifact(host, art, mode, root, installed=installed))
-            continue
-        found = [
-            check_artifact(host, art, m, root, installed=installed)
-            for m in host.modes
-            if occupied(artifact_path(host, art, m, root))
-        ]
-        results.extend(
-            found
-            or [check_artifact(host, art, host.default_mode, root, installed=installed)]
-        )
+        # A stamped file at a name the artifact no longer installs under is
+        # still loaded by the harness, so it is real drift. Only a stamped one:
+        # an unstamped file there is somebody else's and earns no row.
+        for m in modes:
+            for name, path in previous_paths(host, art, m, root):
+                if is_generated(path, host):
+                    results.append(
+                        Check(
+                            art,
+                            m,
+                            path,
+                            "stale",
+                            f"installed under the previous name {name!r}; remove it",
+                        )
+                    )
     return results
+
+
+def leftover_previous(host: Host, mode: Mode, root: Path) -> list[Path]:
+    """Unstamped files sitting at an artifact's previous names for ``mode``.
+
+    Never removed, since nothing says they are ours; surfaced so the user can
+    decide. Only plain files count — a directory or symlink at an old skill
+    path is not a leftover rule that will be auto-loaded.
+    """
+    found: list[Path] = []
+    for art in host.artifacts:
+        for _, path in previous_paths(host, art, mode, root):
+            text = read_plain(path)
+            if text is not None and not is_stamped(text, host):
+                found.append(path)
+    return found
+
+
+# -- lines -------------------------------------------------------------------
+
+
+def _find_line(text: str, key: str) -> tuple[int, str] | None:
+    """The last line of ``text`` whose first field is ``key``, normalized.
+
+    Returns ``(line number, whitespace-normalized line)``. Last rather than
+    first because that is the one git obeys for attributes: a file carrying
+    both ``merge=union`` and a later ``merge=ours`` for the same pattern is a
+    repo running ``ours``, and reading the first match would call it ``ok``.
+    Normalizing whitespace keeps a padded but equivalent line from reading as
+    drift. Blank and ``#`` lines are skipped. Patterns are compared as written,
+    so a differently spelled pattern for the same file reads as absent — the
+    safe direction, since the line then appended is the last match and wins.
+    """
+    found: tuple[int, str] | None = None
+    for number, raw in enumerate(text.splitlines()):
+        stripped = raw.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        fields = stripped.split()
+        if fields[0] == key:
+            found = (number, " ".join(fields))
+    return found
+
+
+def _read_line(line: Line, root: Path) -> tuple[LineCheck, str]:
+    """The verdict for ``line`` and the text it was read from, in one read.
+
+    The text is ``""`` when the file is absent or unreadable, so a caller
+    that goes on to edit has the same bytes the verdict came from.
+    """
+    path = line_path(line, root)
+    if not occupied(path):
+        return LineCheck(line, path, "missing"), ""
+    text = read_plain(path)
+    if text is None:
+        return LineCheck(line, path, "unreadable"), ""
+    found = _find_line(text, line.key)
+    if found is None:
+        return LineCheck(line, path, "missing"), text
+    number, normalized = found
+    if normalized == line.text:
+        return LineCheck(line, path, "ok"), text
+    return LineCheck(line, path, "drifted", normalized), text
+
+
+def check_line(line: Line, root: Path) -> LineCheck:
+    """The :data:`LineStatus` verdict for ``line`` in ``root``."""
+    return _read_line(line, root)[0]
+
+
+def check_lines(host: Host, root: Path) -> list[LineCheck]:
+    """The verdict for every line the host declares."""
+    return [check_line(line, root) for line in host.lines]
+
+
+def write_line(line: Line, root: Path, *, force: bool = False) -> LineWrite:
+    """Put ``line`` in its file: append when absent, rewrite in place under ``force``.
+
+    Other lines are preserved — the line is appended or one line amended,
+    never the file rewritten from scratch. A line naming the key with another
+    value is left alone unless ``force`` is set, since the file is repo
+    content a user may have set deliberately. An unreadable file is left alone
+    ``force`` or not: with no text in hand there is no edit that would not
+    discard the rest of the file.
+    """
+    # One read: the edit below works on the very text the verdict came from.
+    before, text = _read_line(line, root)
+    if before.status in ("ok", "unreadable"):
+        return LineWrite(before, False)
+    path = before.path
+    if before.status == "missing":
+        # Absent, or a readable file with no line for the key: anything else
+        # was called `unreadable` above.
+        if text and not text.endswith("\n"):
+            text += "\n"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text + line.text + "\n", encoding="utf-8")
+        return LineWrite(before, True)
+    if not force:
+        return LineWrite(before, False)
+    found = _find_line(text, line.key)
+    assert found is not None  # `drifted` means this same text has the line
+    number = found[0]
+    lines = text.splitlines(keepends=True)
+    ends = "\n" if lines[number].endswith("\n") else ""
+    lines[number] = line.text + ends
+    path.write_text("".join(lines), encoding="utf-8")
+    return LineWrite(before, True)
+
+
+def write_lines(host: Host, root: Path, *, force: bool = False) -> list[LineWrite]:
+    """:func:`write_line` for every line the host declares, in order."""
+    return [write_line(line, root, force=force) for line in host.lines]
 
 
 def installed_mode(host: Host, root: Path) -> Mode | None:
@@ -402,10 +597,40 @@ def remove_stale_local(host: Host, root: Path) -> list[Path]:
     return removed
 
 
+def remove_previous(host: Host, mode: Mode, root: Path) -> list[Path]:
+    """Drop the stamped files at every artifact's previous names for ``mode``.
+
+    The same test :func:`remove_stale_local` applies: only a plain file this
+    host generated is removed, so a hand-written file at an old name — or
+    another package's — is never touched. A skill's directory is removed with
+    its stub when nothing else is in it; a directory that still holds
+    something is left as it is.
+    """
+    removed: list[Path] = []
+    current = {artifact_path(host, art, mode, root) for art in host.artifacts}
+    for art in host.artifacts:
+        for _, path in previous_paths(host, art, mode, root):
+            # Guarded by validate, but the cost of a second check is nothing
+            # next to deleting a file that was just written.
+            if path in current or not is_generated(path, host):
+                continue
+            path.unlink()
+            removed.append(path)
+            if art.kind is Kind.SKILL:
+                try:
+                    path.parent.rmdir()
+                except OSError:
+                    pass
+    return removed
+
+
 def install(
     host: Host, root: Path, mode: Mode, *, force: bool = False
 ) -> InstallReport:
     """Write every artifact for ``mode`` and run the host's follow-up hook.
+
+    After the artifacts: the declared lines go into their files under
+    ``root``, and the stamped files at any previous names are removed.
 
     Raises :class:`ForeignArtifactError` before writing anything when a target
     is not ours and ``force`` is off, and ``ValueError`` when ``mode`` is not
@@ -418,6 +643,9 @@ def install(
             f"it supports: {', '.join(host.modes)}"
         )
     guard(host, root, mode, force=force)
+    # Resolved before the first write, since afterwards the fresh files always
+    # read as the requested mode.
+    previous = installed_mode(host, root)
     written = tuple(write_artifact(host, art, mode, root) for art in host.artifacts)
     removed: tuple[Path, ...] = ()
     shadowed: tuple[Path, ...] = ()
@@ -425,7 +653,22 @@ def install(
         removed = tuple(remove_stale_local(host, root))
     else:
         shadowed = tuple(shadowed_skills(host, root))
-    report = InstallReport(host, mode, root, written, removed, shadowed, force)
+    lines = tuple(write_lines(host, root, force=force))
+    renamed = tuple(remove_previous(host, mode, root))
+    leftover = tuple(leftover_previous(host, mode, root))
+    report = InstallReport(
+        host,
+        mode,
+        root,
+        written,
+        removed,
+        shadowed,
+        force,
+        previous,
+        lines,
+        renamed,
+        leftover,
+    )
     if host.after_install is not None:
         host.after_install(report)
     return report
