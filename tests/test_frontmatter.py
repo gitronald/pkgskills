@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import pytest
+import yaml
+
 from pkgskills.frontmatter import (
     body_only,
     find_block,
@@ -69,9 +72,10 @@ def test_folded_and_literal_block_scalars() -> None:
     ]
     fields = parse_fields(lines)
     assert (
-        fields["description"] == "First line of a long description. Second paragraph."
+        fields["description"]
+        == "First line of a long description.\nSecond paragraph.\n"
     )
-    assert fields["notes"] == "line one\nline two"
+    assert fields["notes"] == "line one\nline two\n"
     assert fields["tools"] == "Read, Grep"
 
 
@@ -129,3 +133,38 @@ def test_entries_strips_a_comment_from_a_value() -> None:
     block = find_block(raw, "metadata")
     assert block is not None
     assert block.entries() == [(2, "version", "1.0")]
+
+
+@pytest.mark.parametrize(
+    "text", ["---\nname: x\n---", "---\r\nname: x\r\n---\r\n", "---\rname: x\r---"]
+)
+def test_split_preserves_fence_line_endings(text: str) -> None:
+    front, body = split_frontmatter(text)
+    assert front is not None
+    assert front.raw + body == text
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "thing # a comment",
+        "'it''s # literal'",
+        '"say \\"hi\\" # literal"',
+        ">- # folded\n  line one\n  line two",
+        "|+\n  first\n\n  last\n",
+    ],
+)
+def test_fields_follow_yaml_scalar_syntax(value: str) -> None:
+    text = f"description: {value}\n"
+    assert (
+        parse_fields(text.splitlines(keepends=True))["description"]
+        == yaml.safe_load(text)["description"]
+    )
+
+
+@pytest.mark.parametrize("text", ["[broken", "- item", "", "? [a, b]\n: value"])
+def test_invalid_or_nonmapping_fields_do_not_break_splitting(text: str) -> None:
+    doc = f"---\n{text}\n---\nbody"
+    front, body = split_frontmatter(doc)
+    assert front is not None and front.fields == {}
+    assert front.raw + body == doc

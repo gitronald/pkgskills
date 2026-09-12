@@ -7,15 +7,16 @@ carry that block byte for byte; the body behind it is what the host prints on
 demand. ``split_frontmatter`` is therefore lossless: ``raw + body`` rebuilds the
 input exactly whenever a block was found.
 
-The parser is deliberately small. It handles single-line scalars, quoted
-scalars, and the folded (``>``) and literal (``|``) block scalars that long
-descriptions use. Nested mappings are not needed by any prompt kind and are
-ignored rather than parsed.
+YAML parses scalar values, comments, and quoting. The flat view exposes only
+scalar values; nested mappings and sequences remain available in ``raw`` for
+the specification checker.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+
+import yaml
 
 FENCE = "---"
 
@@ -25,7 +26,8 @@ class Frontmatter:
     """A parsed frontmatter block.
 
     ``raw`` is the block as it appeared, both fence lines included and ending in
-    a newline, so it can be re-emitted verbatim. ``fields`` holds the flat
+    the source's original line endings, so it can be re-emitted verbatim.
+    ``fields`` holds the flat
     scalar keys the block declares.
     """
 
@@ -50,49 +52,27 @@ def split_frontmatter(text: str) -> tuple[Frontmatter | None, str]:
     for i in range(1, len(lines)):
         if lines[i].rstrip("\r\n") == FENCE:
             raw = "".join(lines[: i + 1])
-            if not raw.endswith("\n"):
-                raw += "\n"
             body = "".join(lines[i + 1 :])
             return Frontmatter(raw=raw, fields=parse_fields(lines[1:i])), body
     return None, text
 
 
 def parse_fields(lines: list[str]) -> dict[str, str]:
-    """Parse flat ``key: value`` lines into a dict.
+    """A flat string view of YAML, with an empty value for nested collections.
 
-    A value of ``>`` or ``|`` (optionally suffixed with ``-``) starts a block
-    scalar whose indented continuation lines are joined with spaces (folded)
-    or newlines (literal). Surrounding quotes on a single-line value are
-    stripped. Indented lines that follow an ordinary scalar are skipped, which
-    is how a nested mapping is ignored.
+    BaseLoader decodes scalars without resolving numbers or booleans; type
+    validation belongs to the spec checker. Invalid YAML yields no fields so
+    splitting remains lossless and never raises.
     """
-    out: dict[str, str] = {}
-    i = 0
-    n = len(lines)
-    while i < n:
-        line = lines[i].rstrip("\r\n")
-        i += 1
-        if not line.strip() or line.startswith("#") or line[0].isspace():
-            continue
-        key, sep, value = line.partition(":")
-        if not sep:
-            continue
-        key = key.strip()
-        value = value.strip()
-        if value in (">", ">-", "|", "|-"):
-            block: list[str] = []
-            while i < n and (lines[i].startswith((" ", "\t")) or not lines[i].strip()):
-                block.append(lines[i].strip())
-                i += 1
-            while block and not block[-1]:
-                block.pop()
-            joiner = " " if value.startswith(">") else "\n"
-            out[key] = joiner.join(part for part in block if part or joiner == "\n")
-            continue
-        if len(value) >= 2 and value[0] in "\"'" and value[-1] == value[0]:
-            value = value[1:-1]
-        out[key] = value
-    return out
+    try:
+        parsed = yaml.load("".join(lines), Loader=yaml.BaseLoader)
+    except yaml.YAMLError:
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    return {
+        key: value if isinstance(value, str) else "" for key, value in parsed.items()
+    }
 
 
 def strip_comment(value: str) -> str:
