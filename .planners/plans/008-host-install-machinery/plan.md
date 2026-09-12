@@ -5,7 +5,7 @@ status: active
 branch: feature/host-install-machinery
 created: 2026-09-11T19:38:49-07:00
 concluded:
-pr:
+pr: https://github.com/gitronald/pkgskills/pull/8
 ---
 
 # Move hook wiring, in-place line artifacts, and superseded paths upstream
@@ -141,3 +141,45 @@ already has.
 Host-declared install options (plan 007 deferred them; still one host).
 Running any subprocess outside a host's explicit `after_install` or
 `extra_checks`. Any hook framework other than pre-commit.
+
+## Log
+
+### 2026-09-11 — steps 1–4 implemented on `feature/host-install-machinery`
+
+1. `pkgskills.precommit`: `Hook`, `wire`, `checks`, `add_dependency`, plus
+   the read-only helpers (`hook_state`, `hooks_dir`, `registered`,
+   `hookspath_set`). Tests drive `wire` with a fake `pre-commit` passed as
+   `precommit=(python, script)` rather than placed on `PATH`, since the
+   default invocation is `uv run pre-commit` in local mode and faking `uv`
+   would be awkward; two tests need a real `git` for `core.hooksPath` and skip
+   without one. `GIT_CONFIG_GLOBAL`/`GIT_CONFIG_SYSTEM` are pinned to devnull
+   in the fixture so a developer's own `core.hooksPath` cannot leak in.
+2. `Line` on `Host.lines`, with `LineStatus`, `LineCheck`, `LineWrite`,
+   `check_line(s)`, `write_line(s)`. `run_check` prints line rows with a blank
+   mode column and gates on them; an unreadable line file suggests no repair.
+3. `previous_names` on `Skill`, `Rule`, `Agent`; `previous_paths`,
+   `remove_previous`, `leftover_previous`. `check` adds a `stale` row per
+   stamped leftover; a renamed skill's emptied directory is removed with it.
+4. README sections for lines, hooks, and the rename recipe; changelog entries.
+
+Decisions made while implementing, beyond the plan text:
+
+- **`InstallReport.previous`.** The plan's resync rule ("re-syncs an entry
+  that names the other mode, leaves a deliberately different one alone")
+  cannot distinguish the first host's dev-repo case — `uv run <cli>` kept on
+  purpose under a global stub — from a stale entry, because both name the
+  other mode. The first host resolved this by resyncing only on a genuine mode
+  switch, which needs the mode installed *before* the write. `install` now
+  records it as `previous` (a `None` first install never resyncs either), and
+  `wire` derives the rule from that instead of taking a `resync` flag.
+- **Lines live at the repo root in every mode.** "Local mode only" in the
+  plan is read as "never under `$HOME`", not "skipped on a global install": a
+  global install of the first host still wires its `.gitattributes` line, and
+  the line is repo content whatever the mode.
+- **`unreadable` overflows the status column** rather than the table widening:
+  the eight-character column is pinned by existing tests and the case is rare.
+- **`hookspath_blocked` / `blocked`** are kept as a fifth state on both sides,
+  since the first host needed the distinction to name the real cause.
+- **A single-source skill cannot be renamed from the declaration alone**: its
+  stub lifts the source's `name`. Documented in the README; the tests rename
+  the dispatcher.
