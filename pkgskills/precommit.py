@@ -91,15 +91,17 @@ class Hook:
     ``id`` is the pre-commit hook id and the token the wiring keys on; ``stage``
     the git hook it runs at (``pre-commit``, ``post-merge``, ...); ``args``
     what follows the host's invocation in ``entry``. The remaining fields pass
-    through to the hook entry as pre-commit defines them; ``name`` defaults to
-    the id.
+    through to the hook entry with pre-commit's own defaults: filenames are
+    passed unless ``pass_filenames`` is False, which a whole-repo hook (an
+    ``always_run`` one at ``post-merge``, say) sets explicitly; ``name``
+    defaults to the id.
     """
 
     id: str
     stage: str = "pre-commit"
     args: tuple[str, ...] = ()
     name: str | None = None
-    pass_filenames: bool = False
+    pass_filenames: bool = True
     always_run: bool = False
     files: str | None = None
 

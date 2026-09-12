@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `Hook.pass_filenames` now defaults to `True`, pre-commit's own default, as
+  the docstring already implied. It defaulted to `False`, so a file-scoped
+  hook such as a `validate` command that takes paths rendered
+  `pass_filenames: false`, wired and reported `active` without complaint, and
+  then failed on the consumer's first commit for want of arguments. A
+  whole-repo hook that takes no paths, such as an `always_run` index hook at
+  `post-merge`, now sets `pass_filenames=False` explicitly; the README example
+  does.
+
 ## [0.5.0] - 2026-09-12
 
 ### Changed
