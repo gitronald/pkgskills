@@ -20,6 +20,11 @@ nowhere to read it from once the body is printed from a package — there is no
 skill directory next to the stub. Docs therefore live on :attr:`Host.docs`
 rather than in :attr:`Host.artifacts`, since an artifact here is something
 materialized at a location per mode and a doc has neither.
+
+A :class:`Line` is the fifth: one line the host needs in a file it does not
+own, such as a ``merge=union`` attribute for a generated index. It is neither
+rendered from a prompt nor stamped, and it lives in the repository whatever
+the install mode, so it sits on :attr:`Host.lines`.
 """
 
 from __future__ import annotations
@@ -79,6 +84,7 @@ class Skill:
     sources: tuple[str, ...]
     description: str | None = None
     render_cli: bool | None = None
+    previous_names: tuple[str, ...] = ()
 
     @property
     def kind(self) -> Kind:
@@ -116,11 +122,19 @@ class Skill:
 
 @dataclass(frozen=True)
 class Rule:
-    """A convention rule the host ships, installed as a stamped copy."""
+    """A convention rule the host ships, installed as a stamped copy.
+
+    ``previous_names`` lists the names this rule used to install under. A
+    consumer that installed an earlier release still has the old file, still
+    auto-loading and still stamped as this host's; ``install`` removes it when
+    it carries the stamp and only reports it when it does not. The same field
+    means the same thing on :class:`Skill` and :class:`Agent`.
+    """
 
     name: str
     source: str
     render_cli: bool | None = None
+    previous_names: tuple[str, ...] = ()
 
     @property
     def kind(self) -> Kind:
@@ -134,6 +148,7 @@ class Agent:
     name: str
     source: str
     render_cli: bool | None = None
+    previous_names: tuple[str, ...] = ()
 
     @property
     def kind(self) -> Kind:
@@ -157,6 +172,34 @@ class Doc:
     name: str
     source: str
     render_cli: bool | None = None
+
+
+@dataclass(frozen=True)
+class Line:
+    """One line the host needs in a repository file it does not own.
+
+    The motivating case is ``<index path> merge=union`` in ``.gitattributes``,
+    so a generated index resolves on merge instead of conflicting. ``path`` is
+    repo-relative; ``key`` is the first whitespace-separated field, the token
+    that identifies the line; ``value`` is the rest of it. ``install`` appends
+    the line when no line names ``key``, rewrites one that names ``key`` with a
+    different value only under ``--force``, and refuses to touch a file it
+    cannot read. Whichever mode the install is in, the line goes in the
+    repository: it is repo content, not tooling, so it has no home under
+    ``$HOME``.
+
+    Not stamped and not an artifact: nothing here renders from a prompt source,
+    and a stamp has no place inside another tool's file.
+    """
+
+    path: str
+    key: str
+    value: str
+
+    @property
+    def text(self) -> str:
+        """The line as written, whitespace-normalized, without its newline."""
+        return f"{self.key} {self.value}"
 
 
 Artifact = Skill | Rule | Agent
@@ -214,6 +257,9 @@ class Host:
     * ``docs`` lists the reference documents it ships. They are printed by
       ``<cli> doc <name>`` and never installed, checked, or stamped, so they
       appear here rather than in ``artifacts``.
+    * ``lines`` lists the single lines it needs in repository files it does
+      not own. They are written and checked alongside the artifacts, in the
+      repository whatever the mode, and never stamped.
     * ``render_cli`` is the default for every artifact and doc that leaves its
       own ``render_cli`` unset. A host whose every body uses ``{cli}`` sets it
       once here instead of repeating the flag on each declaration.
@@ -244,6 +290,7 @@ class Host:
     prompts: str
     artifacts: tuple[Artifact, ...] = field(default_factory=tuple)
     docs: tuple[Doc, ...] = field(default_factory=tuple)
+    lines: tuple[Line, ...] = field(default_factory=tuple)
     render_cli: bool = False
     modes: tuple[Mode, ...] = MODES
     local_prefix: str = "uv run"
@@ -284,6 +331,12 @@ class Host:
             if key in seen:
                 raise ValueError(f"duplicate {art.kind.value} {art.name!r}")
             seen.add(key)
+            for previous in art.previous_names:
+                if not previous or previous == art.name:
+                    raise ValueError(
+                        f"{art.kind.value} {art.name!r} lists {previous!r} "
+                        "as a previous name"
+                    )
             if isinstance(art, Skill):
                 if not art.sources:
                     raise ValueError(f"skill {art.name!r} declares no sources")
@@ -292,6 +345,29 @@ class Host:
                     raise ValueError(
                         f"skill {art.name!r} has sources with duplicate names"
                     )
+        # A previous name that another artifact of the kind still installs
+        # under would have install remove the file it had just written.
+        for art in self.artifacts:
+            for previous in art.previous_names:
+                if (art.kind, previous) in seen:
+                    raise ValueError(
+                        f"{art.kind.value} {art.name!r} lists {previous!r} as a "
+                        f"previous name, but a {art.kind.value} still installs "
+                        "under it"
+                    )
+        seen_lines: set[tuple[str, str]] = set()
+        for line in self.lines:
+            if not line.path or PurePosixPath(line.path).is_absolute():
+                raise ValueError(f"line {line.key!r}: path must be repo-relative")
+            if not line.key or len(line.key.split()) != 1:
+                raise ValueError(
+                    f"line in {line.path!r}: key must be one whitespace-free token"
+                )
+            if not line.value.strip():
+                raise ValueError(f"line {line.key!r} in {line.path!r} has no value")
+            if (line.path, line.key) in seen_lines:
+                raise ValueError(f"duplicate line {line.key!r} in {line.path!r}")
+            seen_lines.add((line.path, line.key))
         # Raises when two bodies would answer to the same `skill <name>`.
         self.skill_sources()
         # Every skill name at once, so an author fixing several sees them all.
