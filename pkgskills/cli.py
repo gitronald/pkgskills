@@ -205,7 +205,13 @@ def run_check(host: Host, root: Path, mode: Mode | None) -> bool:
             f"note: a global copy shadows the per-repo stub at "
             f"{_relative(path, root)}; the global one is what loads"
         )
-    for path in install_mod.leftover_previous(host, mode or host.default_mode, root):
+    # The same scope as the rows above: one mode when asked, else every mode.
+    leftover = [
+        path
+        for m in ((mode,) if mode is not None else host.modes)
+        for path in install_mod.leftover_previous(host, m, root)
+    ]
+    for path in leftover:
         _err(
             f"note: {_relative(path, root)} sits at a name this host no longer "
             "installs under, but carries no stamp; remove it by hand if it is stale"

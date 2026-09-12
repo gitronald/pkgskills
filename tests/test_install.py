@@ -12,7 +12,7 @@ from multihost.cli import HOST as MULTI
 from solohost.cli import HOST as SOLO
 
 from pkgskills import artifacts as inst
-from pkgskills.host import Host
+from pkgskills.host import Host, Line
 from pkgskills.rendering import render
 from pkgskills.testing import Sandbox
 
@@ -439,3 +439,163 @@ def test_no_stale_removal_when_repo_root_is_home(box: Sandbox) -> None:
     report = inst.install(SOLO, box.home, "global")
     assert report.removed == ()
     assert inst.artifact_path(SOLO, SOLO.skills[0], "global", box.home).exists()
+
+
+# -- lines -------------------------------------------------------------------
+
+ATTR = Line(".gitattributes", "docs/README.md", "merge=union")
+LINED = dataclasses.replace(SOLO, lines=(ATTR,))
+
+
+def test_line_statuses(box: Sandbox) -> None:
+    path = box.repo / ".gitattributes"
+    assert inst.check_line(ATTR, box.repo).status == "missing"
+
+    path.write_text("*.png binary\n")
+    assert inst.check_line(ATTR, box.repo).status == "missing"
+
+    path.write_text("*.png binary\ndocs/README.md   merge=union  \n")
+    assert inst.check_line(ATTR, box.repo).status == "ok"
+
+    path.write_text("docs/README.md merge=ours\n")
+    row = inst.check_line(ATTR, box.repo)
+    assert (row.status, row.found) == ("drifted", "docs/README.md merge=ours")
+
+    # The last line naming the key is the one git obeys.
+    path.write_text(
+        "docs/README.md merge=union\n# comment\ndocs/README.md merge=ours\n"
+    )
+    assert inst.check_line(ATTR, box.repo).status == "drifted"
+    path.write_text("docs/README.md merge=ours\ndocs/README.md merge=union\n")
+    assert inst.check_line(ATTR, box.repo).status == "ok"
+
+    path.write_bytes(b"\xff\xfe not utf-8")
+    assert inst.check_line(ATTR, box.repo).status == "unreadable"
+    path.unlink()
+    path.mkdir()
+    assert inst.check_line(ATTR, box.repo).status == "unreadable"
+
+
+def test_install_appends_a_missing_line_and_keeps_the_rest(box: Sandbox) -> None:
+    path = box.repo / ".gitattributes"
+    report = inst.install(LINED, box.repo, "local")
+    (done,) = report.lines
+    assert done.written and done.check.status == "missing"
+    assert path.read_text() == "docs/README.md merge=union\n"
+
+    path.write_text("*.png binary")  # no trailing newline
+    path.write_text("*.png binary")
+    report = inst.install(LINED, box.repo, "local")
+    assert report.lines[0].written
+    assert path.read_text() == "*.png binary\ndocs/README.md merge=union\n"
+
+    report = inst.install(LINED, box.repo, "local")
+    assert not report.lines[0].written and report.lines[0].check.ok
+    assert inst.check_lines(LINED, box.repo)[0].ok
+
+
+def test_a_line_lives_in_the_repo_whatever_the_mode(box: Sandbox) -> None:
+    inst.install(LINED, box.repo, "global")
+    assert (box.repo / ".gitattributes").read_text() == "docs/README.md merge=union\n"
+    assert not (box.home / ".gitattributes").exists()
+
+
+def test_a_drifted_line_is_rewritten_only_under_force(box: Sandbox) -> None:
+    path = box.repo / ".gitattributes"
+    path.write_text("*.png binary\ndocs/README.md merge=ours\n*.md text\n")
+    report = inst.install(LINED, box.repo, "local")
+    (done,) = report.lines
+    assert not done.written and done.check.status == "drifted"
+    assert "merge=ours" in path.read_text()
+
+    report = inst.install(LINED, box.repo, "local", force=True)
+    assert report.lines[0].written
+    assert path.read_text() == "*.png binary\ndocs/README.md merge=union\n*.md text\n"
+
+
+def test_an_unreadable_line_file_is_never_rewritten(box: Sandbox) -> None:
+    path = box.repo / ".gitattributes"
+    path.write_bytes(b"\xff\xfe not utf-8")
+    for force in (False, True):
+        report = inst.install(LINED, box.repo, "local", force=force)
+        (done,) = report.lines
+        assert not done.written and done.check.status == "unreadable"
+        assert path.read_bytes() == b"\xff\xfe not utf-8"
+
+
+# -- previous names ----------------------------------------------------------
+
+
+def _renamed(host: Host) -> Host:
+    """``host`` with its rule renamed, the old name declared as previous."""
+    rule = host.rules[0]
+    new = dataclasses.replace(rule, name="fresh", previous_names=(rule.name,))
+    return dataclasses.replace(
+        host, artifacts=tuple(new if art is rule else art for art in host.artifacts)
+    )
+
+
+def test_install_removes_a_stamped_file_at_a_previous_name(box: Sandbox) -> None:
+    inst.install(EXAMPLE, box.repo, "local")
+    old = inst.artifact_path(EXAMPLE, EXAMPLE.rules[0], "local", box.repo)
+    assert old.exists()
+    renamed = _renamed(EXAMPLE)
+    rows = {row.path: row for row in inst.check(renamed, box.repo)}
+    assert rows[old].status == "stale"
+    assert "previous name 'examplehost'" in rows[old].reason
+
+    report = inst.install(renamed, box.repo, "local")
+    assert report.renamed == (old,) and report.leftover == ()
+    assert not old.exists()
+    assert (box.repo / ".claude/rules/fresh.md").is_file()
+    assert all(row.ok for row in inst.check(renamed, box.repo))
+    # Nothing left to remove the second time.
+    assert inst.install(renamed, box.repo, "local").renamed == ()
+
+
+def test_an_unstamped_file_at_a_previous_name_survives(box: Sandbox) -> None:
+    renamed = _renamed(EXAMPLE)
+    old = box.repo / ".claude/rules/examplehost.md"
+    old.parent.mkdir(parents=True)
+    old.write_text("my own rule\n")
+    report = inst.install(renamed, box.repo, "local")
+    assert report.renamed == () and report.leftover == (old,)
+    assert old.read_text() == "my own rule\n"
+    # No row for it: it is not ours, so it neither gates nor drifts.
+    assert old not in {row.path for row in inst.check(renamed, box.repo)}
+    assert inst.leftover_previous(renamed, "local", box.repo) == [old]
+
+
+def test_previous_names_are_cleaned_in_the_install_mode_only(box: Sandbox) -> None:
+    inst.install(EXAMPLE, box.repo, "global")
+    old = inst.artifact_path(EXAMPLE, EXAMPLE.rules[0], "global", box.repo)
+    renamed = _renamed(EXAMPLE)
+    inst.install(renamed, box.repo, "local")
+    assert old.exists()
+    report = inst.install(renamed, box.repo, "global")
+    assert report.renamed == (old,)
+
+
+def test_a_renamed_skill_takes_its_empty_directory_with_it(box: Sandbox) -> None:
+    inst.install(EXAMPLE, box.repo, "local")
+    old = inst.artifact_path(EXAMPLE, EXAMPLE.skills[0], "local", box.repo)
+    # The dispatcher: it generates its own frontmatter, so the declaration
+    # alone renames it. A single-source stub lifts the source's `name`.
+    skill = dataclasses.replace(
+        EXAMPLE.skills[0], name="fresh", previous_names=("example",)
+    )
+    renamed = dataclasses.replace(EXAMPLE, artifacts=(skill, *EXAMPLE.artifacts[1:]))
+    inst.install(renamed, box.repo, "local")
+    assert not old.parent.exists()
+    # A directory that still holds something is left standing.
+    inst.install(EXAMPLE, box.repo, "local")
+    (old.parent / "notes.md").write_text("mine\n")
+    inst.install(renamed, box.repo, "local")
+    assert not old.exists() and (old.parent / "notes.md").exists()
+
+
+def test_install_report_carries_the_previous_mode(box: Sandbox) -> None:
+    assert inst.install(SOLO, box.repo, "local").previous is None
+    assert inst.install(SOLO, box.repo, "local").previous == "local"
+    assert inst.install(SOLO, box.repo, "global").previous == "local"
+    assert inst.install(SOLO, box.repo, "global").previous == "global"
