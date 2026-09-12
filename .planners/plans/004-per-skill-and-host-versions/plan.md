@@ -8,7 +8,7 @@ concluded:
 pr:
 ---
 
-# Decide whether a stub carries a per-skill version and a host-namespaced key
+# Track only a skill-level version in stub metadata
 
 ## Plan
 
@@ -55,31 +55,89 @@ These are one design, not two: freeing `version` for the source is exactly what
 creates the need for `<dist>-version`, and keeping the host's release in `version` is
 what keeps a source-declared one out. Deciding either settles the other.
 
-### What a host can do today
+### The decision
 
-Declare any other key — `mli` keeps it verbatim:
+Both questions are answered by rejecting their shared premise. The pairing above holds
+only if the host's release *must* live in the frontmatter, and it does not: the stamp
+already names the host distribution, its release, the `pkgskills` release, and the mode,
+one line below the block. `stamp.py`'s own docstring concedes as much — *"The stamp
+remains the contract; the metadata mirrors it."* The stated reason for mirroring, that a
+tool reading the frontmatter alone can still tell which release it is looking at, is thin
+when the authoritative copy is two lines away.
 
-```yaml
-metadata:
-  skill-version: "0.2.0"
-```
+So the third key never has to exist, and the answer is **one version key, owned by the
+source**:
 
-Cheap, spec-valid, and available now, so nothing needs to block on this plan.
+- **the stamp** stays the sole home of provenance — host distribution and release,
+  `pkgskills` release, mode, regeneration command. Unchanged.
+- **`metadata.version`** becomes the skill's own version, declared by the source and
+  passed through verbatim.
+- **`pkgskills-version`** is dropped from a stub's `metadata` entirely.
+- **a source that declares no version** gets no `version` key, and no `metadata` mapping
+  at all if it declares nothing else. There is no fallback to the host release: a
+  fallback would make one key mean two different things depending on the source, which
+  is the ambiguity this removes, and the stamp already answers "which release is this".
 
-### Worth weighing when this is taken up
+This also aligns the key with what the specification's example implies `metadata.version`
+means — the skill's version — which the host-release reading quietly repurposes.
 
-- A key **rename is a content change**, not a masked version token, so every existing
-  stub of every host would report drift once and need a `--force` reinstall.
-- A source-declared version presumably *should* drift when it changes, unlike the two
-  keys `mli` writes. Masking would have to tell the two apart, which it currently has
-  no reason to do.
+### What it deletes
+
+The change is a net simplification, not a swap. Nothing replaces what comes out.
+
+- `stamp.py`: `METADATA_KEYS`, `_META_RE`, `metadata_lines`, and the metadata half of
+  `mask_versions`. A source-owned version *should* drift when it changes, so there is
+  nothing left to mask; `mask_versions` goes back to being only about the stamp line.
+  Masking never has to tell a source-declared key from a generated one, because
+  `pkgskills` stops writing one.
+- `rendering.py`: `with_metadata` goes away entirely rather than shrinking. A
+  single-source stub lifts the source's frontmatter block, which already carries whatever
+  `metadata` the source declared, so the splice is a no-op; a dispatcher generates its own
+  block and has no source version to carry. Its collision `ValueError` has nothing left to
+  collide with, and its inline-`metadata` `SpecError` is redundant — `stub_frontmatter`
+  already calls `SPEC.check_parsed`, which runs `check_metadata`, which reports the same
+  violation first.
+- `spec.py`: `check_metadata_block` stays (it is `check_metadata`'s worker), but its
+  docstring cites `with_metadata` as the caller that splices, and must stop.
+- `tests/test_render.py`: the two collision tests and
+  `test_mask_versions_covers_the_stubs_metadata_versions` go; add coverage for a
+  source-declared `version` surviving into the stub verbatim, for a versionless source
+  producing no `metadata` mapping, and for a source `version` change *drifting* rather
+  than being masked.
+
+### Migration
+
+Removing a key is a content change, not a masked token, so every existing stub reports
+drift once and needs a `--force` reinstall. That cost is a function of how many hosts
+exist, and only grows — at `0.2.x` with a very small host set it is close to free, which
+is the argument for doing it now rather than banking the question.
+
+An ordinary `CHANGELOG.md` entry covers it. The one thing an entry should be explicit
+about is that `version` stays *present* with a different meaning rather than disappearing,
+so a host grepping stubs for the release marker gets a wrong answer rather than a missing
+one — but this does not warrant more than a normal entry.
 
 ### Out of scope
 
-Changing the behaviour now. This plan records the question; the workaround above is
-what gathers the evidence for answering it.
+- A per-host opt-in to fill `version` from the host release when the source omits it.
+  Not until a host asks for it.
+- Any change to the stamp line itself, or to how `mask_versions` treats it.
+
+### Verify
+
+- `uv run pytest`, plus the three project checks (`ruff check`, `ruff format --check`,
+  `pyrefly check`).
+- Render the `examplehost`, `solohost`, and `multihost` fixtures and confirm: a stub whose
+  source declares `metadata.version` keeps it byte for byte, a stub whose source declares
+  none has no `metadata` mapping, and every stub still carries a stamp naming both
+  releases.
+- Bump a fixture host's version and confirm no stub reports drift; change a source's
+  `metadata.version` and confirm the stub does.
 
 ### Implementation order
 
-Take it up when a host actually wants per-skill versions in its stubs. Until then it
-stays `draft` on purpose.
+1. Strip the metadata keys from `stamp.py` and delete `with_metadata`; fix the
+   `spec.py` docstring reference.
+2. Update the tests as above, and the `stamp.py` module docstring, which currently
+   documents the mirror.
+3. Changelog entry, then `--force` reinstall across the known hosts.
