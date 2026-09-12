@@ -40,7 +40,7 @@ from typing import TYPE_CHECKING
 
 import yaml
 
-from pkgskills.frontmatter import Block, Frontmatter, split_frontmatter
+from pkgskills.frontmatter import Frontmatter, split_frontmatter
 
 if TYPE_CHECKING:
     from pkgskills.host import Host, Skill
@@ -229,8 +229,10 @@ class SkillSpec:
         """
         return yaml.safe_load(text), yaml.load(text, Loader=yaml.BaseLoader)
 
-    def check_metadata(self, source: str, front: Frontmatter) -> list[Violation]:
-        """Violations in the ``metadata`` mapping, if the source declares one.
+    def _check_metadata(
+        self, source: str, metadata: object, written: dict[str, object]
+    ) -> list[Violation]:
+        """Violations in a parsed ``metadata`` value.
 
         The spec makes it *a map from string keys to string values*, so three
         things are wrong here: a scalar or a sequence where a map belongs, a
@@ -239,36 +241,7 @@ class SkillSpec:
         example writes ``version: "1.0"`` with the quotes precisely because
         unquoted it is a float.
         """
-        try:
-            parsed, written = self._views(
-                "".join(front.raw.splitlines(keepends=True)[1:-1])
-            )
-        except yaml.YAMLError:  # pragma: no cover - check_parsed reports it first
-            return []
-        if not isinstance(parsed, dict) or "metadata" not in parsed:
-            return []
-        return self._check_metadata(source, parsed["metadata"], _written(written))
 
-    def check_metadata_block(self, source: str, block: Block) -> list[Violation]:
-        """Check an already-located metadata block with YAML's scalar types."""
-        text = f"metadata: {block.inline}\n" + "\n".join(block.lines)
-        try:
-            parsed, written = self._views(text)
-        except yaml.YAMLError as exc:
-            return [
-                Violation(
-                    source,
-                    "metadata-not-a-mapping",
-                    str(exc),
-                    "use a valid YAML string-to-string mapping",
-                )
-            ]
-        metadata = parsed.get("metadata") if isinstance(parsed, dict) else parsed
-        return self._check_metadata(source, metadata, _written(written))
-
-    def _check_metadata(
-        self, source: str, metadata: object, written: dict[str, object]
-    ) -> list[Violation]:
         def wrong(rule: str, detail: str, fix: str) -> Violation:
             return Violation(where=source, rule=rule, detail=detail, fix=fix)
 

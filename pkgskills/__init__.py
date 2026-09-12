@@ -23,7 +23,7 @@ from pkgskills.artifacts import (
     printing_mode,
 )
 from pkgskills.cli import register, typer_app
-from pkgskills.frontmatter import Block, Frontmatter, find_block, split_frontmatter
+from pkgskills.frontmatter import Frontmatter, split_frontmatter
 from pkgskills.harness import CLAUDE_CODE, Harness, Kind
 from pkgskills.host import (
     Agent,
@@ -48,7 +48,6 @@ __all__ = [
     "SPEC",
     "Agent",
     "Artifact",
-    "Block",
     "Check",
     "Doc",
     "ExtraCheck",
@@ -74,7 +73,6 @@ __all__ = [
     "artifact_path",
     "check",
     "check_lines",
-    "find_block",
     "find_repo_root",
     "install",
     "installed_mode",

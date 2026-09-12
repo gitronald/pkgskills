@@ -13,7 +13,7 @@ from examplehost.cli import HOST as EXAMPLE
 from multihost.cli import HOST as MULTI
 from solohost.cli import HOST as SOLO
 
-from pkgskills.frontmatter import Block, find_block, split_frontmatter
+from pkgskills.frontmatter import split_frontmatter
 from pkgskills.host import Doc, Host, Skill
 from pkgskills.spec import SPEC, SkillSpec, SpecError, Violation, report
 from pkgskills.testing import assert_spec_conformant
@@ -288,7 +288,7 @@ def metadata_check(block: str) -> list[Violation]:
     text = f"---\nname: add\ndescription: A thing.\n{block}---\n\nbody\n"
     front, _ = split_frontmatter(text)
     assert front is not None
-    return SPEC.check_metadata("add/SKILL.md", front)
+    return SPEC.check_parsed("add/SKILL.md", front)
 
 
 def test_a_string_valued_metadata_mapping_is_accepted() -> None:
@@ -393,42 +393,6 @@ def test_every_bad_value_is_reported_not_just_the_first() -> None:
     ]
 
 
-# -- the raw block helper ---------------------------------------------------
-
-
-def block_of(raw: str) -> Block | None:
-    return find_block(raw, "metadata")
-
-
-def test_find_block_returns_none_when_the_key_is_absent() -> None:
-    assert block_of("---\nname: add\n---\n") is None
-    # An indented `metadata:` belongs to some other key, not the top level.
-    assert block_of("---\nowner:\n  metadata: x\n---\n") is None
-
-
-def test_find_block_keeps_blank_lines_inside_the_mapping() -> None:
-    raw = "---\nmetadata:\n  a: 1\n\n  b: 2\nname: add\n---\n"
-    block = block_of(raw)
-    assert block is not None and block.at == 1
-    # The gap does not truncate the block: `b` is still in it.
-    assert [key for _, key, _ in block.entries()] == ["a", "b"]
-    # ...and a trailing blank is not carried along.
-    assert block.lines[-1].strip()
-
-
-def test_block_entries_drop_blanks_and_comments_and_flag_non_pairs() -> None:
-    raw = "---\nmetadata:\n  # a note\n  a: 1\n  - loose\n---\n"
-    block = block_of(raw)
-    assert block is not None
-    assert block.entries() == [(2, "a", "1"), (2, "", "- loose")]
-
-
-def test_find_block_reads_an_inline_scalar() -> None:
-    block = block_of("---\nmetadata: scalar\nname: add\n---\n")
-    assert block is not None
-    assert block.inline == "scalar" and block.lines == []
-
-
 @pytest.mark.parametrize(
     "block",
     [
@@ -477,10 +441,3 @@ def test_host_spec_check_catches_declaration_mismatch() -> None:
         SOLO, artifacts=(Skill("other", SOLO.skills[0].sources),)
     )
     assert "name-matches-declaration" in rules(host.check_spec())
-
-
-def test_metadata_block_api_uses_yaml() -> None:
-    assert SPEC.check_metadata_block("x", Block(0, "{author: team}")) == []
-    assert rules(SPEC.check_metadata_block("x", Block(0, "[broken"))) == {
-        "metadata-not-a-mapping"
-    }
