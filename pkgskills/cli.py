@@ -164,6 +164,14 @@ def _relative(path: Path, root: Path) -> Path:
         return path
 
 
+def _leftover_note(path: Path, root: Path) -> str:
+    """The note for an unstamped file at a previous name; check and install share it."""
+    return (
+        f"note: {_relative(path, root)} sits at a name this host no longer "
+        "installs under, but carries no stamp; remove it by hand if it is stale"
+    )
+
+
 def run_check(host: Host, root: Path, mode: Mode | None) -> bool:
     """Print the drift table for ``host`` and return whether all rows are ok.
 
@@ -212,10 +220,7 @@ def run_check(host: Host, root: Path, mode: Mode | None) -> bool:
         for path in install_mod.leftover_previous(host, m, root)
     ]
     for path in leftover:
-        _err(
-            f"note: {_relative(path, root)} sits at a name this host no longer "
-            "installs under, but carries no stamp; remove it by hand if it is stale"
-        )
+        _err(_leftover_note(path, root))
     bad = [row for row in rows if not row.ok]
     # A stale row is not repaired by rewriting the file — the file is the
     # problem. Point at the removal instead of the reinstall that recreates it.
@@ -274,10 +279,7 @@ def run_install(host: Host, root: Path, mode: Mode, *, force: bool) -> None:
                 f"alone rather than overwritten; fix the file, then re-run."
             )
     for path in report.leftover:
-        _err(
-            f"note: {_relative(path, root)} sits at a name this host no longer "
-            "installs under, but carries no stamp; remove it by hand if it is stale"
-        )
+        _err(_leftover_note(path, root))
     for path in report.shadowed:
         _err(
             f"note: a global copy shadows the per-repo stub at "

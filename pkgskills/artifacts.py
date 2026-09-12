@@ -344,12 +344,13 @@ def leftover_previous(host: Host, mode: Mode, root: Path) -> list[Path]:
     decide. Only plain files count — a directory or symlink at an old skill
     path is not a leftover rule that will be auto-loaded.
     """
-    return [
-        path
-        for art in host.artifacts
-        for _, path in previous_paths(host, art, mode, root)
-        if read_plain(path) is not None and not is_generated(path, host)
-    ]
+    found: list[Path] = []
+    for art in host.artifacts:
+        for _, path in previous_paths(host, art, mode, root):
+            text = read_plain(path)
+            if text is not None and not is_stamped(text, host):
+                found.append(path)
+    return found
 
 
 # -- lines -------------------------------------------------------------------
@@ -378,21 +379,30 @@ def _find_line(text: str, key: str) -> tuple[int, str] | None:
     return found
 
 
-def check_line(line: Line, root: Path) -> LineCheck:
-    """The :data:`LineStatus` verdict for ``line`` in ``root``."""
+def _read_line(line: Line, root: Path) -> tuple[LineCheck, str]:
+    """The verdict for ``line`` and the text it was read from, in one read.
+
+    The text is ``""`` when the file is absent or unreadable, so a caller
+    that goes on to edit has the same bytes the verdict came from.
+    """
     path = line_path(line, root)
     if not occupied(path):
-        return LineCheck(line, path, "missing")
+        return LineCheck(line, path, "missing"), ""
     text = read_plain(path)
     if text is None:
-        return LineCheck(line, path, "unreadable")
+        return LineCheck(line, path, "unreadable"), ""
     found = _find_line(text, line.key)
     if found is None:
-        return LineCheck(line, path, "missing")
+        return LineCheck(line, path, "missing"), text
     number, normalized = found
     if normalized == line.text:
-        return LineCheck(line, path, "ok")
-    return LineCheck(line, path, "drifted", normalized)
+        return LineCheck(line, path, "ok"), text
+    return LineCheck(line, path, "drifted", normalized), text
+
+
+def check_line(line: Line, root: Path) -> LineCheck:
+    """The :data:`LineStatus` verdict for ``line`` in ``root``."""
+    return _read_line(line, root)[0]
 
 
 def check_lines(host: Host, root: Path) -> list[LineCheck]:
@@ -410,14 +420,14 @@ def write_line(line: Line, root: Path, *, force: bool = False) -> LineWrite:
     ``force`` or not: with no text in hand there is no edit that would not
     discard the rest of the file.
     """
-    before = check_line(line, root)
+    # One read: the edit below works on the very text the verdict came from.
+    before, text = _read_line(line, root)
     if before.status in ("ok", "unreadable"):
         return LineWrite(before, False)
     path = before.path
     if before.status == "missing":
         # Absent, or a readable file with no line for the key: anything else
         # was called `unreadable` above.
-        text = read_plain(path) or ""
         if text and not text.endswith("\n"):
             text += "\n"
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -425,9 +435,8 @@ def write_line(line: Line, root: Path, *, force: bool = False) -> LineWrite:
         return LineWrite(before, True)
     if not force:
         return LineWrite(before, False)
-    text = read_plain(path) or ""
     found = _find_line(text, line.key)
-    assert found is not None  # the verdict above came from this same text
+    assert found is not None  # `drifted` means this same text has the line
     number = found[0]
     lines = text.splitlines(keepends=True)
     ends = "\n" if lines[number].endswith("\n") else ""

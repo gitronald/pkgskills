@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 from examplehost.cli import HOST as EXAMPLE
 from solohost.cli import HOST as SOLO
 
@@ -67,10 +68,23 @@ def test_hook_entry_is_derived_from_the_invocation() -> None:
     assert "stages: [post-merge]" in text
     assert "always_run: true" in text
     assert "pass_filenames: false" in text
-    assert "name: solohost-index" in text
+    assert "name: 'solohost-index'" in text
     plain = VALIDATE.render("solohost")
     assert "stages:" not in plain and "always_run" not in plain
-    assert "files: ^things/.*\\.md$" in plain
+    assert "files: '^things/.*\\.md$'" in plain
+
+
+def test_free_text_fields_are_quoted_for_yaml() -> None:
+    # A regex or a name may carry `: ` or ` #`, which an unquoted scalar
+    # would read as a mapping or a comment; a `'` inside is doubled.
+    hook = pc.Hook("h", name="check: it's #1", files=r"^docs/(a|b): .*#.*$")
+    text = hook.render("solohost")
+    assert "name: 'check: it''s #1'" in text
+    assert "files: '^docs/(a|b): .*#.*$'" in text
+    parsed = yaml.safe_load("repos:\n  - repo: local\n    hooks:\n" + text)
+    (entry,) = parsed["repos"][0]["hooks"]
+    assert entry["name"] == "check: it's #1"
+    assert entry["files"] == r"^docs/(a|b): .*#.*$"
 
 
 def test_precommit_command_follows_the_mode() -> None:
@@ -123,6 +137,69 @@ def test_wire_appends_only_the_missing_hooks_to_an_existing_config(
     assert text.startswith(existing + "\n  - repo: local\n")
     assert text.count("id: solohost-validate") == 1
     assert "id: solohost-index" in text
+
+
+def test_wire_seeds_repos_in_a_config_with_no_content(
+    box: Sandbox, fake: tuple[str, ...]
+) -> None:
+    config = box.repo / ".pre-commit-config.yaml"
+    for existing in ("", "\n\n", "# just a comment\n", "# no newline"):
+        config.write_text(existing, encoding="utf-8")
+        report = pc.wire(_report(SOLO, box.repo, "local"), HOOKS, precommit=fake)
+        assert not report.created and report.added == (
+            "solohost-validate",
+            "solohost-index",
+        )
+        text = config.read_text()
+        assert text.startswith(existing.rstrip("\n") + "\n" if existing else "")
+        assert "\nrepos:\n  - repo: local\n" in "\n" + text
+        parsed = yaml.safe_load(text)
+        assert [h["id"] for h in parsed["repos"][0]["hooks"]] == list(report.added)
+
+
+def test_a_hook_id_is_matched_as_its_own_line(
+    box: Sandbox, fake: tuple[str, ...]
+) -> None:
+    config = box.repo / ".pre-commit-config.yaml"
+    longer = pc.Hook("solohost-index-all", args=("index", "--all"))
+    pc.wire(_report(SOLO, box.repo, "local"), (longer,), precommit=fake)
+    assert pc.hook_state(box.repo, INDEX) == "missing"
+    # `solohost-index` is a prefix of `solohost-index-all`, not present.
+    report = pc.wire(_report(SOLO, box.repo, "local"), (INDEX,), precommit=fake)
+    assert report.added == ("solohost-index",)
+    text = config.read_text()
+    assert text.count("- id: solohost-index\n") == 1
+    assert text.count("- id: solohost-index-all\n") == 1
+    assert pc.hook_state(box.repo, INDEX) == "active"
+    # A mention outside an `id:` line is not an entry either.
+    config.write_text("repos: []\n# solohost-index lives elsewhere\n")
+    assert pc.hook_state(box.repo, INDEX) == "missing"
+
+
+def test_the_clone_is_consulted_once_per_call(
+    box: Sandbox, fake: tuple[str, ...], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[list[str]] = []
+    real = pc.run
+
+    def counting(root: Path, argv: list[str], **kwargs: object):  # noqa: ANN202
+        calls.append(list(argv))
+        return real(root, argv, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(pc, "run", counting)
+    stages = (VALIDATE, INDEX, pc.Hook("solohost-push", stage="pre-push"))
+    pc.wire(_report(SOLO, box.repo, "local"), stages, precommit=fake)
+    git = [argv for argv in calls if argv[0] == "git"]
+    assert len(git) == 2  # rev-parse and config, not once per stage
+    assert sum(argv[-2:-1] == ["--hook-type"] for argv in calls) == 3
+
+    calls.clear()
+    pc.checks(SOLO, box.repo, "local", stages)
+    assert len([argv for argv in calls if argv[0] == "git"]) == 2
+
+    calls.clear()
+    assert pc.checks(SOLO, box.repo, "local", ()) == []
+    assert calls == []
 
 
 def test_wire_resyncs_the_entry_only_on_a_mode_switch(
@@ -305,7 +382,9 @@ def test_checks_never_gate_and_name_the_fix(
 def test_checks_note_a_hookspath_block(box: Sandbox, fake: tuple[str, ...]) -> None:
     run(box.repo, ["git", "init", "-q"], capture_output=True)
     run(box.repo, ["git", "config", "core.hooksPath", "hooks"], capture_output=True)
-    (box.repo / ".pre-commit-config.yaml").write_text("repos: []\n# solohost-index\n")
+    (box.repo / ".pre-commit-config.yaml").write_text(
+        "repos:\n  - repo: local\n    hooks:\n      - id: solohost-index\n"
+    )
     (row,) = pc.checks(SOLO, box.repo, "local", (INDEX,))
     assert row.status == "blocked"
     assert "core.hooksPath" in row.note

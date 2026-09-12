@@ -484,7 +484,6 @@ def test_install_appends_a_missing_line_and_keeps_the_rest(box: Sandbox) -> None
     assert path.read_text() == "docs/README.md merge=union\n"
 
     path.write_text("*.png binary")  # no trailing newline
-    path.write_text("*.png binary")
     report = inst.install(LINED, box.repo, "local")
     assert report.lines[0].written
     assert path.read_text() == "*.png binary\ndocs/README.md merge=union\n"
@@ -492,6 +491,29 @@ def test_install_appends_a_missing_line_and_keeps_the_rest(box: Sandbox) -> None
     report = inst.install(LINED, box.repo, "local")
     assert not report.lines[0].written and report.lines[0].check.ok
     assert inst.check_lines(LINED, box.repo)[0].ok
+
+
+def test_a_line_is_read_once_per_write(
+    box: Sandbox, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = box.repo / ".gitattributes"
+    reads: list[Path] = []
+    real = inst.read_plain
+
+    def counting(target: Path) -> str | None:
+        reads.append(target)
+        return real(target)
+
+    monkeypatch.setattr(inst, "read_plain", counting)
+    # Absent, then present without the line, then drifted under force: the
+    # edit works on the text the verdict came from, never a second read.
+    inst.write_line(ATTR, box.repo)
+    path.write_text("*.png binary\n")
+    inst.write_line(ATTR, box.repo)
+    path.write_text("docs/README.md merge=ours\n")
+    inst.write_line(ATTR, box.repo, force=True)
+    assert reads == [path, path]
+    assert path.read_text() == "docs/README.md merge=union\n"
 
 
 def test_a_line_lives_in_the_repo_whatever_the_mode(box: Sandbox) -> None:
@@ -564,6 +586,20 @@ def test_an_unstamped_file_at_a_previous_name_survives(box: Sandbox) -> None:
     # No row for it: it is not ours, so it neither gates nor drifts.
     assert old not in {row.path for row in inst.check(renamed, box.repo)}
     assert inst.leftover_previous(renamed, "local", box.repo) == [old]
+
+
+def test_leftovers_are_read_once_each(
+    box: Sandbox, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    renamed = _renamed(EXAMPLE)
+    old = box.repo / ".claude/rules/examplehost.md"
+    old.parent.mkdir(parents=True)
+    old.write_text("my own rule\n")
+    reads: list[Path] = []
+    real = inst.read_plain
+    monkeypatch.setattr(inst, "read_plain", lambda p: (reads.append(p), real(p))[1])
+    assert inst.leftover_previous(renamed, "local", box.repo) == [old]
+    assert reads.count(old) == 1
 
 
 def test_previous_names_are_cleaned_in_the_install_mode_only(box: Sandbox) -> None:

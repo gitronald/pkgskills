@@ -31,6 +31,7 @@ Three rules the wiring keeps:
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -44,6 +45,7 @@ from pkgskills.proc import run
 __all__ = [
     "CONFIG",
     "Activation",
+    "Clone",
     "Hook",
     "HookReport",
     "HookState",
@@ -106,17 +108,23 @@ class Hook:
         return " ".join((invocation, *self.args))
 
     def render(self, invocation: str) -> str:
-        """The hook's YAML entry, indented for a ``repo: local`` block."""
+        """The hook's YAML entry, indented for a ``repo: local`` block.
+
+        ``name`` and ``files`` are single-quoted: a regex or a display name is
+        free text that may carry ``: `` or `` #``, which an unquoted scalar
+        would read as a mapping or a comment. The id and the entry are left
+        bare, since both are matched as text elsewhere and neither is free-form.
+        """
         lines = [
             f"      - id: {self.id}",
-            f"        name: {self.name or self.id}",
+            f"        name: {_quote(self.name or self.id)}",
             f"        entry: {self.entry(invocation)}",
             "        language: system",
         ]
         if self.stage != "pre-commit":
             lines.append(f"        stages: [{self.stage}]")
         if self.files is not None:
-            lines.append(f"        files: {self.files}")
+            lines.append(f"        files: {_quote(self.files)}")
         if self.always_run:
             lines.append("        always_run: true")
         if not self.pass_filenames:
@@ -160,6 +168,11 @@ def precommit_command(host: Host, mode: Mode) -> tuple[str, ...]:
     return (*host.local_prefix.split(), "pre-commit")
 
 
+def _quote(value: str) -> str:
+    """``value`` as a single-quoted YAML scalar; only ``'`` needs doubling."""
+    return "'" + value.replace("'", "''") + "'"
+
+
 def _block(hooks: Sequence[Hook], invocation: str) -> str:
     return "  - repo: local\n    hooks:\n" + "\n".join(
         hook.render(invocation) for hook in hooks
@@ -170,6 +183,28 @@ def _append(text: str, block: str) -> str:
     if text and not text.endswith("\n"):
         text += "\n"
     return text + block
+
+
+def _bare(text: str) -> bool:
+    """True when ``text`` has no content line: empty, blank, or comments only.
+
+    Such a config has no ``repos:`` key for a block to hang under, so it is
+    seeded like an absent one — appended to, since a comment is content.
+    """
+    return all(
+        not line.strip() or line.lstrip().startswith("#") for line in text.splitlines()
+    )
+
+
+def _names(text: str, hook_id: str) -> bool:
+    """True when ``text`` has a hook entry for ``hook_id``, as its own line.
+
+    Anchored to the ``- id:`` line rather than a substring search, so an id
+    that is a prefix of another (``x-index`` next to ``x-index-all``) is not
+    mistaken for present.
+    """
+    pattern = rf"^\s*-\s*id:\s*{re.escape(hook_id)}\s*$"
+    return re.search(pattern, text, re.MULTILINE) is not None
 
 
 def _entry_line(hook: Hook, invocation: str) -> str:
@@ -208,9 +243,12 @@ def wire(
     unreadable = text is None and not created
     if text is None:
         text = "repos:\n"
+    elif _bare(text):
+        # Exists but holds nothing a block can hang under: seed the key.
+        text = _append(text, "repos:\n")
     missing: list[Hook] = []
     if not unreadable:
-        missing = [hook for hook in hooks if hook.id not in text]
+        missing = [hook for hook in hooks if not _names(text, hook.id)]
     resynced: list[str] = []
     switched = report.previous is not None and report.previous != mode
     if switched and not unreadable:
@@ -227,9 +265,12 @@ def wire(
     if created or missing or resynced:
         config.write_text(text, encoding="utf-8")
     command = tuple(precommit) if precommit else precommit_command(host, mode)
+    # One look at the clone for every stage: the hooks directory and
+    # core.hooksPath are per-repository, and each costs a git subprocess.
+    clone = Clone.of(root)
     activation: dict[str, Activation] = {}
     for stage in dict.fromkeys(hook.stage for hook in hooks):
-        activation[stage] = _activate(root, stage, command, attempt=activate)
+        activation[stage] = _activate(clone, root, stage, command, attempt=activate)
     return HookReport(
         config,
         created,
@@ -309,13 +350,14 @@ def hooks_dir(root: Path) -> Path | None:
     return path if path.is_absolute() else root / path
 
 
+def _registered(where: Path | None, stage: str) -> bool:
+    text = read_plain(where / stage) if where is not None else None
+    return text is not None and _MARKER in text
+
+
 def registered(root: Path, stage: str) -> bool:
     """True when pre-commit's script for ``stage`` is in the effective hooks dir."""
-    where = hooks_dir(root)
-    if where is None:
-        return False
-    text = read_plain(where / stage)
-    return text is not None and _MARKER in text
+    return _registered(hooks_dir(root), stage)
 
 
 def hookspath_set(root: Path) -> bool:
@@ -329,17 +371,38 @@ def hookspath_set(root: Path) -> bool:
     return done.returncode == 0 and bool(done.stdout.strip())
 
 
+@dataclass(frozen=True)
+class Clone:
+    """What a clone says about hook registration, read once per call.
+
+    The hooks directory and ``core.hooksPath`` are per-repository and each
+    costs a git subprocess, so :func:`wire` and :func:`checks` take them once
+    rather than once per stage or per hook.
+    """
+
+    is_repo: bool
+    hooks: Path | None
+    hookspath: bool
+
+    @classmethod
+    def of(cls, root: Path) -> Clone:
+        return cls(is_git_repo(root), hooks_dir(root), hookspath_set(root))
+
+    def registered(self, stage: str) -> bool:
+        return _registered(self.hooks, stage)
+
+
 def _activate(
-    root: Path, stage: str, command: Sequence[str], *, attempt: bool
+    clone: Clone, root: Path, stage: str, command: Sequence[str], *, attempt: bool
 ) -> Activation:
     """Register ``stage`` in ``root``; never raises."""
-    if registered(root, stage):
+    if clone.registered(stage):
         return "already_active"
     if not attempt:
         return "skipped"
-    if not is_git_repo(root):
+    if not clone.is_repo:
         return "no_git_repo"
-    if hookspath_set(root):
+    if clone.hookspath:
         return "hookspath_blocked"
     try:
         done = run(
@@ -353,22 +416,27 @@ def _activate(
 # -- checking ----------------------------------------------------------------
 
 
-def hook_state(root: Path, hook: Hook) -> HookState:
+def hook_state(
+    root: Path, hook: Hook, *, clone: Clone | None = None, config: str | None = None
+) -> HookState:
     """Read-only: will ``hook`` fire in this clone?
 
     The config is read before the registration, because a registered stage
     says only that pre-commit itself is wired in — a repo using it for other
     hooks satisfies that with no entry for ours at all. An unreadable config
-    is one that does not name the hook.
+    is one that does not name the hook. ``clone`` and ``config`` let a caller
+    judging several hooks read the clone and the config once.
     """
-    text = read_plain(root / CONFIG) or ""
-    if hook.id not in text:
+    text = (read_plain(root / CONFIG) or "") if config is None else config
+    if not _names(text, hook.id):
         return "missing"
-    if registered(root, hook.stage):
+    if clone is None:
+        clone = Clone.of(root)
+    if clone.registered(hook.stage):
         return "active"
-    if not is_git_repo(root):
+    if not clone.is_repo:
         return "no_git_repo"
-    if hookspath_set(root):
+    if clone.hookspath:
         return "blocked"
     return "unregistered"
 
@@ -391,8 +459,10 @@ def checks(
     resolved = mode or printing_mode(host, root)
     command = " ".join(precommit or precommit_command(host, resolved))
     rows: list[ExtraCheck] = []
+    clone = Clone.of(root) if hooks else None
+    config = read_plain(root / CONFIG) or ""
     for hook in hooks:
-        state = hook_state(root, hook)
+        state = hook_state(root, hook, clone=clone, config=config)
         note = ""
         if state == "missing":
             note = (
