@@ -2,7 +2,7 @@
 
 | # | Plan | Status | Concluded | PR |
 |---|---|---|---|---|
-| 007 | [Close the gaps a migrating host hits on adoption](plans/007-migrating-host-adoption-gaps/plan.md) | active | — | [#6](https://github.com/gitronald/pkgskills/pull/6) |
+| 007 | [Close the gaps a migrating host hits on adoption](plans/007-migrating-host-adoption-gaps/plan.md) | done | 2026-09-11 19:15 PT | [#6](https://github.com/gitronald/pkgskills/pull/6) |
 | 004 | [Track only a skill-level version in stub metadata](plans/004-per-skill-and-host-versions/plan.md) | done | 2026-09-11 19:00 PT | [#5](https://github.com/gitronald/pkgskills/pull/5) |
 | 006 | [Sync tooling to proj-template 0.10.0](plans/006-template-upgrade-0-10-0/plan.md) | done | 2026-09-11 10:44 PT | [#2](https://github.com/gitronald/pkgskills/pull/2) |
 | 005 | [Rename the package to pkgskills](plans/005-rename-to-pkgskills/plan.md) | done | 2026-09-11 10:32 PT | [#1](https://github.com/gitronald/pkgskills/pull/1) |
