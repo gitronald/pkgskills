@@ -192,8 +192,8 @@ metadata:
 
 `pkgskills.frontmatter.parse_fields` flattens a nested block, but
 `pkgskills.frontmatter.find_block` hands back the raw mapping, which is what the
-check reads. It is the same helper `pkgskills` uses to splice its own two
-version keys into `metadata` — both of which it quotes, for the reason above.
+check reads. `pkgskills` splices nothing into `metadata` of its own: a stub
+lifts whatever the source declares, `version` included, byte for byte.
 
 What is *not* checked is the spec's **recommendations**, as against its
 constraints: that a description say what a skill does *and* when to use it,

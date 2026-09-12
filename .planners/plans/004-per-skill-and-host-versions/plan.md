@@ -1,11 +1,11 @@
 ---
 id: 4
 slug: per-skill-and-host-versions
-status: active
+status: done
 branch: feature/per-skill-and-host-versions
 created: 2026-09-10T01:17:38-07:00
-concluded:
-pr:
+concluded: 2026-09-11T19:00:28-07:00
+pr: https://github.com/gitronald/pkgskills/pull/5
 ---
 
 # Track only a skill-level version in stub metadata
@@ -141,3 +141,113 @@ one — but this does not warrant more than a normal entry.
 2. Update the tests as above, and the `stamp.py` module docstring, which currently
    documents the mirror.
 3. Changelog entry, then `--force` reinstall across the known hosts.
+
+## Log
+
+### 2026-09-11 - implemented
+
+Followed the order as written, on `feature/per-skill-and-host-versions`.
+
+- `stamp.py`: dropped `METADATA_KEYS`, `INDENT`, `_META_RE`, and `metadata_lines`.
+  `mask_versions` is back to the stamp line alone, and the module docstring now says
+  the stamp is the sole home of provenance rather than documenting a mirror.
+- `rendering.py`: `with_metadata` deleted. `stub_frontmatter` returns `front.raw`
+  unchanged for a single-source skill and the generated two-key block for a
+  dispatcher; the `find_block` import went with it. The inline-`metadata` `SpecError`
+  it used to raise is already reported by `SPEC.check_parsed`, as expected.
+- `spec.py`: `check_metadata_block`'s docstring no longer names a caller.
+
+Beyond the written order, three things the plan implied but did not enumerate:
+
+- **A fixture had to declare a version.** No fixture source carried a conformant
+  `metadata` block, so there was nothing to prove passthrough against.
+  `multihost`'s `audit` source now declares `metadata.version: "2.1"`; `tidy` and
+  `solohost`'s source stay versionless, which covers the no-`metadata` case.
+- **The docs said the old thing in four places.** `docs/frontmatter.md` was mostly
+  about the mirror and was rewritten; `docs/design.md`, `docs/source-layout.md`, and
+  two spots in `README.md` each carried a sentence about the spliced version keys.
+- **Pre-commit gates the whole tree, not the index.** Splitting the source and test
+  changes into two commits failed `pyrefly` on the first: it stashes unstaged work,
+  so the tree it checks had the deleted `with_metadata` and the test that still
+  imported it. The two are one commit for that reason.
+
+Tests: the two collision tests, the inline-splice parametrize, and
+`test_mask_versions_covers_the_stubs_metadata_versions` are gone; in their place a
+verbatim-passthrough test (stub frontmatter compared byte for byte against the
+source's), a no-`metadata` test for a versionless source, a no-`metadata` test for a
+dispatcher, and a masking test asserting a host bump masks while a change to the
+source's own `version` drifts.
+
+Verified: 224 passed, coverage 98.14%; `ruff check`, `ruff format --check`, and
+`pyrefly check` all clean. Rendering the three fixture hosts by hand confirms the
+three conditions in Verify — `audit` keeps `metadata:\n  version: "2.1"` with the
+stamp one line below, `use-solo` and the `example` dispatcher carry no `metadata`
+mapping at all.
+
+Step 3's `--force` reinstall across the known hosts is deliberately left for after
+this merges and a release is cut; there is nothing to reinstall from until then.
+
+### Review follow-up
+
+`/code-review PR 5` at level `medium`: two finders (correctness, and
+reuse/simplification/efficiency), four candidates, two rejected on adversarial
+verification, one added by the gap sweep. Posted to the PR.
+
+**Actioned.** Two docstrings still explained themselves by citing the splice this
+plan deletes:
+
+- `frontmatter.py`'s `Block` justified the class with "Two callers need to inspect
+  one anyway — `pkgskills` splices its own version keys into `metadata`, and the
+  spec check ...". Rewritten around the one consumer that remains. Notably, step 1
+  of the implementation order *did* fix the identical wording in `spec.py` — the
+  same sentence had been copied into `frontmatter.py` and the plan only named one
+  of the two.
+- `tests/test_spec.py::test_a_sequence_of_pairs_is_still_a_sequence` explained the
+  check by what `with_metadata` did next. The check still earns its keep, and for a
+  sharper reason than before: a stub now lifts its source's block verbatim, so a
+  malformed `metadata` block installs as the frontmatter the harness reads rather
+  than being spliced into something that fails to parse. Restated that way.
+
+Both are documentation-only, so neither carries a regression test; the gate
+(`ruff check`, `ruff format --check`, `pyrefly check`, `pytest`) is clean at 224
+passed, 98.14%.
+
+**Conscious no-op.** `Block.at` now has no consumer in `pkgskills/` — `with_metadata`
+spliced at that index, and the only remaining read repo-wide is an assertion in
+`tests/test_spec.py`. Left in place: `Block` is public API (re-exported in
+`__all__`), and `at` is part of what "a located block" means for a third-party host
+calling `find_block`. Deleting a public field to tidy a metadata-removal PR widens
+scope past what this plan decided. Worth revisiting at the next public-API pass.
+
+**Rejected.** That `check_metadata_block` is now a vestigial split — true that it has
+one caller, but this plan decided explicitly that it stays as `check_metadata`'s
+worker. And that the two verbatim-passthrough tests duplicate each other — they do
+not: one uses a versionless source and proves nothing is prepended before the block,
+the other uses a source declaring `metadata.version` and proves the block round-trips
+byte for byte. Neither fixture can exercise the other's case.
+
+## Retrospective
+
+- The decision held up under implementation. Nothing in the codebase resisted the
+  removal, no call site needed a shim, and the diff is a net deletion of ~60 lines
+  of source. The plan's claim that this is "a net simplification, not a swap" was
+  accurate.
+- **The plan under-counted the blast radius of a rationale.** It enumerated the code
+  to delete precisely and correctly, but the *reason* for that code had been
+  paraphrased into four docs and two docstrings. Five of the six turned up only by
+  grepping for the behavior after the code was gone, and the sixth needed a code
+  review to find. For a change that redefines what a key means, "grep for every
+  place the old meaning was explained" belongs in the implementation order next to
+  "delete the function".
+- **A deletion needs a fixture that exercises what survives.** No fixture source
+  declared a conformant `metadata` block, because until now `pkgskills` wrote the only
+  one that existed. There was literally nothing to prove passthrough against until
+  `multihost`'s `audit` got a version — the test the change most needed was the one
+  the old design made impossible to write.
+- Pre-commit checks the whole worktree, not the staged index: it stashes unstaged
+  work, so a commit that deletes a function and a follow-up commit that stops
+  importing it cannot be split in that order. Worth remembering as a constraint on
+  commit granularity in this repo, not a reason to loosen the hook.
+- Deferring step 3's `--force` reinstall was right — there is nothing to reinstall
+  from until this merges and a release is cut. It moves to the release that ships
+  this, where the changelog entry already warns that every stub drifts once.

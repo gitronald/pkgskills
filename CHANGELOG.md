@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- `metadata.version` in a skill stub is now the **skill's own** version,
+  declared by the source and passed through verbatim. It is no longer the host
+  release: the key stays present with a different meaning, so a host that greps
+  stubs for the release marker now gets a wrong answer rather than a missing
+  one — read the release from the stamp, which is unchanged and still names the
+  host distribution, its release, the `pkgskills` release, and the mode.
+- A source may now declare `metadata.version` (and any other `metadata` key)
+  freely; `pkgskills` writes no metadata keys, so nothing collides. A source
+  that declares no `metadata` gets none — there is no fallback to the host
+  release.
+
+### Removed
+
+- `metadata.pkgskills-version` is no longer written into a stub's frontmatter.
+- `pkgskills.rendering.with_metadata` and `pkgskills.stamp.metadata_lines` /
+  `METADATA_KEYS`, along with the metadata half of `mask_versions` — a
+  source-owned version should drift when it changes, so there is nothing left
+  to mask. Every existing stub reports drift once; reinstall it with `--force`.
+
 ## [0.2.0] - 2026-09-11
 
 ### Changed

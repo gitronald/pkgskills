@@ -51,12 +51,11 @@ shared ones. An entry-point group (`pkgskills.hosts`) lets the standalone
 `pkgskills` script check every host at once.
 
 **One contract.** The stamp is an HTML comment after the frontmatter naming
-both versions, the mode, and the repair command. Drift masks every version
-token. The frontmatter `version:` key the other implementations used is not
-an alternative to it but a mirror of it: a skill stub declares both versions
-under `metadata` as the Agent Skills spec defines, while the stamp stays the
-thing `--check` matches on and the only mechanism rules and agents have
-(see [frontmatter.md](frontmatter.md)). Anything at the path that is not a plain file this host generated is
+both versions, the mode, and the repair command. Drift masks both of its
+version tokens. It is the *only* home of that provenance: `pkgskills` writes
+nothing into a stub's frontmatter, leaving `metadata.version` to mean the
+skill's own version, declared by the source and passed through verbatim (see
+[frontmatter.md](frontmatter.md)). Anything at the path that is not a plain file this host generated is
 foreign and is never replaced without `--force`. Mode is inferred from
 location, never from the stamp: a stub carried to the other location reads as
 drifted because its embedded commands are wrong there.

@@ -1,6 +1,8 @@
 ---
 name: audit
 description: Audit a workspace with multihost. Triggers on "audit" or "what drifted?".
+metadata:
+  version: "2.1"
 ---
 
 # audit

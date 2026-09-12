@@ -1,6 +1,6 @@
 # Frontmatter
 
-What `pkgskills` writes into the frontmatter of a generated skill stub, and why.
+What ends up in the frontmatter of a generated skill stub, and why.
 
 The shape is fixed by the [Agent Skills
 specification](https://agentskills.io/specification), which defines the fields and
@@ -11,58 +11,58 @@ reasonably unique key names.
 
 ```yaml
 ---
-name: use-solo
-description: Use solohost to look things up. Triggers on "look up" or "is this real?".
+name: audit
+description: Audit a workspace with multihost. Triggers on "audit" or "what drifted?".
 metadata:
-  version: "0.9.0"
-  pkgskills-version: "0.1.0a0"
+  version: "2.1"
 ---
 ```
+
+`pkgskills` writes **none** of it. A single-source stub lifts its source's
+frontmatter block byte for byte; a dispatcher generates `name` and
+`description` from the declaration and nothing else.
 
 - `name` and `description` come from the skill's source prompt, or — for a
   dispatcher — are generated from the declaration. They are the only fields the
   harness reads to decide when a skill fires.
-- `metadata.version` is the **host release** the stub was rendered from: the
-  skill's own version, and the key the spec's own example uses.
-- `metadata.pkgskills-version` is the `pkgskills` release that rendered it,
-  prefixed because it belongs to a second package.
+- `metadata.version`, when present, is the **skill's own** version, declared and
+  maintained by the source. It is what the spec's own example implies the key
+  means. A source that declares no version gets no `version` key, and a source
+  that declares no `metadata` at all gets no `metadata` mapping — there is no
+  fallback to the host release.
 
-Both values are quoted. A version is a string, and an unquoted `1.0` reads back
-as a float.
+Quote the value. A version is a string, and an unquoted `1.0` reads back as a
+float.
 
-## Why both the metadata and the stamp
+## Where the release provenance lives
 
-Every generated file already carries an HTML-comment stamp naming the same two
-versions plus the mode and the repair command. The stamp stays the contract —
-it is what `install --check` matches on, it works for rules and agents (which
-are not skills and have no `metadata` field), and it survives in file kinds
-where frontmatter would not.
+In the stamp, and only there. Every generated file carries an HTML-comment
+stamp naming the host distribution and its release, the `pkgskills` release, the
+mode, and the repair command. It is what `install --check` matches on, it works
+for rules and agents (which are not skills and have no `metadata` field), and
+it survives in file kinds where frontmatter would not.
 
-The `metadata` entries are a mirror of it in the spec's own vocabulary, so a
-tool that parses only the frontmatter — a skill registry, a linter, another
-harness — can still tell which release it is looking at without knowing
-anything about `pkgskills`'s comment format.
+Mirroring it into `metadata` would mean one key answering two questions — the
+host's release or the skill's — depending on the source. The stamp is one line
+below the block; a reader who wants the release reads it there.
 
 Rules and agents are unchanged: they are stamped copies, and their source
 frontmatter is passed through untouched.
 
 ## Drift and masking
 
-`install --check` masks every version token before comparing, in the metadata
-as well as the stamp, so upgrading either package never reports drift on a file
-whose content did not change. The metadata pattern is anchored to a
-two-space-indented line with a quoted value — the exact shape `pkgskills`
-writes.
+`install --check` masks the two version tokens in the stamp line before
+comparing, so upgrading either package never reports drift on a file whose
+content did not change. A source-declared `metadata.version` is *not* masked:
+it is the skill's own, so changing it is a real content change and the stub
+should drift until it is reinstalled.
 
 ## Writing a source prompt
 
-- Do not put `version` or `pkgskills-version` under `metadata` in a source
-  prompt. `pkgskills` writes those keys, and a source that also declares one is
-  rejected with an error rather than emitted as a duplicate YAML key.
-- Any other `metadata` keys a source declares are kept; `pkgskills`'s two
-  entries are inserted at the top of the mapping.
-- A source that declares no `metadata` gets the block opened for it, just
-  before the closing fence. Every other line of the block is copied byte for
-  byte.
+- Declare `metadata.version` if the skill is versioned on its own schedule, and
+  leave it out if it is not. `pkgskills` writes no metadata keys, so nothing it
+  emits can collide with what the source declares.
+- Every `metadata` key a source declares is kept, in the order the source wrote
+  them.
 - Where the source file itself belongs, and how its path names it, is
   [Source layout](source-layout.md).

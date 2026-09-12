@@ -18,12 +18,9 @@ from pkgskills.rendering import (
     render_prompt,
     render_stub,
     stub_frontmatter,
-    with_metadata,
 )
-from pkgskills.spec import SpecError
 from pkgskills.stamp import (
     mask_versions,
-    pkgskills_version,
     render_stamp,
     stamped_by,
     stamped_mode,
@@ -38,58 +35,27 @@ def test_single_skill_stub_lifts_frontmatter_verbatim() -> None:
     assert stub.startswith("\n".join(source_lines) + "\n")
 
 
-def test_stub_declares_both_versions_as_metadata() -> None:
-    stub = render_stub(SOLO, SOLO.skills[0], "global")
+def test_stub_carries_a_source_declared_version_verbatim() -> None:
+    audit = next(skill for skill in MULTI.skills if skill.name == "audit")
+    stub = render_stub(MULTI, audit, MULTI.default_mode)
     front, _ = split_frontmatter(stub)
+    source, _ = split_frontmatter(MULTI.read("audit/SKILL.md"))
+    assert front is not None and source is not None
+    assert front.get("name") == "audit"  # the source keys still parse
+    assert 'metadata:\n  version: "2.1"\n' in front.raw
+    assert front.raw == source.raw  # byte for byte, nothing spliced in
+
+
+def test_stub_from_a_versionless_source_declares_no_metadata() -> None:
+    front, _ = split_frontmatter(render_stub(SOLO, SOLO.skills[0], "global"))
     assert front is not None
-    assert front.get("name") == "use-solo"  # the source keys still parse
-    assert '\nmetadata:\n  version: "0.9.0"\n  pkgskills-version: "' in front.raw
-    assert front.raw.endswith('"\n---\n')
+    assert "metadata" not in front.fields
 
 
-def test_dispatcher_stub_declares_metadata_too() -> None:
+def test_dispatcher_stub_declares_no_metadata() -> None:
     front, _ = split_frontmatter(render_stub(EXAMPLE, EXAMPLE.skills[0], "local"))
     assert front is not None
-    assert 'metadata:\n  version: "1.2.3"\n' in front.raw
-
-
-def test_stub_metadata_joins_a_metadata_block_the_source_declares() -> None:
-    raw = "---\nname: x\nmetadata:\n  author: example-org\n---\n"
-    out = with_metadata(raw, SOLO, SOLO.skills[0])
-    assert out == (
-        "---\nname: x\nmetadata:\n"
-        f'  version: "0.9.0"\n  pkgskills-version: "{pkgskills_version()}"\n'
-        "  author: example-org\n---\n"
-    )
-
-
-def test_stub_metadata_stops_scanning_at_the_next_top_level_key() -> None:
-    raw = '---\nname: x\nmetadata:\n  author: example-org\nversion: "2.0"\n---\n'
-    out = with_metadata(raw, SOLO, SOLO.skills[0])
-    # A top-level `version` is a different key from `metadata.version`, so it
-    # is neither a conflict nor moved.
-    assert out.endswith('  author: example-org\nversion: "2.0"\n---\n')
-    assert '  version: "0.9.0"\n' in out
-
-
-def test_stub_metadata_rejects_a_source_that_claims_a_managed_key() -> None:
-    raw = '---\nname: x\nmetadata:\n  version: "2.0"\n---\n'
-    with pytest.raises(ValueError, match="already declares metadata.version"):
-        with_metadata(raw, SOLO, SOLO.skills[0])
-
-
-@pytest.mark.parametrize("inline", ["whatever", "{}", "{a: b}"])
-def test_stub_metadata_refuses_to_splice_into_an_inline_value(inline: str) -> None:
-    """There is no block for indented keys to join, so splicing breaks YAML.
-
-    `stub_frontmatter` catches this before it gets here, but `with_metadata`
-    is a plain function and must not emit frontmatter that no longer parses
-    just because it was called directly.
-    """
-    raw = f"---\nname: x\nmetadata: {inline}\n---\n"
-    with pytest.raises(SpecError) as caught:
-        with_metadata(raw, SOLO, SOLO.skills[0])
-    assert {v.rule for v in caught.value.violations} == {"metadata-not-a-mapping"}
+    assert "metadata" not in front.fields
 
 
 def test_single_skill_stub_holds_no_instructions() -> None:
@@ -172,13 +138,16 @@ def test_mask_versions_ignores_a_version_bump_but_not_a_mode_change() -> None:
     assert mask_versions(one, EXAMPLE) != mask_versions(other_mode, EXAMPLE)
 
 
-def test_mask_versions_covers_the_stubs_metadata_versions() -> None:
-    one = render(EXAMPLE, EXAMPLE.skills[0], "global")
-    bumped = dataclasses.replace(EXAMPLE, version="9.9.9")
-    two = render(bumped, bumped.skills[0], "global")
-    assert 'version: "9.9.9"' in two
-    assert one != two
-    assert mask_versions(one, EXAMPLE) == mask_versions(two, EXAMPLE)
+def test_mask_versions_leaves_a_source_declared_version_alone() -> None:
+    """A host bump masks; a source's own `metadata.version` has to drift."""
+    audit = next(skill for skill in MULTI.skills if skill.name == "audit")
+    one = render_stub(MULTI, audit, MULTI.default_mode)
+    bumped = dataclasses.replace(MULTI, version="9.9.9")
+    assert mask_versions(
+        render_stub(bumped, audit, MULTI.default_mode), MULTI
+    ) == mask_versions(one, MULTI)
+    revised = one.replace('version: "2.1"', 'version: "2.2"')
+    assert mask_versions(revised, MULTI) != mask_versions(one, MULTI)
 
 
 def test_render_prompt_strips_frontmatter_and_renders_cli_on_request() -> None:

@@ -352,8 +352,9 @@ def test_metadata_may_not_hold_a_sequence() -> None:
 def test_a_sequence_of_pairs_is_still_a_sequence() -> None:
     """`- key: value` carries a colon but opens a list, not a mapping.
 
-    Reading it as a pair let the whole wrong shape pass, and `with_metadata`
-    then spliced pkgskills's keys above the items into frontmatter YAML rejects.
+    Reading it as a pair lets the whole wrong shape pass, and a stub lifts its
+    source's block verbatim — so the sequence would install as the frontmatter
+    the harness reads.
     """
     (violation,) = metadata_check("metadata:\n  - key: value\n  - other: text\n")
     assert violation.rule == "metadata-not-a-mapping"
