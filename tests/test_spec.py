@@ -193,6 +193,7 @@ def test_check_host_collects_every_violation_across_the_broken_fixture() -> None
         "description-missing",  # misfiled declares none
         "name-grammar",  # "Misfiled Skill" is not the grammar
         "name-matches-directory",  # ...and is not "misfiled" either
+        "name-matches-declaration",
         "metadata-value-not-a-string",  # bad-metadata's floats, ints and bools
     }
 
@@ -308,7 +309,7 @@ def test_metadata_absent_is_not_a_violation() -> None:
         ("1.0", "a float"),
         ("3", "an integer"),
         ("-2", "an integer"),
-        ("1e6", "a float"),
+        ("1.0e+6", "a float"),
         (".5", "a float"),
         ("true", "a boolean"),
         ("False", "a boolean"),
@@ -324,7 +325,7 @@ def test_metadata_values_yaml_would_not_return_as_strings(
     (violation,) = metadata_check(f"metadata:\n  key: {value}\n")
     assert violation.rule == "metadata-value-not-a-string"
     assert f"which YAML reads as {reads_as}" in violation.detail
-    assert violation.fix == f'quote it -- `key: "{value}"`'
+    assert "quote the value" in violation.fix
     # Quoting it is the fix, and it works.
     assert metadata_check(f'metadata:\n  key: "{value}"\n') == []
     assert metadata_check(f"metadata:\n  key: '{value}'\n") == []
@@ -346,7 +347,7 @@ def test_metadata_may_not_hold_a_sequence() -> None:
     # One violation for the whole block, not one per item.
     (violation,) = metadata_check("metadata:\n  - one\n  - two\n")
     assert violation.rule == "metadata-not-a-mapping"
-    assert "'- one', '- two', which declares no key" in violation.detail
+    assert "['one', 'two']" in violation.detail
 
 
 def test_a_sequence_of_pairs_is_still_a_sequence() -> None:
@@ -358,7 +359,7 @@ def test_a_sequence_of_pairs_is_still_a_sequence() -> None:
     """
     (violation,) = metadata_check("metadata:\n  - key: value\n  - other: text\n")
     assert violation.rule == "metadata-not-a-mapping"
-    assert "'- key: value', '- other: text'" in violation.detail
+    assert "[{'key': 'value'}, {'other': 'text'}]" in violation.detail
 
 
 def test_a_comment_beside_the_metadata_key_is_not_an_inline_scalar() -> None:
@@ -426,3 +427,60 @@ def test_find_block_reads_an_inline_scalar() -> None:
     block = block_of("---\nmetadata: scalar\nname: add\n---\n")
     assert block is not None
     assert block.inline == "scalar" and block.lines == []
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        "metadata: {}\n",
+        "metadata: {author: team, version: '1.0'}\n",
+        "metadata:\n  notes: |\n    a: b\n    line two\n",
+        "metadata:\n  '-key': text\n  'a:b': text\n",
+    ],
+)
+def test_metadata_accepts_all_yaml_mapping_styles(block: str) -> None:
+    assert metadata_check(block) == []
+
+
+@pytest.mark.parametrize(
+    "value", ["[a, b]", "{a: b}", "0xff", ".inf", "2026-01-01", "1_000"]
+)
+def test_metadata_rejects_nonstring_yaml_values(value: str) -> None:
+    assert rules(metadata_check(f"metadata:\n  key: {value}\n")) == {
+        "metadata-value-not-a-string"
+    }
+
+
+def test_metadata_requires_string_keys() -> None:
+    assert rules(metadata_check("metadata: {true: text, 1: text}\n")) == {
+        "metadata-key-not-a-string"
+    }
+
+
+@pytest.mark.parametrize("content", ["[broken", "- item", "", "description: a: b"])
+def test_spec_reports_invalid_yaml(content: str) -> None:
+    assert rules(SPEC.check_frontmatter("x/SKILL.md", f"---\n{content}\n---\n")) == {
+        "frontmatter-invalid"
+    }
+
+
+@pytest.mark.parametrize("value", ["true", "[a, b]", "{a: b}", "123"])
+def test_spec_rejects_nonstring_descriptions(value: str) -> None:
+    text = f"---\nname: x\ndescription: {value}\n---\n"
+    assert "description-not-a-string" in rules(
+        SPEC.check_frontmatter("x/SKILL.md", text)
+    )
+
+
+def test_host_spec_check_catches_declaration_mismatch() -> None:
+    host = dataclasses.replace(
+        SOLO, artifacts=(Skill("other", SOLO.skills[0].sources),)
+    )
+    assert "name-matches-declaration" in rules(host.check_spec())
+
+
+def test_metadata_block_api_uses_yaml() -> None:
+    assert SPEC.check_metadata_block("x", Block(0, "{author: team}")) == []
+    assert rules(SPEC.check_metadata_block("x", Block(0, "[broken"))) == {
+        "metadata-not-a-mapping"
+    }

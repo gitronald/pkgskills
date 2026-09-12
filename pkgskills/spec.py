@@ -17,11 +17,11 @@ wrong in one way is usually wrong in two.
 
 ``metadata`` is checked too, though :func:`pkgskills.frontmatter.parse_fields`
 flattens it to an empty string: the spec calls it *a map from string keys to
-string values*, and :func:`pkgskills.frontmatter.find_block` hands back the raw
-mapping so the map-ness can be inspected. The rule that earns its keep is the
-value one — the spec's own example writes ``version: "1.0"`` with the quotes
-because unquoted it is a float, and ``pkgskills`` quotes the two keys it writes there
-(:mod:`pkgskills.stamp`) for exactly that reason.
+string values*, so the checks here re-read the block with YAML itself rather
+than the flat view, and judge the map-ness and the value types from what YAML
+actually resolved. The rule that earns its keep is the value one — the spec's
+own example writes ``version: "1.0"`` with the quotes because unquoted it is a
+float, and a generated stub preserves that metadata unchanged.
 
 What is *not* checked is the spec's recommendations, as against its
 constraints: that a description name what the skill does *and* when to use it,
@@ -38,7 +38,9 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
-from pkgskills.frontmatter import Block, Frontmatter, find_block, split_frontmatter
+import yaml
+
+from pkgskills.frontmatter import Block, Frontmatter, split_frontmatter
 
 if TYPE_CHECKING:
     from pkgskills.host import Host, Skill
@@ -46,24 +48,33 @@ if TYPE_CHECKING:
 #: The reference validator the spec points at, named in the repair advice.
 VALIDATOR = "skills-ref validate"
 
-#: Unquoted scalars YAML resolves to something other than a string. The spec
-#: requires string values under ``metadata``, and a bare ``1.0`` is a float.
-_NOT_STRINGS: tuple[tuple[str, str], ...] = (
-    (r"[-+]?\d+", "an integer"),
-    (r"[-+]?(\d+\.\d*|\.?\d+)([eE][-+]?\d+)?", "a float"),
-    (r"true|false|yes|no|on|off", "a boolean"),
-    (r"null|~", "a null"),
-)
+
+def _reads_as(value: object) -> str:
+    """What YAML resolved an unquoted scalar to, named for the error message."""
+    if value is None:
+        return "a null"
+    if isinstance(value, bool):  # before int: bool is an int subclass
+        return "a boolean"
+    if isinstance(value, int):
+        return "an integer"
+    if isinstance(value, float):
+        return "a float"
+    return "a timestamp"
 
 
-def _not_a_string(value: str) -> str | None:
-    """What YAML would read ``value`` as, when that is not a string."""
-    if len(value) >= 2 and value[0] in "\"'" and value[-1] == value[0]:
-        return None  # quoted, so a string whatever it looks like
-    for pattern, reads_as in _NOT_STRINGS:
-        if re.fullmatch(pattern, value, re.IGNORECASE):
-            return reads_as
-    return None
+def _written(parsed: object) -> dict[str, object]:
+    """The ``metadata`` mapping from a BaseLoader view, or an empty one.
+
+    The unresolved view exists only to quote a value back as it was typed, so a
+    shape that carries no such mapping degrades to "nothing written" rather than
+    failing — the typed view is what decides whether anything is wrong.
+    """
+    if not isinstance(parsed, dict):  # pragma: no cover - both views share a shape
+        return {}
+    metadata = parsed.get("metadata")
+    if not isinstance(metadata, dict):
+        return {}
+    return {key: value for key, value in metadata.items() if isinstance(key, str)}
 
 
 @dataclass(frozen=True)
@@ -206,6 +217,18 @@ class SkillSpec:
 
     # -- metadata ----------------------------------------------------------
 
+    @staticmethod
+    def _views(text: str) -> tuple[object, object]:
+        """YAML read twice: with real scalar types, and with every scalar as written.
+
+        ``safe_load`` is what the spec's *string values* rule is about, but it
+        collapses an empty ``key:`` and an explicit ``key: null`` to the same
+        None. ``BaseLoader`` resolves nothing, so the second view keeps the two
+        apart and hands back the text the author actually typed, which is what
+        the repair advice quotes back at them.
+        """
+        return yaml.safe_load(text), yaml.load(text, Loader=yaml.BaseLoader)
+
     def check_metadata(self, source: str, front: Frontmatter) -> list[Violation]:
         """Violations in the ``metadata`` mapping, if the source declares one.
 
@@ -216,79 +239,80 @@ class SkillSpec:
         example writes ``version: "1.0"`` with the quotes precisely because
         unquoted it is a float.
         """
-        if "metadata" not in front.fields:
+        try:
+            parsed, written = self._views(
+                "".join(front.raw.splitlines(keepends=True)[1:-1])
+            )
+        except yaml.YAMLError:  # pragma: no cover - check_parsed reports it first
             return []
-        block = find_block(front.raw, "metadata")
-        if block is None:  # pragma: no cover - fields and raw cannot disagree
+        if not isinstance(parsed, dict) or "metadata" not in parsed:
             return []
-        return self.check_metadata_block(source, block)
+        return self._check_metadata(source, parsed["metadata"], _written(written))
 
     def check_metadata_block(self, source: str, block: Block) -> list[Violation]:
-        """Violations in the ``metadata`` block itself, already located.
+        """Check an already-located metadata block with YAML's scalar types."""
+        text = f"metadata: {block.inline}\n" + "\n".join(block.lines)
+        try:
+            parsed, written = self._views(text)
+        except yaml.YAMLError as exc:
+            return [
+                Violation(
+                    source,
+                    "metadata-not-a-mapping",
+                    str(exc),
+                    "use a valid YAML string-to-string mapping",
+                )
+            ]
+        metadata = parsed.get("metadata") if isinstance(parsed, dict) else parsed
+        return self._check_metadata(source, metadata, _written(written))
 
-        Split from :meth:`check_metadata` so a caller that already located the
-        block can ask what is wrong with it without re-finding it.
-        """
-
+    def _check_metadata(
+        self, source: str, metadata: object, written: dict[str, object]
+    ) -> list[Violation]:
         def wrong(rule: str, detail: str, fix: str) -> Violation:
             return Violation(where=source, rule=rule, detail=detail, fix=fix)
 
-        if block.inline:
+        if not isinstance(metadata, dict):
             return [
                 wrong(
                     "metadata-not-a-mapping",
-                    f"`metadata` is the scalar {block.inline!r}",
-                    "make it a mapping of string keys to string values, "
-                    "indented on the lines below `metadata:`",
-                )
-            ]
-        entries = block.entries()
-        if not entries:
-            return [
-                wrong(
-                    "metadata-not-a-mapping",
-                    "`metadata` opens no mapping, so it reads back as null",
-                    "give it at least one `key: value` pair, or drop the key",
+                    f"`metadata` is {metadata!r}, not a mapping"
+                    if metadata is not None
+                    else "`metadata` opens no mapping, so it reads back as null",
+                    "use a mapping of string keys to string values, or drop the key",
                 )
             ]
         out: list[Violation] = []
-        base = entries[0][0]
-        top = [(key, value) for indent, key, value in entries if indent <= base]
-        # A sequence is one wrong shape, not one per item: `- a` and `- b` say
-        # the same thing about the block, so reporting each would bury the
-        # entries that are genuinely worth a line of their own.
-        if loose := [value for key, value in top if not key]:
-            out.append(
-                wrong(
-                    "metadata-not-a-mapping",
-                    "`metadata` holds "
-                    + ", ".join(repr(v) for v in loose[:3])
-                    + (", ..." if len(loose) > 3 else "")
-                    + ", which declares no key",
-                    "every entry must be a `key: value` pair",
+        for key, value in metadata.items():
+            if not isinstance(key, str):
+                out.append(
+                    wrong(
+                        "metadata-key-not-a-string",
+                        f"`metadata` key {key!r} is not a string",
+                        "quote the key so YAML reads it as a string",
+                    )
                 )
-            )
-        for key, value in top:
-            if not key:
+            if isinstance(value, str):
                 continue
-            if not value:
-                out.append(
-                    wrong(
-                        "metadata-value-not-a-string",
-                        f"`metadata.{key}` has no scalar value",
-                        "give it a string; the spec allows no nested mappings, "
-                        "sequences, or nulls under `metadata`",
-                    )
+            # A nested collection and an omitted value both write nothing after
+            # the colon, so they share the "no scalar value" wording; a written
+            # `null` or `~` is a scalar the author chose, and is named as one.
+            source_text = written.get(key)
+            omitted = value is None and not source_text
+            if omitted or isinstance(value, (dict, list)):
+                detail = f"`metadata.{key}` has no scalar value"
+                fix = "give it a string; metadata allows no collections or nulls"
+            else:
+                kind = _reads_as(value)
+                detail = (
+                    f"`metadata.{key}` is {source_text!r}, which YAML reads as "
+                    f"{kind}, not a string"
                 )
-            elif problem := _not_a_string(value):
-                out.append(
-                    wrong(
-                        "metadata-value-not-a-string",
-                        f"`metadata.{key}` is {value!r}, which YAML reads as "
-                        f"{problem}, not a string",
-                        f'quote it -- `{key}: "{value}"`',
-                    )
+                fix = (
+                    "quote the value so YAML reads it as a string -- "
+                    f'`{key}: "{source_text}"`'
                 )
+            out.append(wrong("metadata-value-not-a-string", detail, fix))
         return out
 
     # -- lookups -----------------------------------------------------------
@@ -371,8 +395,45 @@ class SkillSpec:
                     ),
                 )
             ]
+        try:
+            parsed, written = self._views(
+                "".join(front.raw.splitlines(keepends=True)[1:-1])
+            )
+        except yaml.YAMLError as exc:
+            return [
+                Violation(
+                    source,
+                    "frontmatter-invalid",
+                    str(exc),
+                    "use a valid YAML mapping in the frontmatter",
+                )
+            ]
+        if not isinstance(parsed, dict):
+            return [
+                Violation(
+                    source,
+                    "frontmatter-invalid",
+                    "frontmatter is not a YAML mapping",
+                    "declare fields as key: value pairs",
+                )
+            ]
         out: list[Violation] = []
         for spec_field in self.fields:
+            actual = parsed.get(spec_field.name)
+            if (
+                spec_field.name != "metadata"
+                and actual is not None
+                and not isinstance(actual, str)
+            ):
+                out.append(
+                    Violation(
+                        source,
+                        f"{spec_field.name}-not-a-string",
+                        f"`{spec_field.name}` is not a string",
+                        "use a YAML string scalar",
+                    )
+                )
+
             value = front.get(spec_field.name)
             if value is None or not value.strip():
                 if spec_field.required:
@@ -398,7 +459,10 @@ class SkillSpec:
                         fix=f"shorten it: {spec_field.constraint}",
                     )
                 )
-        out.extend(self.check_metadata(source, front))
+        if "metadata" in parsed:
+            out.extend(
+                self._check_metadata(source, parsed["metadata"], _written(written))
+            )
         declared = front.get("name")
         if declared:
             name_problem = self.name_problem(declared)
@@ -444,8 +508,30 @@ class SkillSpec:
                     )
                 )
                 continue
-            out.extend(self.check_frontmatter(source, host.read(source)))
+            front, _ = split_frontmatter(host.read(source))
+            out.extend(self.check_parsed(source, front))
+            if not skill.dispatches and front is not None:
+                out.extend(self.check_skill_name(source, front, skill))
         return out
+
+    def check_skill_name(
+        self, source: str, front: Frontmatter, skill: Skill
+    ) -> list[Violation]:
+        """The single-source stub's name must agree with its declaration."""
+        declared = front.get("name")
+        if declared == skill.name:
+            return []
+        return [
+            Violation(
+                where=source,
+                rule="name-matches-declaration",
+                detail=(
+                    f"frontmatter names {declared!r} but the host declares "
+                    f"this skill as {skill.name!r}"
+                ),
+                fix="make the two agree; the stub is rendered from both",
+            )
+        ]
 
     def check_host(self, host: Host) -> list[Violation]:
         """Every violation across every skill ``host`` declares."""
