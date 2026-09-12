@@ -1,11 +1,11 @@
 ---
 id: 4
 slug: per-skill-and-host-versions
-status: active
+status: done
 branch: feature/per-skill-and-host-versions
 created: 2026-09-10T01:17:38-07:00
-concluded:
-pr:
+concluded: 2026-09-11T19:00:28-07:00
+pr: https://github.com/gitronald/pkgskills/pull/5
 ---
 
 # Track only a skill-level version in stub metadata
@@ -186,3 +186,68 @@ mapping at all.
 
 Step 3's `--force` reinstall across the known hosts is deliberately left for after
 this merges and a release is cut; there is nothing to reinstall from until then.
+
+### Review follow-up
+
+`/code-review PR 5` at level `medium`: two finders (correctness, and
+reuse/simplification/efficiency), four candidates, two rejected on adversarial
+verification, one added by the gap sweep. Posted to the PR.
+
+**Actioned.** Two docstrings still explained themselves by citing the splice this
+plan deletes:
+
+- `frontmatter.py`'s `Block` justified the class with "Two callers need to inspect
+  one anyway — `pkgskills` splices its own version keys into `metadata`, and the
+  spec check ...". Rewritten around the one consumer that remains. Notably, step 1
+  of the implementation order *did* fix the identical wording in `spec.py` — the
+  same sentence had been copied into `frontmatter.py` and the plan only named one
+  of the two.
+- `tests/test_spec.py::test_a_sequence_of_pairs_is_still_a_sequence` explained the
+  check by what `with_metadata` did next. The check still earns its keep, and for a
+  sharper reason than before: a stub now lifts its source's block verbatim, so a
+  malformed `metadata` block installs as the frontmatter the harness reads rather
+  than being spliced into something that fails to parse. Restated that way.
+
+Both are documentation-only, so neither carries a regression test; the gate
+(`ruff check`, `ruff format --check`, `pyrefly check`, `pytest`) is clean at 224
+passed, 98.14%.
+
+**Conscious no-op.** `Block.at` now has no consumer in `pkgskills/` — `with_metadata`
+spliced at that index, and the only remaining read repo-wide is an assertion in
+`tests/test_spec.py`. Left in place: `Block` is public API (re-exported in
+`__all__`), and `at` is part of what "a located block" means for a third-party host
+calling `find_block`. Deleting a public field to tidy a metadata-removal PR widens
+scope past what this plan decided. Worth revisiting at the next public-API pass.
+
+**Rejected.** That `check_metadata_block` is now a vestigial split — true that it has
+one caller, but this plan decided explicitly that it stays as `check_metadata`'s
+worker. And that the two verbatim-passthrough tests duplicate each other — they do
+not: one uses a versionless source and proves nothing is prepended before the block,
+the other uses a source declaring `metadata.version` and proves the block round-trips
+byte for byte. Neither fixture can exercise the other's case.
+
+## Retrospective
+
+- The decision held up under implementation. Nothing in the codebase resisted the
+  removal, no call site needed a shim, and the diff is a net deletion of ~60 lines
+  of source. The plan's claim that this is "a net simplification, not a swap" was
+  accurate.
+- **The plan under-counted the blast radius of a rationale.** It enumerated the code
+  to delete precisely and correctly, but the *reason* for that code had been
+  paraphrased into four docs and two docstrings. Five of the six turned up only by
+  grepping for the behavior after the code was gone, and the sixth needed a code
+  review to find. For a change that redefines what a key means, "grep for every
+  place the old meaning was explained" belongs in the implementation order next to
+  "delete the function".
+- **A deletion needs a fixture that exercises what survives.** No fixture source
+  declared a conformant `metadata` block, because until now `pkgskills` wrote the only
+  one that existed. There was literally nothing to prove passthrough against until
+  `multihost`'s `audit` got a version — the test the change most needed was the one
+  the old design made impossible to write.
+- Pre-commit checks the whole worktree, not the staged index: it stashes unstaged
+  work, so a commit that deletes a function and a follow-up commit that stops
+  importing it cannot be split in that order. Worth remembering as a constraint on
+  commit granularity in this repo, not a reason to loosen the hook.
+- Deferring step 3's `--force` reinstall was right — there is nothing to reinstall
+  from until this merges and a release is cut. It moves to the release that ships
+  this, where the changelog entry already warns that every stub drifts once.
