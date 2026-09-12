@@ -216,6 +216,19 @@ def test_local_only_host_installs_without_a_flag(box: Sandbox) -> None:
     assert runner.invoke(multi_app, ["install", "--local"]).exit_code == 0
 
 
+def test_global_repair_command_overrides_a_local_default(box: Sandbox) -> None:
+    host = dataclasses.replace(SOLO, modes=("local", "global"))
+    assert host.install_command("global", force=True) == (
+        "solohost install --global --force"
+    )
+    assert host.check_command("global") == "solohost install --global --check"
+    app = typer_app(host)
+    result = runner.invoke(app, host.install_command("global").split()[1:])
+    assert result.exit_code == 0, result.output
+    assert (box.home / ".claude/skills/use-solo/SKILL.md").is_file()
+    assert not (box.repo / ".claude").exists()
+
+
 def test_local_only_host_refuses_the_other_modes_flag(box: Sandbox) -> None:
     result = runner.invoke(multi_app, ["install", "--global"])
     assert result.exit_code == 1

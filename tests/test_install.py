@@ -40,7 +40,15 @@ def test_artifact_paths_per_mode_and_kind(box: Sandbox) -> None:
     )
 
 
-def test_find_repo_root_walks_up_and_falls_back(box: Sandbox, tmp_path: Path) -> None:
+def test_find_repo_root_walks_up_and_falls_back(
+    box: Sandbox, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Root discovery must not depend on whether pytest itself runs inside a repo.
+    exists = Path.exists
+    outside_markers = {parent / ".git" for parent in tmp_path.parents}
+    monkeypatch.setattr(
+        Path, "exists", lambda path: path not in outside_markers and exists(path)
+    )
     sub = box.repo / "a" / "b"
     sub.mkdir(parents=True)
     assert inst.find_repo_root(sub) == box.repo
@@ -84,6 +92,23 @@ def test_installed_mode_prefers_global(box: Sandbox) -> None:
     assert inst.installed_mode(SOLO, box.repo) == "local"
     inst.install(SOLO, box.repo, "global")
     assert inst.installed_mode(SOLO, box.repo) == "global"
+
+
+@pytest.mark.parametrize("modes", [("global", "local"), ("local", "global")])
+def test_mode_preference_outranks_artifact_order(box: Sandbox, modes) -> None:
+    host = dataclasses.replace(MULTI, modes=modes)
+    inst.write_artifact(host, host.skills[0], modes[1], box.repo)
+    inst.write_artifact(host, host.skills[1], modes[0], box.repo)
+    assert inst.installed_mode(host, box.repo) == modes[0]
+    assert inst.printing_mode(host, box.repo) == modes[0]
+
+
+def test_harness_that_loads_both_skills_reports_no_shadow(box: Sandbox) -> None:
+    host = dataclasses.replace(
+        SOLO, harness=dataclasses.replace(SOLO.harness, shadowed_kinds=frozenset())
+    )
+    inst.install(host, box.repo, "global")
+    assert inst.install(host, box.repo, "local").shadowed == ()
 
 
 def test_printing_mode_folds_the_nothing_installed_case_into_a_default(

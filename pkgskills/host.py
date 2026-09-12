@@ -461,17 +461,15 @@ class Host:
         parts = [self.invocation(mode), "install"]
         if mode == "local":
             parts.append("--local")
+        elif self.default_mode != "global":
+            parts.append("--global")
         if force:
             parts.append("--force")
         return " ".join(parts)
 
     def check_command(self, mode: Mode) -> str:
         """The mode-correct ``install --check`` command."""
-        parts = [self.invocation(mode), "install"]
-        if mode == "local":
-            parts.append("--local")
-        parts.append("--check")
-        return " ".join(parts)
+        return f"{self.install_command(mode)} --check"
 
     def skill_command(self, mode: Mode, subcommand: str | None = None) -> str:
         """The command that prints a skill body for ``mode``."""
