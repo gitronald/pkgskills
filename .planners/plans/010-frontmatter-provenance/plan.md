@@ -8,7 +8,7 @@ concluded:
 pr:
 ---
 
-# Move the provenance stamp into frontmatter
+# Move the provenance stamp into frontmatter and tabulate subcommands
 
 ## Plan
 
@@ -119,6 +119,32 @@ step.
   stamp pkgskills did not write" now covers a mangled map as well as a mangled
   line.
 
+### The dispatcher's subcommand list becomes a table
+
+The same release turns the bulleted `Subcommands (N):` list in a dispatcher
+stub into a table with a version column:
+
+```
+| Subcommand | Version | Description |
+|---|---|---|
+| `add` | 1.0.0 | Scaffold a new plan file. Use when … |
+| `implement` | 1.0.0 | Start implementing a plan — … |
+```
+
+- The version is the source's own `metadata.version` (plan 004's key), read
+  from each source's frontmatter the same way the description is today. A
+  source that declares none gets an empty cell, never a fallback to the host
+  release, for 004's reason: one column meaning two things is the ambiguity
+  that plan removed.
+- This is the first place a per-skill version becomes *visible* after
+  install; today a dispatcher's sources carry it only in the package. It is
+  body text, so a version bump in one source drifts the stub as 004 intends,
+  and `mask_versions` leaves it alone.
+- A single-source stub is unchanged: its version already rides in the lifted
+  frontmatter block.
+- The "map to `/<skill> <sub>`" sentence and the `skill --list` fallback stay
+  as they are, below the table.
+
 ### Out of scope
 
 - Any change to what `metadata` means or to source-declared versions (004).
@@ -134,7 +160,8 @@ step.
    docstring, which currently describes the comment as the sole home.
 2. `rendering.py`: `stub_frontmatter` and `render_copy` splice the map;
    `place_stamp` callers adjust. A single-source stub still lifts the source's
-   block byte for byte and appends the map after it.
+   block byte for byte and appends the map after it. The dispatcher tail
+   renders the subcommand table, reading `metadata.version` per source.
 3. `spec.py`: confirm the top-level `pkgskills` key is not a violation; add the
    source-declares-`pkgskills` check.
 4. Tests: `test_stamp.py`, `test_render.py`, `test_artifacts.py` fixtures move

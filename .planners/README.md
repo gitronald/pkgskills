@@ -2,7 +2,7 @@
 
 | # | Plan | Status | Concluded | PR |
 |---|---|---|---|---|
-| 010 | [Move the provenance stamp into frontmatter](plans/010-frontmatter-provenance/plan.md) | draft | — | — |
+| 010 | [Move the provenance stamp into frontmatter and tabulate subcommands](plans/010-frontmatter-provenance/plan.md) | draft | — | — |
 | 009 | [Smooth the seams a host meets after adopting the library](plans/009-host-adoption-followups/plan.md) | draft | — | — |
 | 008 | [Move hook wiring, in-place line artifacts, and superseded paths upstream](plans/008-host-install-machinery/plan.md) | done | 2026-09-11 20:46 PT | [#8](https://github.com/gitronald/pkgskills/pull/8) |
 | 007 | [Close the gaps a migrating host hits on adoption](plans/007-migrating-host-adoption-gaps/plan.md) | done | 2026-09-11 19:15 PT | [#6](https://github.com/gitronald/pkgskills/pull/6) |
