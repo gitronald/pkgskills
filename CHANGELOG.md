@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-11
+
 ### Added
 
 - `pkgskills.precommit`: `Hook` declares a pre-commit hook, `wire(report,
