@@ -5,7 +5,7 @@ status: active
 branch: feature/migrating-host-adoption-gaps
 created: 2026-09-11T18:51:47-07:00
 concluded:
-pr:
+pr: https://github.com/gitronald/pkgskills/pull/6
 ---
 
 # Close the gaps a migrating host hits on adoption
@@ -90,3 +90,37 @@ mention in a prompt body.
 
 Host-declared install options (see section 2), and any change to the stamp
 format itself. A pre-pkgskills stamp stays `foreign`; only its reason changes.
+
+## Log
+
+### 2026-09-11 — all three sections implemented
+
+All three landed in one commit, in the planned order; PR #6.
+
+1. `classify` now splits on `stamped_by(text) == host.dist` with `is_stamped`
+   false and reports `stamped by an earlier <dist> release, before pkgskills;
+   --force replaces it`. `stamped_by` is untouched. `test_foreign_shapes`
+   gained a row for the same-dist case and still asserts the different-dist
+   message verbatim.
+2. `InstallReport.force` is a trailing field defaulting to `False`, populated
+   positionally by `install`. Documented on the dataclass and in the
+   `after_install` bullet of the `Host` docstring.
+   `test_after_install_hook_sees_force` installs twice and asserts the hook saw
+   `[False, True]`.
+3. Bare `<cli> skill` lists when the host ships **more than one** body. The
+   zero-body case is not folded in: a docs-only host would otherwise print
+   nothing and exit 0, so it keeps an error, now reading `<cli> ships no skill
+   bodies`. `test_skill_without_name_on_a_dispatcher_is_an_error` became
+   `..._lists` and asserts the bare output equals `--list`'s;
+   `test_skill_on_a_host_shipping_none_is_an_error` covers the remaining error.
+   `assert_prompt_commands` needed no change — a bare `{cli} skill` mention
+   carries no argument, so `_unresolved` already let it through.
+
+Changelog: one Fixed (the message) and two Changed (the field, the listing)
+under `[Unreleased]`, each saying why no host breaks.
+
+**Open question, deferred:** host-declared install options — a switch such as
+"skip the hook" or "also install the tool" that a host adds to `install`.
+That is a design decision about whether `after_install` side effects are
+opt-in or opt-out, and it widens the CLI surface. One host's flags are not a
+pattern; take it up only if a second host asks.
