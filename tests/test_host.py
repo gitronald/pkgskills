@@ -360,8 +360,13 @@ def test_lines_are_validated() -> None:
     assert Line(".gitattributes", "docs/x.md", "merge=union").text == (
         "docs/x.md merge=union"
     )
+    # Padded or doubled spaces in the value read back normalized, so the
+    # declared text must normalize the same way or it drifts forever.
+    assert Line("f", "k", "  merge=union   diff=x ").text == "k merge=union diff=x"
     with pytest.raises(ValueError, match="repo-relative"):
         Host("d", "c", "p", lines=(Line("/etc/x", "k", "v"),))
+    with pytest.raises(ValueError, match="repo-relative"):
+        Host("d", "c", "p", lines=(Line("../outside", "k", "v"),))
     with pytest.raises(ValueError, match="repo-relative"):
         Host("d", "c", "p", lines=(Line("", "k", "v"),))
     with pytest.raises(ValueError, match="one whitespace-free token"):

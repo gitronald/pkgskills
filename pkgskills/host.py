@@ -198,8 +198,13 @@ class Line:
 
     @property
     def text(self) -> str:
-        """The line as written, whitespace-normalized, without its newline."""
-        return f"{self.key} {self.value}"
+        """The line as written, whitespace-normalized, without its newline.
+
+        Normalized the same way a line read back from the file is, so a value
+        declared with padded or doubled spaces compares equal to its own
+        install instead of reading as drift forever.
+        """
+        return " ".join((self.key, *self.value.split()))
 
 
 Artifact = Skill | Rule | Agent
@@ -357,7 +362,11 @@ class Host:
                     )
         seen_lines: set[tuple[str, str]] = set()
         for line in self.lines:
-            if not line.path or PurePosixPath(line.path).is_absolute():
+            # `..` is refused as well as an absolute path: the line is written
+            # under the repository root, and a path that climbs out of it
+            # would edit a file the install never claimed to touch.
+            parts = PurePosixPath(line.path).parts
+            if not line.path or PurePosixPath(line.path).is_absolute() or ".." in parts:
                 raise ValueError(f"line {line.key!r}: path must be repo-relative")
             if not line.key or len(line.key.split()) != 1:
                 raise ValueError(

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `Line.text` now collapses whitespace in `value` the way a line read back
+  from the file is, so a value declared with padded or doubled spaces no
+  longer reports `drifted` on every check. A `Line.path` with a `..` segment
+  is rejected at construction alongside an absolute one.
+
 ## [0.4.0] - 2026-09-11
 
 ### Added
