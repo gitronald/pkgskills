@@ -1,8 +1,8 @@
 ---
 id: 8
 slug: host-install-machinery
-status: draft
-branch:
+status: active
+branch: feature/host-install-machinery
 created: 2026-09-11T19:38:49-07:00
 concluded:
 pr:

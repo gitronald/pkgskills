@@ -2,7 +2,7 @@
 
 | # | Plan | Status | Concluded | PR |
 |---|---|---|---|---|
-| 008 | [Move hook wiring, in-place line artifacts, and superseded paths upstream](plans/008-host-install-machinery/plan.md) | draft | — | — |
+| 008 | [Move hook wiring, in-place line artifacts, and superseded paths upstream](plans/008-host-install-machinery/plan.md) | active | — | — |
 | 007 | [Close the gaps a migrating host hits on adoption](plans/007-migrating-host-adoption-gaps/plan.md) | done | 2026-09-11 19:15 PT | [#6](https://github.com/gitronald/pkgskills/pull/6) |
 | 004 | [Track only a skill-level version in stub metadata](plans/004-per-skill-and-host-versions/plan.md) | done | 2026-09-11 19:00 PT | [#5](https://github.com/gitronald/pkgskills/pull/5) |
 | 006 | [Sync tooling to proj-template 0.10.0](plans/006-template-upgrade-0-10-0/plan.md) | done | 2026-09-11 10:44 PT | [#2](https://github.com/gitronald/pkgskills/pull/2) |
