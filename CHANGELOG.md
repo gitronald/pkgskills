@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-12
+
 ### Changed
 
 - Frontmatter is parsed with PyYAML instead of a hand-rolled line scanner, so
