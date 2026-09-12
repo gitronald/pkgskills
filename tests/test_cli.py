@@ -58,10 +58,23 @@ def test_skill_renders_cli_for_the_installed_mode(box: Sandbox) -> None:
     assert "uv run examplehost validate ." in result.output
 
 
-def test_skill_without_name_on_a_dispatcher_is_an_error(box: Sandbox) -> None:
-    result = runner.invoke(example_app, ["skill"])
+def test_skill_without_name_on_a_dispatcher_lists(box: Sandbox) -> None:
+    bare = runner.invoke(example_app, ["skill"])
+    assert bare.exit_code == 0
+    assert bare.output.split() == ["add", "close"]
+    assert bare.output == runner.invoke(example_app, ["skill", "--list"]).output
+
+
+def test_skill_on_a_host_shipping_none_is_an_error(box: Sandbox) -> None:
+    # Listing is the useful reading of a bare invocation only when there is
+    # something to list; with no bodies at all, say so rather than print
+    # nothing and exit 0.
+    docs_only = dataclasses.replace(
+        MULTI, artifacts=tuple(a for a in MULTI.artifacts if a.kind is not Kind.SKILL)
+    )
+    result = runner.invoke(typer_app(docs_only), ["skill"])
     assert result.exit_code == 1
-    assert "name one of: add, close" in result.output
+    assert "ships no skill bodies" in result.output
 
 
 def test_unknown_skill_is_an_error(box: Sandbox) -> None:
@@ -93,7 +106,7 @@ def test_stub_command_on_a_multi_skill_host_actually_runs(
     box: Sandbox, name: str, sentinel: str
 ) -> None:
     # The whole point of the stub is that a model can run what it prints, so
-    # run it: a nameless `multihost skill` would exit 1 here.
+    # run it: a nameless `multihost skill` would only list the bodies here.
     mode = MULTI.default_mode
     stub = render(MULTI, MULTI.artifact(Kind.SKILL, name), mode)
     result = runner.invoke(multi_app, _load_command(stub, MULTI, mode))

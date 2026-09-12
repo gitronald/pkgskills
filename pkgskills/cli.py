@@ -54,22 +54,23 @@ def _printing_mode(host: Host) -> Mode:
 def _skill_command(host: Host) -> typer.Typer:
     def skill(
         name: str | None = typer.Argument(
-            None, help="Skill body to print; omit when the host ships exactly one."
+            None,
+            help="Skill body to print; omit to print the only one, or to list them.",
         ),
         list_: bool = typer.Option(False, "--list", help="List the skill bodies."),
     ) -> None:
-        """Print a bundled skill's instructions."""
+        """Print a bundled skill's instructions, or list them when given no name."""
         bodies = host.skill_sources()
-        if list_:
+        # A bare invocation on a dispatcher host lists: on a host shipping many
+        # bodies it is the only thing the command can usefully mean, and it is
+        # what the stub tells the model to run. `--list` stays the explicit form.
+        if list_ or (name is None and len(bodies) > 1):
             for body in bodies:
                 typer.echo(body)
             return
         if name is None:
-            if len(bodies) != 1:
-                _err(
-                    f"{host.cli} ships {len(bodies)} skill bodies; name one of: "
-                    + ", ".join(bodies)
-                )
+            if not bodies:
+                _err(f"{host.cli} ships no skill bodies")
                 raise typer.Exit(1)
             name = next(iter(bodies))
         try:
