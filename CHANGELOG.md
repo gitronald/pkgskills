@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-12
+
+### Changed
+
+- Frontmatter is parsed with PyYAML instead of a hand-rolled line scanner, so
+  block scalars, flow mappings, quoted keys, and every other YAML form the
+  spec allows are read the way the harness reads them. `pyyaml` is now a
+  runtime dependency rather than a development one.
+- The metadata check resolves scalar types the way YAML does: an unquoted
+  `version: 1.0` is reported as a float, a `0xff` or `2026-01-01` value as a
+  non-string, and a non-string key by its own rule. Generated stub fields
+  are quoted so they round-trip, and are validated like source frontmatter.
+- `install_command` and `check_command` emit `--global` when the mode is
+  global and the host's default mode is not.
+
+### Removed
+
+- `find_block`, `Block`, and `strip_comment` from `pkgskills.frontmatter`,
+  and `SkillSpec.check_metadata` and `SkillSpec.check_metadata_block`. They
+  served the line-oriented parser the YAML rewrite replaced and had no
+  remaining callers; `SkillSpec.check_parsed` covers the metadata check.
+
+### Fixed
+
+- `Line.text` now collapses whitespace in `value` the way a line read back
+  from the file is, so a value declared with padded or doubled spaces no
+  longer reports `drifted` on every check. A `Line.path` with a `..` segment
+  is rejected at construction alongside an absolute one.
+
 ## [0.4.0] - 2026-09-11
 
 ### Added

@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 
 import pytest
+import yaml
 from examplehost.cli import HOST as EXAMPLE
 from multihost.cli import HOST as MULTI
 from solohost.cli import HOST as SOLO
@@ -91,7 +92,7 @@ def test_every_stub_on_a_multi_skill_host_names_its_own_body() -> None:
 
 def test_dispatcher_stub_lists_subcommands_with_descriptions() -> None:
     stub = render_stub(EXAMPLE, EXAMPLE.skills[0], "local")
-    assert stub.startswith("---\nname: example\ndescription: ")
+    assert stub.startswith('---\nname: "example"\ndescription: ')
     assert "Subcommands: add, close." in stub
     assert "- `add` - Add a thing." in stub
     assert "- `close` - Close a thing when the work is done." in stub
@@ -103,7 +104,9 @@ def test_dispatcher_stub_lists_subcommands_with_descriptions() -> None:
 def test_dispatcher_description_can_be_supplied() -> None:
     skill = dataclasses.replace(EXAMPLE.skills[0], description="Custom\n  text")
     stub = render_stub(EXAMPLE, skill, "global")
-    assert "description: Custom text\n" in stub
+    front, _ = split_frontmatter(stub)
+    assert front is not None
+    assert front.get("description") == "Custom text"
 
 
 def test_stub_rejects_a_source_whose_name_disagrees() -> None:
@@ -202,3 +205,39 @@ def test_rule_and_agent_are_copies_not_stubs() -> None:
     assert isinstance(EXAMPLE.rules[0], Rule)
     assert isinstance(EXAMPLE.agents[0], Agent)
     assert "printed on demand" not in render(EXAMPLE, EXAMPLE.rules[0], "global")
+
+
+@pytest.mark.parametrize(
+    "description",
+    [
+        None,
+        "Run: now # keep this",
+        "true",
+        'It\'s "quoted"',
+        "@start",
+        "[a, b]",
+        "C:\\temp",
+    ],
+)
+def test_dispatcher_frontmatter_is_valid_yaml(description: str | None) -> None:
+    skill = dataclasses.replace(EXAMPLE.skills[0], description=description)
+    raw = stub_frontmatter(EXAMPLE, skill)
+    parsed = yaml.safe_load("\n".join(raw.splitlines()[1:-1]))
+    assert parsed["name"] == skill.name
+    assert isinstance(parsed["description"], str)
+    if description is not None:
+        assert parsed["description"] == description
+
+
+@pytest.mark.parametrize("description", ["", "   ", "x" * 1025])
+def test_dispatcher_rejects_invalid_descriptions(description: str) -> None:
+    skill = dataclasses.replace(EXAMPLE.skills[0], description=description)
+    with pytest.raises(ValueError, match="description"):
+        stub_frontmatter(EXAMPLE, skill)
+
+
+def test_subcommand_description_preserves_trailing_hyphens(monkeypatch) -> None:
+    monkeypatch.setattr(
+        Host, "read", lambda self, source: "---\ndescription: 'Use --'\n---\n"
+    )
+    assert "- `add` - Use --\n" in render_stub(EXAMPLE, EXAMPLE.skills[0], "global")

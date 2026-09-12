@@ -467,8 +467,8 @@ def installed_mode(host: Host, root: Path) -> Mode | None:
     :attr:`~pkgskills.host.Host.default_mode` themselves, while callers asking "has
     this repo been pinned to global?" need the difference.
     """
-    for art in host.skills or host.artifacts:
-        for mode in host.modes:
+    for mode in host.modes:
+        for art in host.skills or host.artifacts:
             if occupied(artifact_path(host, art, mode, root)):
                 return mode
     return None
@@ -536,7 +536,7 @@ def shadowed_skills(host: Host, root: Path) -> list[Path]:
     the two paths coincide and there is really only one file, and empty for a
     host with no global mode, which never puts a stub there to shadow with.
     """
-    if not host.supports_mode("global"):
+    if not host.supports_mode("global") or not host.harness.shadows(Kind.SKILL):
         return []
     out: list[Path] = []
     for skill in host.skills:

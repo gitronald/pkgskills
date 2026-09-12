@@ -7,9 +7,11 @@ renderer returns is exactly what ``install`` writes and exactly what
 
 from __future__ import annotations
 
+import json
+
 from pkgskills.frontmatter import split_frontmatter
 from pkgskills.host import CLI_TOKEN, Agent, Artifact, Doc, Host, Mode, Rule, Skill
-from pkgskills.spec import SPEC, SpecError, Violation
+from pkgskills.spec import SPEC, SpecError
 from pkgskills.stamp import place_stamp, render_stamp
 
 
@@ -66,27 +68,26 @@ def stub_frontmatter(host: Host, skill: Skill) -> str:
         violations = SPEC.check_parsed(source, front)
         if front is None:
             raise SpecError(violations, header=header)
-        declared = front.get("name")
-        if declared != skill.name:
-            violations.append(
-                Violation(
-                    where=source,
-                    rule="name-matches-declaration",
-                    detail=(
-                        f"frontmatter names {declared!r} but the host declares "
-                        f"this skill as {skill.name!r}"
-                    ),
-                    fix="make the two agree; the stub is rendered from both",
-                )
-            )
+        violations.extend(SPEC.check_skill_name(source, front, skill))
         if violations:
             raise SpecError(violations, header=header)
         return front.raw
-    description = skill.description or (
-        f"`{host.dist}` toolkit. Invoke as `/{skill.name} <subcommand> [args]`. "
-        f"Subcommands: {', '.join(skill.subcommands)}."
+    description = (
+        skill.description
+        if skill.description is not None
+        else (
+            f"`{host.dist}` toolkit. Invoke as `/{skill.name} <subcommand> [args]`. "
+            f"Subcommands: {', '.join(skill.subcommands)}."
+        )
     )
-    return f"---\nname: {skill.name}\ndescription: {_single_line(description)}\n---\n"
+    raw = (
+        f"---\nname: {json.dumps(skill.name)}\n"
+        f"description: {json.dumps(_single_line(description))}\n---\n"
+    )
+    violations = SPEC.check_frontmatter(f"{skill.name}/{SPEC.entry_file}", raw)
+    if violations:
+        raise SpecError(violations, header=f"skill {skill.name!r} cannot be rendered")
+    return raw
 
 
 def _subcommand_description(host: Host, source: str) -> str:
@@ -117,8 +118,9 @@ Anything other than `ok` means this stub predates the installed package: run
 """
     if skill.dispatches:
         subs = "\n".join(
-            f"- `{sub}` - {_subcommand_description(host, source)}".rstrip(" -")
+            f"- `{sub}`" + (f" - {description}" if description else "")
             for sub, source in zip(skill.subcommands, skill.sources, strict=True)
+            for description in [_subcommand_description(host, source)]
         )
         slash = ", ".join(f"`/{skill.name} {sub}`" for sub in skill.subcommands)
         tail = f"""

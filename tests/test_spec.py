@@ -13,7 +13,7 @@ from examplehost.cli import HOST as EXAMPLE
 from multihost.cli import HOST as MULTI
 from solohost.cli import HOST as SOLO
 
-from pkgskills.frontmatter import Block, find_block, split_frontmatter
+from pkgskills.frontmatter import split_frontmatter
 from pkgskills.host import Doc, Host, Skill
 from pkgskills.spec import SPEC, SkillSpec, SpecError, Violation, report
 from pkgskills.testing import assert_spec_conformant
@@ -193,6 +193,7 @@ def test_check_host_collects_every_violation_across_the_broken_fixture() -> None
         "description-missing",  # misfiled declares none
         "name-grammar",  # "Misfiled Skill" is not the grammar
         "name-matches-directory",  # ...and is not "misfiled" either
+        "name-matches-declaration",
         "metadata-value-not-a-string",  # bad-metadata's floats, ints and bools
     }
 
@@ -287,7 +288,7 @@ def metadata_check(block: str) -> list[Violation]:
     text = f"---\nname: add\ndescription: A thing.\n{block}---\n\nbody\n"
     front, _ = split_frontmatter(text)
     assert front is not None
-    return SPEC.check_metadata("add/SKILL.md", front)
+    return SPEC.check_parsed("add/SKILL.md", front)
 
 
 def test_a_string_valued_metadata_mapping_is_accepted() -> None:
@@ -308,7 +309,7 @@ def test_metadata_absent_is_not_a_violation() -> None:
         ("1.0", "a float"),
         ("3", "an integer"),
         ("-2", "an integer"),
-        ("1e6", "a float"),
+        ("1.0e+6", "a float"),
         (".5", "a float"),
         ("true", "a boolean"),
         ("False", "a boolean"),
@@ -324,7 +325,7 @@ def test_metadata_values_yaml_would_not_return_as_strings(
     (violation,) = metadata_check(f"metadata:\n  key: {value}\n")
     assert violation.rule == "metadata-value-not-a-string"
     assert f"which YAML reads as {reads_as}" in violation.detail
-    assert violation.fix == f'quote it -- `key: "{value}"`'
+    assert "quote the value" in violation.fix
     # Quoting it is the fix, and it works.
     assert metadata_check(f'metadata:\n  key: "{value}"\n') == []
     assert metadata_check(f"metadata:\n  key: '{value}'\n") == []
@@ -346,7 +347,7 @@ def test_metadata_may_not_hold_a_sequence() -> None:
     # One violation for the whole block, not one per item.
     (violation,) = metadata_check("metadata:\n  - one\n  - two\n")
     assert violation.rule == "metadata-not-a-mapping"
-    assert "'- one', '- two', which declares no key" in violation.detail
+    assert "['one', 'two']" in violation.detail
 
 
 def test_a_sequence_of_pairs_is_still_a_sequence() -> None:
@@ -358,7 +359,7 @@ def test_a_sequence_of_pairs_is_still_a_sequence() -> None:
     """
     (violation,) = metadata_check("metadata:\n  - key: value\n  - other: text\n")
     assert violation.rule == "metadata-not-a-mapping"
-    assert "'- key: value', '- other: text'" in violation.detail
+    assert "[{'key': 'value'}, {'other': 'text'}]" in violation.detail
 
 
 def test_a_comment_beside_the_metadata_key_is_not_an_inline_scalar() -> None:
@@ -392,37 +393,51 @@ def test_every_bad_value_is_reported_not_just_the_first() -> None:
     ]
 
 
-# -- the raw block helper ---------------------------------------------------
+@pytest.mark.parametrize(
+    "block",
+    [
+        "metadata: {}\n",
+        "metadata: {author: team, version: '1.0'}\n",
+        "metadata:\n  notes: |\n    a: b\n    line two\n",
+        "metadata:\n  '-key': text\n  'a:b': text\n",
+    ],
+)
+def test_metadata_accepts_all_yaml_mapping_styles(block: str) -> None:
+    assert metadata_check(block) == []
 
 
-def block_of(raw: str) -> Block | None:
-    return find_block(raw, "metadata")
+@pytest.mark.parametrize(
+    "value", ["[a, b]", "{a: b}", "0xff", ".inf", "2026-01-01", "1_000"]
+)
+def test_metadata_rejects_nonstring_yaml_values(value: str) -> None:
+    assert rules(metadata_check(f"metadata:\n  key: {value}\n")) == {
+        "metadata-value-not-a-string"
+    }
 
 
-def test_find_block_returns_none_when_the_key_is_absent() -> None:
-    assert block_of("---\nname: add\n---\n") is None
-    # An indented `metadata:` belongs to some other key, not the top level.
-    assert block_of("---\nowner:\n  metadata: x\n---\n") is None
+def test_metadata_requires_string_keys() -> None:
+    assert rules(metadata_check("metadata: {true: text, 1: text}\n")) == {
+        "metadata-key-not-a-string"
+    }
 
 
-def test_find_block_keeps_blank_lines_inside_the_mapping() -> None:
-    raw = "---\nmetadata:\n  a: 1\n\n  b: 2\nname: add\n---\n"
-    block = block_of(raw)
-    assert block is not None and block.at == 1
-    # The gap does not truncate the block: `b` is still in it.
-    assert [key for _, key, _ in block.entries()] == ["a", "b"]
-    # ...and a trailing blank is not carried along.
-    assert block.lines[-1].strip()
+@pytest.mark.parametrize("content", ["[broken", "- item", "", "description: a: b"])
+def test_spec_reports_invalid_yaml(content: str) -> None:
+    assert rules(SPEC.check_frontmatter("x/SKILL.md", f"---\n{content}\n---\n")) == {
+        "frontmatter-invalid"
+    }
 
 
-def test_block_entries_drop_blanks_and_comments_and_flag_non_pairs() -> None:
-    raw = "---\nmetadata:\n  # a note\n  a: 1\n  - loose\n---\n"
-    block = block_of(raw)
-    assert block is not None
-    assert block.entries() == [(2, "a", "1"), (2, "", "- loose")]
+@pytest.mark.parametrize("value", ["true", "[a, b]", "{a: b}", "123"])
+def test_spec_rejects_nonstring_descriptions(value: str) -> None:
+    text = f"---\nname: x\ndescription: {value}\n---\n"
+    assert "description-not-a-string" in rules(
+        SPEC.check_frontmatter("x/SKILL.md", text)
+    )
 
 
-def test_find_block_reads_an_inline_scalar() -> None:
-    block = block_of("---\nmetadata: scalar\nname: add\n---\n")
-    assert block is not None
-    assert block.inline == "scalar" and block.lines == []
+def test_host_spec_check_catches_declaration_mismatch() -> None:
+    host = dataclasses.replace(
+        SOLO, artifacts=(Skill("other", SOLO.skills[0].sources),)
+    )
+    assert "name-matches-declaration" in rules(host.check_spec())

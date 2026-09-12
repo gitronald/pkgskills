@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import pytest
+import yaml
+
 from pkgskills.frontmatter import (
     body_only,
-    find_block,
     parse_fields,
     split_frontmatter,
-    strip_comment,
 )
 
 DOC = """\
@@ -69,9 +70,10 @@ def test_folded_and_literal_block_scalars() -> None:
     ]
     fields = parse_fields(lines)
     assert (
-        fields["description"] == "First line of a long description. Second paragraph."
+        fields["description"]
+        == "First line of a long description.\nSecond paragraph.\n"
     )
-    assert fields["notes"] == "line one\nline two"
+    assert fields["notes"] == "line one\nline two\n"
     assert fields["tools"] == "Read, Grep"
 
 
@@ -86,46 +88,36 @@ def test_colons_in_values_survive() -> None:
     assert fields["url"] == "https://example.com/a:b"
 
 
-def test_strip_comment_only_cuts_a_real_yaml_comment() -> None:
-    assert strip_comment("1.0  # bump before release") == "1.0"
-    assert strip_comment("# all comment") == ""
-    # A `#` that opens no comment belongs to the value: YAML starts one only at
-    # the token or after whitespace, and never inside a quoted scalar.
-    assert strip_comment("a#b") == "a#b"
-    assert strip_comment('"a # b"') == '"a # b"'
-    assert strip_comment("plain value") == "plain value"
-
-
-def test_find_block_ignores_a_comment_on_the_key_line() -> None:
-    """A note beside `metadata:` still opens the mapping below it."""
-    raw = "---\nname: x\nmetadata:  # fill this in later\n  author: example-org\n---\n"
-    block = find_block(raw, "metadata")
-    assert block is not None
-    assert block.inline == ""
-    assert block.entries() == [(2, "author", "example-org")]
-
-
-def test_find_block_resolves_a_repeated_key_to_the_last_one() -> None:
-    """YAML is last-wins, and so is `parse_fields`; the block has to agree."""
-    raw = "---\nmetadata:\n  author: first\nmetadata: scalar\n---\n"
-    block = find_block(raw, "metadata")
-    assert block is not None
-    assert block.inline == "scalar"
-    front, _ = split_frontmatter(raw)
+@pytest.mark.parametrize(
+    "text", ["---\nname: x\n---", "---\r\nname: x\r\n---\r\n", "---\rname: x\r---"]
+)
+def test_split_preserves_fence_line_endings(text: str) -> None:
+    front, body = split_frontmatter(text)
     assert front is not None
-    assert front.fields["metadata"] == "scalar"
+    assert front.raw + body == text
 
 
-def test_entries_reports_a_sequence_item_as_declaring_no_key() -> None:
-    """`- key: value` opens a list, not a mapping, colon or no colon."""
-    raw = "---\nmetadata:\n  - key: value\n  - bare\n---\n"
-    block = find_block(raw, "metadata")
-    assert block is not None
-    assert block.entries() == [(2, "", "- key: value"), (2, "", "- bare")]
+@pytest.mark.parametrize(
+    "value",
+    [
+        "thing # a comment",
+        "'it''s # literal'",
+        '"say \\"hi\\" # literal"',
+        ">- # folded\n  line one\n  line two",
+        "|+\n  first\n\n  last\n",
+    ],
+)
+def test_fields_follow_yaml_scalar_syntax(value: str) -> None:
+    text = f"description: {value}\n"
+    assert (
+        parse_fields(text.splitlines(keepends=True))["description"]
+        == yaml.safe_load(text)["description"]
+    )
 
 
-def test_entries_strips_a_comment_from_a_value() -> None:
-    raw = "---\nmetadata:\n  version: 1.0  # bump before release\n---\n"
-    block = find_block(raw, "metadata")
-    assert block is not None
-    assert block.entries() == [(2, "version", "1.0")]
+@pytest.mark.parametrize("text", ["[broken", "- item", "", "? [a, b]\n: value"])
+def test_invalid_or_nonmapping_fields_do_not_break_splitting(text: str) -> None:
+    doc = f"---\n{text}\n---\nbody"
+    front, body = split_frontmatter(doc)
+    assert front is not None and front.fields == {}
+    assert front.raw + body == doc

@@ -31,7 +31,7 @@ which is how a body defers detail to a sidecar it can no longer reach by path.
 uv add pkgskills
 ```
 
-Python 3.11 or later. The only runtime dependency is typer.
+Python 3.11 or later. The runtime dependencies are typer and PyYAML.
 
 ## Declare a host
 
