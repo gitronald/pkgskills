@@ -1,8 +1,8 @@
 ---
 id: 7
 slug: migrating-host-adoption-gaps
-status: draft
-branch:
+status: active
+branch: feature/migrating-host-adoption-gaps
 created: 2026-09-11T18:51:47-07:00
 concluded:
 pr:
