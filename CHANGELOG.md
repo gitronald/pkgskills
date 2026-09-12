@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-11
+
 ### Fixed
 
 - A file carrying a stamp that names the host itself but that `pkgskills` did
