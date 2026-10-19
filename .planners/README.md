@@ -2,9 +2,9 @@
 
 | # | Plan | Status | Concluded | PR |
 |---|---|---|---|---|
-| 011 | [Upgrade to proj-template v0.11.2](plans/011-template-upgrade/plan.md) | active | — | — |
 | 010 | [Move the provenance stamp into frontmatter and tabulate subcommands](plans/010-frontmatter-provenance/plan.md) | draft | — | — |
 | 009 | [Smooth the seams a host meets after adopting the library](plans/009-host-adoption-followups/plan.md) | draft | — | — |
+| 011 | [Upgrade to proj-template v0.11.2](plans/011-template-upgrade/plan.md) | done | 2026-10-18 17:40 PT | [#17](https://github.com/gitronald/pkgskills/pull/17) |
 | 008 | [Move hook wiring, in-place line artifacts, and superseded paths upstream](plans/008-host-install-machinery/plan.md) | done | 2026-09-11 20:46 PT | [#8](https://github.com/gitronald/pkgskills/pull/8) |
 | 007 | [Close the gaps a migrating host hits on adoption](plans/007-migrating-host-adoption-gaps/plan.md) | done | 2026-09-11 19:15 PT | [#6](https://github.com/gitronald/pkgskills/pull/6) |
 | 004 | [Track only a skill-level version in stub metadata](plans/004-per-skill-and-host-versions/plan.md) | done | 2026-09-11 19:00 PT | [#5](https://github.com/gitronald/pkgskills/pull/5) |
