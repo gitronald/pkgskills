@@ -21,11 +21,15 @@ What fills each rung is the host's call; the postures are what stay comparable
 across tools. The rule sets are computed here (pure) and the CLI reads and writes
 ``settings.json``. Grants are applied *additively* and never downgrade an existing
 ``deny``/``ask`` rule — a deliberate stricter policy always wins.
+
+Codex profiles translate the supported Bash rules into execution-policy
+prefix rules. They are printed for pasting, never written by the CLI.
 """
 
 from __future__ import annotations
 
 import json
+import shlex
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
@@ -41,11 +45,13 @@ __all__ = [
     "SETTINGS_LOCAL_REL",
     "Level",
     "MergeResult",
+    "codex_rules",
     "invocation_rule",
     "levels",
     "merge_allow",
     "parse_level",
     "render_block",
+    "render_codex_rules",
     "rules_for",
     "settings_path",
 ]
@@ -221,3 +227,49 @@ def merge_allow(permissions: dict[str, Any], rules: Sequence[str]) -> MergeResul
 def render_block(rules: Sequence[str]) -> str:
     """A paste-ready ``settings.json`` fragment granting ``rules`` on ``allow``."""
     return json.dumps({"permissions": {"allow": list(rules)}}, indent=2) + "\n"
+
+
+def codex_rules(rules: Sequence[str]) -> tuple[list[str], list[str]]:
+    """Translate simple Bash allow-rules to Codex prefixes, reporting the rest.
+
+    Only commands ending in ``:*`` or `` *`` become token prefixes. An exact
+    ``Bash(<command>)`` is left untranslated: Codex matches by prefix only, so
+    the translation would grant every extension of the command too. Tokens are
+    split the way a shell would, since Codex matches the parsed argv rather
+    than the raw text. Other wildcards and non-Bash tools have no translation.
+    """
+    translated: list[str] = []
+    untranslated: list[str] = []
+    for rule in rules:
+        command = rule[5:-1]
+        if (
+            not rule.startswith("Bash(")
+            or not rule.endswith(")")
+            or not command.endswith((":*", " *"))
+        ):
+            untranslated.append(rule)
+            continue
+        command = command[:-2]
+        try:
+            words = shlex.split(command)
+        except ValueError:
+            # An unbalanced quote: there is no argv to match against.
+            untranslated.append(rule)
+            continue
+        if not words or "*" in command:
+            untranslated.append(rule)
+            continue
+        pattern = ", ".join(json.dumps(word) for word in words)
+        translated.append(f'prefix_rule(pattern = [{pattern}], decision = "allow")')
+    return translated, untranslated
+
+
+def render_codex_rules(rules: Sequence[str]) -> str:
+    """A paste-ready Codex ``.rules`` fragment, with unhandled rules as comments."""
+    translated, untranslated = codex_rules(rules)
+    lines = [
+        "# allow runs the command outside the sandbox unprompted.",
+        *translated,
+        *(f"# not translated: {rule}" for rule in untranslated),
+    ]
+    return "\n".join(lines) + "\n"

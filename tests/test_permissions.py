@@ -125,3 +125,56 @@ def test_render_block_is_paste_ready() -> None:
 
 def test_settings_path_is_not_created_by_computing_it(tmp_path: Path) -> None:
     assert not perms.settings_path(tmp_path, "local").exists()
+
+
+@pytest.mark.parametrize(
+    ("rule", "expected"),
+    [
+        ("Bash(gh pr view:*)", '["gh", "pr", "view"]'),
+        ("Bash(git commit *)", '["git", "commit"]'),
+        ("Bash(  uv\t run  :*)", '["uv", "run"]'),
+        ('Bash(git commit -m "wip it":*)', '["git", "commit", "-m", "wip it"]'),
+    ],
+)
+def test_codex_rules_translates_supported_bash_forms(rule: str, expected: str) -> None:
+    assert perms.codex_rules([rule]) == (
+        [f'prefix_rule(pattern = {expected}, decision = "allow")'],
+        [],
+    )
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [
+        "Bash(git * status)",
+        "Bash(git* status:*)",
+        "Bash(git * status *)",
+        "Bash(git status*)",
+        "Bash(git status)",
+        'Bash(tool "unbalanced:*)',
+        "Read(*)",
+        "Write(file)",
+        "Bash(git status",
+        "Bash()",
+        "Bash( :*)",
+        "Bash( *)",
+    ],
+)
+def test_codex_rules_reports_untranslated_forms(rule: str) -> None:
+    assert perms.codex_rules([rule]) == ([], [rule])
+
+
+def test_render_codex_rules_is_paste_ready_and_preserves_rule_order() -> None:
+    assert perms.render_codex_rules(
+        ["Read(*)", "Bash(git status:*)", "Bash(git log)", "Bash(gh pr view:*)"]
+    ) == (
+        "# allow runs the command outside the sandbox unprompted.\n"
+        'prefix_rule(pattern = ["git", "status"], decision = "allow")\n'
+        'prefix_rule(pattern = ["gh", "pr", "view"], decision = "allow")\n'
+        "# not translated: Read(*)\n"
+        "# not translated: Bash(git log)\n"
+    )
+    assert perms.codex_rules([]) == ([], [])
+    assert perms.render_codex_rules([]) == (
+        "# allow runs the command outside the sandbox unprompted.\n"
+    )
