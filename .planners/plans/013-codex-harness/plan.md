@@ -5,7 +5,7 @@ status: active
 branch: feature/codex-harness
 created: 2026-10-28T10:18:56-07:00
 concluded:
-pr:
+pr: https://github.com/gitronald/pkgskills/pull/22
 ---
 
 # Add a Codex harness and permission guidance
@@ -61,3 +61,4 @@ temporary home and project directory.
   The brief fixed every decision and the seams to extend, and gated each step; the pass needed no revision. Main-session fixes: exact `Bash(cmd)` rules no longer become Codex prefix rules (a silent widening), tokens split with shlex to match Codex's argv, plus the tests and docs for both.
   Verified locally: ruff, ruff format, pyrefly (0 errors), pytest 337 passed at 98.67% coverage.
   Follow-ups noted, not done: Codex agent TOML rendering; rules for Codex via AGENTS.md; the dispatcher stub's Claude-style `/name sub` wording.
+- **2026-10-29T10:46:16-07:00** — PR opened: https://github.com/gitronald/pkgskills/pull/22
