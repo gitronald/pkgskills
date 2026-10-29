@@ -1,8 +1,8 @@
 ---
 id: 13
 slug: codex-harness
-status: draft
-branch:
+status: active
+branch: feature/codex-harness
 created: 2026-10-28T10:18:56-07:00
 concluded:
 pr:
@@ -43,3 +43,11 @@ temporary home and project directory.
 ### Out of scope
 
 - Codex support in any single consuming package; it follows from this.
+
+## Log
+
+- **2026-10-29T10:37:02-07:00** — Activated.
+  - Branch: `feature/codex-harness`
+  - Base: `dev` at `a67b79f`
+  - Worktree: `.worktrees/013-codex-harness`
+  - PR: pending
