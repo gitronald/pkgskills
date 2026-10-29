@@ -392,7 +392,8 @@ def test_check_resolves_the_installed_mode_once_for_the_whole_run(
 
 def test_stale_local_accepts_a_precomputed_installed_mode(box: Sandbox) -> None:
     rule = EXAMPLE.rules[0]
-    # Nothing is on disk, so the honest answer is False; the caller's handed-in
+    inst.write_artifact(EXAMPLE, rule, "global", box.repo, CLAUDE_CODE)
+    # No skill is on disk, so the resolved mode is None; the caller's handed-in
     # verdict is what decides, and "auto" re-derives it.
     assert inst.stale_local(
         EXAMPLE, rule, "local", box.repo, CLAUDE_CODE, installed="global"
@@ -466,6 +467,7 @@ def test_a_local_copy_is_never_stale_for_a_host_with_no_global_mode(
     assert not inst.stale_local(
         local_only, rule, "local", box.repo, CLAUDE_CODE, installed="global"
     )
+    inst.write_artifact(EXAMPLE, rule, "global", box.repo, CLAUDE_CODE)
     assert inst.stale_local(
         EXAMPLE, rule, "local", box.repo, CLAUDE_CODE, installed="global"
     )
@@ -760,6 +762,18 @@ def test_codex_leftover_is_stale_removed_and_never_shadowed(box: Sandbox) -> Non
     assert inst.shadowed_skills(SOLO, box.repo) == [claude]
     assert inst.remove_stale_local(SOLO, box.repo) == [claude, codex]
     assert not codex.exists()
+
+
+def test_local_codex_copy_is_not_stale_without_a_global_codex_copy(
+    box: Sandbox,
+) -> None:
+    skill = SOLO.skills[0]
+    inst.install(SOLO, box.repo, "global")
+    inst.artifact_path(SOLO, skill, "global", box.repo, CODEX).unlink()
+    local = inst.write_artifact(SOLO, skill, "local", box.repo, CODEX)
+    assert inst.installed_mode(SOLO, box.repo) == "global"
+    row = next(row for row in inst.check(SOLO, box.repo) if row.path == local)
+    assert row.status == "ok"
 
 
 def test_foreign_codex_target_is_refused_before_any_write(box: Sandbox) -> None:

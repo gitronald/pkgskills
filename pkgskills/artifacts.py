@@ -517,7 +517,7 @@ def stale_local(
     context right now, matching content or not. The remedy is to remove it, not
     to regenerate it.
 
-    Three guards keep the verdict honest:
+    Four guards keep the verdict honest:
 
     * Only ``local`` rows, and only for a host that has a global mode at all —
       a local-only host can have nothing supersede its per-repo copy. The
@@ -526,6 +526,8 @@ def stale_local(
       repo's leftover, and is never flagged.
     * Only a genuinely resolved global install counts, so a local-only copy in
       a repo with no global install still reads ``ok``.
+    * Only when this harness's global path is occupied: another harness's copy
+      cannot supersede this one.
     * Only when the two paths differ, which they do not when the repo root is
       ``$HOME`` — there is one file there, not a leftover second one.
 
@@ -539,9 +541,8 @@ def stale_local(
     resolved = installed_mode(host, root) if installed == "auto" else installed
     if resolved != "global":
         return False
-    return artifact_path(host, art, "local", root, harness) != artifact_path(
-        host, art, "global", root, harness
-    )
+    glob = artifact_path(host, art, "global", root, harness)
+    return occupied(glob) and glob != artifact_path(host, art, "local", root, harness)
 
 
 def shadowed_skills(host: Host, root: Path) -> list[Path]:
