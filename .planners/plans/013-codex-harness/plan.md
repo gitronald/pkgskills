@@ -63,3 +63,11 @@ temporary home and project directory.
   Follow-ups noted, not done: Codex agent TOML rendering; rules for Codex via AGENTS.md; the dispatcher stub's Claude-style `/name sub` wording.
 - **2026-10-29T10:46:16-07:00** — PR opened: https://github.com/gitronald/pkgskills/pull/22
 - **2026-10-29T10:46:18-07:00** — Implemented: 5 commits ahead of `dev`.
+- **2026-10-29T11:35:49-07:00** — Review gate: /code-review at medium on PR #22 (sonnet finders and verifiers), posted to the PR. Fixes drafted by a second Codex pass (gpt-6.1-sol, workspace-write) from a six-item brief; the main session read the full diff, re-ran the gate, and committed in four chunks.
+  - Review follow-up: raised 7. Actioned 6:
+    - `stale_local` judged a local copy superseded without checking the same harness had a global copy, so a Claude-only global install marked a repo's only Codex stub stale (c07d719, regression test).
+    - Codex translation emitted dead prefix rules for shell syntax (`&&`, `|`, `;`, redirections, `$`, leading `~`); now reported untranslated, with README and CHANGELOG updated (0a29930, 16-form parametrized test).
+    - Cleanups: `_prefix_words` helper; `Host.placements()` replaces about nine hand-rolled art x harness loops (ce27423, test); `installed_mode` and the permissions repo-root lookup hoisted (f12a75f).
+  - Conscious no-op: the `locations` dict in `check()`; the per-harness precomputation keeps mode-major row order, and a zipped list is a marginal gain. Rejected: Codex allows not carrying Claude deny/ask narrowing, which is intended and documented.
+  - The brief needed no revision pass. Codex kept `installed_mode` alongside the new occupancy check (mode intent and path occupancy are separate facts) and adjusted two existing stale tests to write the global copy they now need.
+  - Verified locally: ruff, ruff format, pyrefly (0 errors), pytest 357 passed at 98.68% coverage.
