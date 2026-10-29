@@ -51,3 +51,13 @@ temporary home and project directory.
   - Base: `dev` at `a67b79f`
   - Worktree: `.worktrees/013-codex-harness`
   - PR: pending
+- **2026-10-29T10:46:08-07:00** — Implemented by a Codex pass (codex exec, gpt-6.1-sol, workspace-write), reviewed and verified by the main session.
+  Codex documentation, checked before the brief (learn.chatgpt.com docs, 2026-10-29):
+  - Skills: repo `.agents/skills/<name>/SKILL.md` (cwd up to repo root), user `~/.agents/skills`; same-name skills both load (no shadowing).
+  - Agents are TOML (`.codex/agents/*.toml`) and Codex has no prompt-rules directory, so CODEX carries only skills.
+  - workspace-write keeps `.git` read-only (a worktree's resolved git dir too), and `.agents`, `.codex`, `.aws` when they exist. The plan's belief is confirmed: lifecycle commits cannot run sandboxed, nor can `install --local` once `.agents/` exists.
+  - Escape hatch: `prefix_rule(pattern=[...], decision="allow")` in `~/.codex/rules/*.rules` runs a matching command outside the sandbox unprompted.
+  Decisions: `Host.harness` replaced by `Host.harnesses = (CLAUDE_CODE, CODEX)` with no alias; every path and `Check` row carries its harness; stubs byte-identical across harnesses; `permissions --codex` prints a `.rules` fragment and refuses `--apply`; sandbox guidance in the README next to the permission profiles.
+  The brief fixed every decision and the seams to extend, and gated each step; the pass needed no revision. Main-session fixes: exact `Bash(cmd)` rules no longer become Codex prefix rules (a silent widening), tokens split with shlex to match Codex's argv, plus the tests and docs for both.
+  Verified locally: ruff, ruff format, pyrefly (0 errors), pytest 337 passed at 98.67% coverage.
+  Follow-ups noted, not done: Codex agent TOML rendering; rules for Codex via AGENTS.md; the dispatcher stub's Claude-style `/name sub` wording.
