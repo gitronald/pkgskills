@@ -61,7 +61,7 @@ def test_check_runs_every_host(box: Sandbox, monkeypatch: pytest.MonkeyPatch) ->
     inst.install(EXAMPLE, box.repo, "local")
     ok = runner.invoke(cli.pkgskills_app, ["check"])
     assert ok.exit_code == 0, ok.output
-    assert ok.output.count("ok      local") == 3
+    assert ok.output.count("ok      local") == 4
 
 
 def test_check_with_nothing_registered(monkeypatch: pytest.MonkeyPatch) -> None:

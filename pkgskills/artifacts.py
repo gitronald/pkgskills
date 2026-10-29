@@ -24,6 +24,7 @@ leaves a half-installed skill behind.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -57,6 +58,7 @@ class Check:
 
     artifact: Artifact
     mode: Mode
+    harness: Harness
     path: Path
     status: Status
     reason: str = ""
@@ -140,10 +142,12 @@ def global_base() -> Path:
     return Path.home()
 
 
-def find_repo_root(start: Path | None = None, harness: Harness | None = None) -> Path:
+def find_repo_root(
+    start: Path | None = None, harnesses: Sequence[Harness] = ()
+) -> Path:
     """The nearest directory at or above ``start`` that looks like a repo root.
 
-    A repo root holds ``.git`` or the harness's config directory. A local
+    A repo root holds ``.git`` or any harness's config directory. A local
     install must target the root the harness loads from, not whatever
     subdirectory the command ran in. Falls back to ``start`` itself.
 
@@ -152,28 +156,29 @@ def find_repo_root(start: Path | None = None, harness: Harness | None = None) ->
     :mod:`pkgskills.proc` keeps the same posture on the write side.
     """
     base = (start or Path.cwd()).resolve()
-    marker = harness.config_dir if harness else None
     for candidate in (base, *base.parents):
         if (candidate / ".git").exists():
             return candidate
-        if marker and (candidate / marker).is_dir():
+        if any((candidate / h.config_dir).is_dir() for h in harnesses):
             return candidate
     return base
 
 
-def artifact_path(host: Host, art: Artifact, mode: Mode, root: Path) -> Path:
+def artifact_path(
+    host: Host, art: Artifact, mode: Mode, root: Path, harness: Harness
+) -> Path:
     """Where ``art`` lives for ``mode``: under ``$HOME`` or under ``root``."""
     base = global_base() if mode == "global" else root
-    return base / host.harness.relative_path(art.kind, art.name)
+    return base / harness.relative_path(art.kind, art.name)
 
 
 def previous_paths(
-    host: Host, art: Artifact, mode: Mode, root: Path
+    host: Host, art: Artifact, mode: Mode, root: Path, harness: Harness
 ) -> list[tuple[str, Path]]:
     """Where ``art`` used to live for ``mode``, one path per previous name."""
     base = global_base() if mode == "global" else root
     return [
-        (name, base / host.harness.relative_path(art.kind, name))
+        (name, base / harness.relative_path(art.kind, name))
         for name in art.previous_names
     ]
 
@@ -257,6 +262,7 @@ def check_artifact(
     art: Artifact,
     mode: Mode,
     root: Path,
+    harness: Harness,
     *,
     installed: Mode | None | Literal["auto"] = "auto",
 ) -> Check:
@@ -272,19 +278,20 @@ def check_artifact(
     check run rather than per row; :func:`check` computes it once and passes it
     down. The default re-derives it, so a lone call still works.
     """
-    path = artifact_path(host, art, mode, root)
+    path = artifact_path(host, art, mode, root, harness)
     status, reason = classify(path, host, render(host, art, mode), mode)
     if status in ("ok", "drifted") and stale_local(
-        host, art, mode, root, installed=installed
+        host, art, mode, root, harness, installed=installed
     ):
         return Check(
             art,
             mode,
+            harness,
             path,
             "stale",
             "superseded by the global copy but still loaded; remove it",
         )
-    return Check(art, mode, path, status, reason)
+    return Check(art, mode, harness, path, status, reason)
 
 
 def check(host: Host, root: Path, mode: Mode | None = None) -> list[Check]:
@@ -292,48 +299,52 @@ def check(host: Host, root: Path, mode: Mode | None = None) -> list[Check]:
 
     With ``mode`` given, each artifact is judged at that one location. Without
     it, every occupied location the host supports is judged, in the host's
-    declared mode order (global first by default), because the harness loads
-    rules and agents from both at once and a stale
-    copy at either is real drift. An artifact present at neither location
-    reports ``missing`` once, against its default mode's path.
+    declared mode order (global first by default), then harness order. Kinds
+    loaded from both bases can leave a stale copy at either. For each harness,
+    an artifact present at neither location reports ``missing`` once, against
+    its default mode's path.
     """
     # One fact for the whole run: which mode an existing install resolves to.
     # Re-deriving it per row would re-walk the filesystem for every artifact.
     installed = installed_mode(host, root)
     results: list[Check] = []
     for art in host.artifacts:
+        harnesses = host.harnesses_for(art.kind)
         modes = (mode,) if mode is not None else host.modes
-        if mode is None:
-            found = [
-                check_artifact(host, art, m, root, installed=installed)
+        locations = {
+            harness.name: [
+                m
                 for m in modes
-                if occupied(artifact_path(host, art, m, root))
+                if mode is not None
+                or occupied(artifact_path(host, art, m, root, harness))
             ]
-            results.extend(
-                found
-                or [
-                    check_artifact(
-                        host, art, host.default_mode, root, installed=installed
+            or [host.default_mode]
+            for harness in harnesses
+        }
+        for m in modes:
+            for harness in harnesses:
+                if m in locations[harness.name]:
+                    results.append(
+                        check_artifact(host, art, m, root, harness, installed=installed)
                     )
-                ]
-            )
-        else:
-            results.append(check_artifact(host, art, mode, root, installed=installed))
         # A stamped file at a name the artifact no longer installs under is
         # still loaded by the harness, so it is real drift. Only a stamped one:
         # an unstamped file there is somebody else's and earns no row.
         for m in modes:
-            for name, path in previous_paths(host, art, m, root):
-                if is_generated(path, host):
-                    results.append(
-                        Check(
-                            art,
-                            m,
-                            path,
-                            "stale",
-                            f"installed under the previous name {name!r}; remove it",
+            for harness in harnesses:
+                for name, path in previous_paths(host, art, m, root, harness):
+                    if is_generated(path, host):
+                        results.append(
+                            Check(
+                                art,
+                                m,
+                                harness,
+                                path,
+                                "stale",
+                                f"installed under the previous name {name!r}; "
+                                "remove it",
+                            )
                         )
-                    )
     return results
 
 
@@ -346,10 +357,11 @@ def leftover_previous(host: Host, mode: Mode, root: Path) -> list[Path]:
     """
     found: list[Path] = []
     for art in host.artifacts:
-        for _, path in previous_paths(host, art, mode, root):
-            text = read_plain(path)
-            if text is not None and not is_stamped(text, host):
-                found.append(path)
+        for harness in host.harnesses_for(art.kind):
+            for _, path in previous_paths(host, art, mode, root, harness):
+                text = read_plain(path)
+                if text is not None and not is_stamped(text, host):
+                    found.append(path)
     return found
 
 
@@ -468,9 +480,12 @@ def installed_mode(host: Host, root: Path) -> Mode | None:
     this repo been pinned to global?" need the difference.
     """
     for mode in host.modes:
-        for art in host.skills or host.artifacts:
-            if occupied(artifact_path(host, art, mode, root)):
-                return mode
+        for harness in host.harnesses:
+            for art in host.skills or host.artifacts:
+                if harness.supports(art.kind) and occupied(
+                    artifact_path(host, art, mode, root, harness)
+                ):
+                    return mode
     return None
 
 
@@ -491,6 +506,7 @@ def stale_local(
     art: Artifact,
     mode: Mode,
     root: Path,
+    harness: Harness,
     *,
     installed: Mode | None | Literal["auto"] = "auto",
 ) -> bool:
@@ -516,15 +532,15 @@ def stale_local(
     ``installed`` lets a caller judging many artifacts hand in
     :func:`installed_mode`'s answer instead of paying for it once per row.
     """
-    if mode != "local" or host.harness.shadows(art.kind):
+    if mode != "local" or not harness.both_load(art.kind):
         return False
     if not host.supports_mode("global"):
         return False
     resolved = installed_mode(host, root) if installed == "auto" else installed
     if resolved != "global":
         return False
-    return artifact_path(host, art, "local", root) != artifact_path(
-        host, art, "global", root
+    return artifact_path(host, art, "local", root, harness) != artifact_path(
+        host, art, "global", root, harness
     )
 
 
@@ -536,14 +552,17 @@ def shadowed_skills(host: Host, root: Path) -> list[Path]:
     the two paths coincide and there is really only one file, and empty for a
     host with no global mode, which never puts a stub there to shadow with.
     """
-    if not host.supports_mode("global") or not host.harness.shadows(Kind.SKILL):
+    if not host.supports_mode("global"):
         return []
     out: list[Path] = []
     for skill in host.skills:
-        glob = artifact_path(host, skill, "global", root)
-        local = artifact_path(host, skill, "local", root)
-        if glob != local and occupied(glob) and occupied(local):
-            out.append(local)
+        for harness in host.harnesses_for(skill.kind):
+            if not harness.shadows(skill.kind):
+                continue
+            glob = artifact_path(host, skill, "global", root, harness)
+            local = artifact_path(host, skill, "local", root, harness)
+            if glob != local and occupied(glob) and occupied(local):
+                out.append(local)
     return out
 
 
@@ -555,22 +574,25 @@ def guard(host: Host, root: Path, mode: Mode, *, force: bool) -> None:
     if force:
         return
     for art in host.artifacts:
-        path = artifact_path(host, art, mode, root)
-        if occupied(path) and not is_generated(path, host):
-            status, reason = classify(path, host, "", mode)
-            raise ForeignArtifactError(
-                path, reason if status == "foreign" else "foreign"
-            )
+        for harness in host.harnesses_for(art.kind):
+            path = artifact_path(host, art, mode, root, harness)
+            if occupied(path) and not is_generated(path, host):
+                status, reason = classify(path, host, "", mode)
+                raise ForeignArtifactError(
+                    path, reason if status == "foreign" else "foreign"
+                )
 
 
-def write_artifact(host: Host, art: Artifact, mode: Mode, root: Path) -> Path:
+def write_artifact(
+    host: Host, art: Artifact, mode: Mode, root: Path, harness: Harness
+) -> Path:
     """Write ``art``'s render for ``mode``, creating parents as needed.
 
     A symlink at the target, dangling or not, is replaced with a plain file
     rather than written through, so a write can never reach outside the tree
     it was aimed at.
     """
-    path = artifact_path(host, art, mode, root)
+    path = artifact_path(host, art, mode, root, harness)
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.is_symlink():
         path.unlink()
@@ -588,12 +610,13 @@ def remove_stale_local(host: Host, root: Path) -> list[Path]:
     """
     removed: list[Path] = []
     for art in host.artifacts:
-        local = artifact_path(host, art, "local", root)
-        if local == artifact_path(host, art, "global", root):
-            continue
-        if is_generated(local, host):
-            local.unlink()
-            removed.append(local)
+        for harness in host.harnesses_for(art.kind):
+            local = artifact_path(host, art, "local", root, harness)
+            if local == artifact_path(host, art, "global", root, harness):
+                continue
+            if is_generated(local, host):
+                local.unlink()
+                removed.append(local)
     return removed
 
 
@@ -607,20 +630,25 @@ def remove_previous(host: Host, mode: Mode, root: Path) -> list[Path]:
     something is left as it is.
     """
     removed: list[Path] = []
-    current = {artifact_path(host, art, mode, root) for art in host.artifacts}
+    current = {
+        artifact_path(host, art, mode, root, harness)
+        for art in host.artifacts
+        for harness in host.harnesses_for(art.kind)
+    }
     for art in host.artifacts:
-        for _, path in previous_paths(host, art, mode, root):
-            # Guarded by validate, but the cost of a second check is nothing
-            # next to deleting a file that was just written.
-            if path in current or not is_generated(path, host):
-                continue
-            path.unlink()
-            removed.append(path)
-            if art.kind is Kind.SKILL:
-                try:
-                    path.parent.rmdir()
-                except OSError:
-                    pass
+        for harness in host.harnesses_for(art.kind):
+            for _, path in previous_paths(host, art, mode, root, harness):
+                # Guarded by validate, but the cost of a second check is nothing
+                # next to deleting a file that was just written.
+                if path in current or not is_generated(path, host):
+                    continue
+                path.unlink()
+                removed.append(path)
+                if art.kind is Kind.SKILL:
+                    try:
+                        path.parent.rmdir()
+                    except OSError:
+                        pass
     return removed
 
 
@@ -646,7 +674,11 @@ def install(
     # Resolved before the first write, since afterwards the fresh files always
     # read as the requested mode.
     previous = installed_mode(host, root)
-    written = tuple(write_artifact(host, art, mode, root) for art in host.artifacts)
+    written = tuple(
+        write_artifact(host, art, mode, root, harness)
+        for art in host.artifacts
+        for harness in host.harnesses_for(art.kind)
+    )
     removed: tuple[Path, ...] = ()
     shadowed: tuple[Path, ...] = ()
     if mode == "global":
@@ -674,10 +706,11 @@ def install(
     return report
 
 
-def skill_stub_paths(host: Host, root: Path) -> list[tuple[Skill, Mode, Path]]:
+def skill_stub_paths(host: Host, root: Path) -> list[tuple[Skill, Mode, Harness, Path]]:
     """Every skill stub location, for callers that narrate state."""
     return [
-        (skill, mode, artifact_path(host, skill, mode, root))
+        (skill, mode, harness, artifact_path(host, skill, mode, root, harness))
         for skill in host.skills
         for mode in host.modes
+        for harness in host.harnesses_for(skill.kind)
     ]

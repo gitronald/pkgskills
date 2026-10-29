@@ -20,7 +20,7 @@ from typer.testing import CliRunner
 
 from pkgskills import artifacts as inst
 from pkgskills.cli import typer_app
-from pkgskills.harness import Kind
+from pkgskills.harness import CLAUDE_CODE, Kind
 from pkgskills.host import ExtraCheck, Host, Line, Mode
 from pkgskills.permissions import Level
 from pkgskills.rendering import render
@@ -283,7 +283,7 @@ def test_check_gates_on_a_stale_local_copy_and_points_at_removal(
     box: Sandbox,
 ) -> None:
     inst.install(EXAMPLE, box.repo, "global")
-    rule = inst.artifact_path(EXAMPLE, EXAMPLE.rules[0], "local", box.repo)
+    rule = inst.artifact_path(EXAMPLE, EXAMPLE.rules[0], "local", box.repo, CLAUDE_CODE)
     rule.parent.mkdir(parents=True)
     rule.write_text(render(EXAMPLE, EXAMPLE.rules[0], "local"), encoding="utf-8")
 
@@ -516,7 +516,7 @@ def test_check_reports_a_drifted_stale_copy_as_stale_and_says_remove(
     box: Sandbox,
 ) -> None:
     inst.install(EXAMPLE, box.repo, "global")
-    rule = inst.artifact_path(EXAMPLE, EXAMPLE.rules[0], "local", box.repo)
+    rule = inst.artifact_path(EXAMPLE, EXAMPLE.rules[0], "local", box.repo, CLAUDE_CODE)
     rule.parent.mkdir(parents=True)
     rule.write_text(
         render(EXAMPLE, EXAMPLE.rules[0], "local") + "\nhand-edited\n",
@@ -629,3 +629,107 @@ def test_previous_names_are_narrated(box: Sandbox) -> None:
     result = runner.invoke(app, ["install", "--check"])
     assert "carries no stamp" in result.output
     assert result.exit_code == 0
+
+
+@pytest.mark.parametrize(
+    ("scope", "target", "invocation"),
+    [
+        ("--global", "~/.codex/rules/default.rules", '["solohost"]'),
+        (
+            "--local",
+            ".codex/rules/solohost.rules (loads only for a trusted project)",
+            None,
+        ),
+    ],
+)
+def test_permissions_codex_prints_profile_without_writing(
+    box: Sandbox, scope: str, target: str, invocation: str | None
+) -> None:
+    before = sorted(box.home.rglob("*")), sorted(box.repo.rglob("*"))
+    result = runner.invoke(
+        typer_app(PERMS), ["permissions", "--codex", scope, "--level", "full"]
+    )
+    assert result.exit_code == 0, result.output
+    lines = [
+        f"# automation level: full ({scope[2:]})",
+        f"# target: {target}",
+        "# allow runs the command outside the sandbox unprompted.",
+        'prefix_rule(pattern = ["git", "commit"], decision = "allow")',
+        'prefix_rule(pattern = ["uv", "run"], decision = "allow")',
+    ]
+    if invocation is not None:
+        lines.append(f'prefix_rule(pattern = {invocation}, decision = "allow")')
+    lines.append('prefix_rule(pattern = ["gh", "pr", "merge"], decision = "allow")')
+    assert result.output == "\n".join(lines) + "\n"
+    assert (sorted(box.home.rglob("*")), sorted(box.repo.rglob("*"))) == before
+
+
+@pytest.mark.parametrize("scope", ["--global", "--local"])
+@pytest.mark.parametrize("existing", [False, True])
+def test_permissions_codex_apply_refuses_without_writing(
+    box: Sandbox, scope: str, existing: bool
+) -> None:
+    # Existing settings and rules must survive a refused apply unchanged too.
+    paths = [
+        box.home / ".codex/rules/default.rules",
+        box.repo / ".codex/rules/solohost.rules",
+        box.home / ".claude/settings.json",
+        box.repo / ".claude/settings.local.json",
+    ]
+    if existing:
+        for path in paths:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("keep me\n")
+    before_paths = sorted(box.home.rglob("*")), sorted(box.repo.rglob("*"))
+    before = {
+        p: p.read_bytes()
+        for base in (box.home, box.repo)
+        for p in base.rglob("*")
+        if p.is_file()
+    }
+    result = runner.invoke(
+        typer_app(PERMS), ["permissions", "--codex", "--apply", scope]
+    )
+    assert result.exit_code == 1
+    target = (
+        "~/.codex/rules/default.rules"
+        if scope == "--global"
+        else ".codex/rules/solohost.rules (loads only for a trusted project)"
+    )
+    assert result.output == (
+        "Codex rules are print-only; drop --apply and paste the "
+        f"fragment into {target}.\n"
+    )
+    assert {
+        p: p.read_bytes()
+        for base in (box.home, box.repo)
+        for p in base.rglob("*")
+        if p.is_file()
+    } == before
+    assert (sorted(box.home.rglob("*")), sorted(box.repo.rglob("*"))) == before_paths
+
+
+def test_permissions_codex_defaults_to_local_and_handles_none(box: Sandbox) -> None:
+    result = runner.invoke(
+        typer_app(PERMS), ["permissions", "--codex", "--level", "none"]
+    )
+    assert result.exit_code == 0
+    assert result.output == (
+        "# automation level: none (local)\n"
+        "# target: .codex/rules/solohost.rules (loads only for a trusted project)\n"
+        "# allow runs the command outside the sandbox unprompted.\n"
+    )
+    assert not (box.repo / ".codex").exists()
+    assert not (box.home / ".codex").exists()
+
+
+def test_check_prints_both_harness_names_and_codex_paths(box: Sandbox) -> None:
+    result = runner.invoke(example_app, ["install", "--check"])
+    assert result.exit_code == 1
+    assert result.output.splitlines()[0].endswith("harness claude-code, codex")
+    codex_path = box.home / ".agents/skills/example/SKILL.md"
+    assert f"missing global {codex_path}" in result.output
+    runner.invoke(example_app, ["install", "--local"])
+    result = runner.invoke(example_app, ["install", "--local", "--check"])
+    assert result.exit_code == 0
+    assert "ok      local  .agents/skills/example/SKILL.md" in result.output
