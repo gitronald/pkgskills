@@ -133,6 +133,7 @@ def test_settings_path_is_not_created_by_computing_it(tmp_path: Path) -> None:
         ("Bash(gh pr view:*)", '["gh", "pr", "view"]'),
         ("Bash(git commit *)", '["git", "commit"]'),
         ("Bash(  uv\t run  :*)", '["uv", "run"]'),
+        ("Bash(uv run tool:*)", '["uv", "run", "tool"]'),
         ('Bash(git commit -m "wip it":*)', '["git", "commit", "-m", "wip it"]'),
     ],
 )
@@ -161,6 +162,32 @@ def test_codex_rules_translates_supported_bash_forms(rule: str, expected: str) -
     ],
 )
 def test_codex_rules_reports_untranslated_forms(rule: str) -> None:
+    assert perms.codex_rules([rule]) == ([], [rule])
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "cd repo && uv run tool",
+        "cd repo || uv run tool",
+        "cd repo;uv run tool",
+        "uv run tool|cat",
+        "uv run tool&",
+        "uv run tool<input",
+        "uv run tool>output",
+        "uv run tool>>output",
+        "uv run tool 2>errors",
+        "uv run tool `pwd`",
+        "uv run tool $(pwd)",
+        "uv run tool $VAR",
+        "uv run tool ${VAR}",
+        "~/bin/tool",
+        "uv run tool ~/repo",
+        "uv run tool ~user/repo",
+    ],
+)
+def test_codex_rules_reports_shell_syntax_as_untranslated(command: str) -> None:
+    rule = f"Bash({command}:*)"
     assert perms.codex_rules([rule]) == ([], [rule])
 
 

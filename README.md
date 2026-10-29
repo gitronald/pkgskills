@@ -472,8 +472,10 @@ matching decision wins. Translation covers `Bash(<words>:*)` and
 `Bash(<words> *)` with a trailing ` *`, splitting the words the way a shell
 would into a command prefix. An exact `Bash(<words>)` is not translated:
 Codex matches by prefix only, so the rule would grant every extension of the
-command as well. Exact rules, other wildcards, and non-Bash tools appear as
-`# not translated:` comments. Review the fragment and paste it into the target file;
+command as well. A rule with shell syntax (`&&`, `|`, `;`, a redirection, a
+`$` expansion, a leading `~`) is not translated either: Codex matches the
+parsed argv, which never contains those tokens. Exact rules, shell syntax,
+other wildcards, and non-Bash tools appear as `# not translated:` comments. Review the fragment and paste it into the target file;
 `--codex --apply` is refused, and pkgskills never writes Codex `.rules` files.
 
 ## The `pkgskills` script

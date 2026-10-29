@@ -229,38 +229,45 @@ def render_block(rules: Sequence[str]) -> str:
     return json.dumps({"permissions": {"allow": list(rules)}}, indent=2) + "\n"
 
 
-def codex_rules(rules: Sequence[str]) -> tuple[list[str], list[str]]:
-    """Translate simple Bash allow-rules to Codex prefixes, reporting the rest.
+def _prefix_words(rule: str) -> list[str] | None:
+    """The argv prefix for a simple Bash allow-rule, else ``None``.
 
     Only commands ending in ``:*`` or `` *`` become token prefixes. An exact
     ``Bash(<command>)`` is left untranslated: Codex matches by prefix only, so
     the translation would grant every extension of the command too. Tokens are
     split the way a shell would, since Codex matches the parsed argv rather
-    than the raw text. Other wildcards and non-Bash tools have no translation.
+    than the raw text. Other wildcards, shell operators and expansions, and
+    non-Bash tools have no translation.
     """
+    if not rule.startswith("Bash(") or not rule.endswith(")"):
+        return None
+    command = rule[5:-1]
+    if not command.endswith((":*", " *")):
+        return None
+    command = command[:-2]
+    if any(char in command for char in "*;&|<>`$"):
+        return None
+    try:
+        words = shlex.split(command)
+    except ValueError:
+        # An unbalanced quote: there is no argv to match against.
+        return None
+    if not words or any(word.startswith("~") for word in words):
+        return None
+    return words
+
+
+def codex_rules(rules: Sequence[str]) -> tuple[list[str], list[str]]:
+    """Translate simple Bash allow-rules to Codex prefixes, reporting the rest."""
     translated: list[str] = []
     untranslated: list[str] = []
     for rule in rules:
-        command = rule[5:-1]
-        if (
-            not rule.startswith("Bash(")
-            or not rule.endswith(")")
-            or not command.endswith((":*", " *"))
-        ):
+        words = _prefix_words(rule)
+        if words is None:
             untranslated.append(rule)
-            continue
-        command = command[:-2]
-        try:
-            words = shlex.split(command)
-        except ValueError:
-            # An unbalanced quote: there is no argv to match against.
-            untranslated.append(rule)
-            continue
-        if not words or "*" in command:
-            untranslated.append(rule)
-            continue
-        pattern = ", ".join(json.dumps(word) for word in words)
-        translated.append(f'prefix_rule(pattern = [{pattern}], decision = "allow")')
+        else:
+            pattern = ", ".join(json.dumps(word) for word in words)
+            translated.append(f'prefix_rule(pattern = [{pattern}], decision = "allow")')
     return translated, untranslated
 
 

@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `permissions --codex` prints a paste-ready execution-policy fragment for
   the selected automation level. `codex_rules` and `render_codex_rules`
   translate prefix-form Bash rules and report the rest, exact
-  rules included, as comments. Applying
+  rules and shell syntax included, as comments. Applying
   Codex rules is refused; the command names the file to paste into.
 
 ### Changed
