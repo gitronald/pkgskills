@@ -1,13 +1,14 @@
 """Where a harness reads each artifact kind from disk.
 
-A harness is the tool that loads prompts off the filesystem: today that is
-Claude Code, which reads skills from ``.claude/skills/<name>/SKILL.md``, rules
+A harness is the tool that loads prompts off the filesystem. Claude Code
+reads skills from ``.claude/skills/<name>/SKILL.md``, rules
 from ``.claude/rules/<name>.md``, and subagents from ``.claude/agents/<name>.md``,
 each under either the user's home directory (global) or a repository root
 (local). The relative layout is identical at both bases, so a global install
-and a local install never collide on one file.
+and a local install never collide on one file. Codex reads skills from
+``.agents/skills/<name>/SKILL.md`` at those same bases.
 
-Keeping the layout in one object is what lets a second harness land once for
+Keeping the layout in one object is what lets another harness land once for
 every host: a new :class:`Harness` value, no host changes.
 """
 
@@ -85,3 +86,14 @@ CLAUDE_CODE = Harness(
     # auto-loads rules and agents from both bases at once.
     shadowed_kinds=frozenset({Kind.SKILL}),
 )
+
+CODEX = Harness(
+    name="codex",
+    config_dir=".codex",
+    layout=MappingProxyType({Kind.SKILL: ".agents/skills/{name}/SKILL.md"}),
+    # Global and local skills both load, even with the same name. Codex rules
+    # are execution policy, and its TOML agents need a different renderer.
+    shadowed_kinds=frozenset(),
+)
+
+HARNESSES: tuple[Harness, ...] = (CLAUDE_CODE, CODEX)

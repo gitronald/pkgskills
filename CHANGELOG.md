@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Codex harness (`CODEX`) and the default `HARNESSES` tuple. Skills install
+  under `.agents/skills/<name>/SKILL.md` alongside Claude Code's stubs,
+  globally or locally. Codex loads both copies, so leftover local stubs are
+  reported as stale under a resolved global install.
+- `permissions --codex` prints a paste-ready execution-policy fragment for
+  the selected automation level. `codex_rules` and `render_codex_rules`
+  translate prefix-form Bash rules and report the rest, exact
+  rules and shell syntax included, as comments. Applying
+  Codex rules is refused; the command names the file to paste into.
+
+### Changed
+
+- `Host.harness` is replaced by `Host.harnesses`, defaulting to
+  `(CLAUDE_CODE, CODEX)`, with no compatibility alias. `harnesses_for(kind)`
+  selects supported targets in declared order; validation rejects empty or
+  duplicate harness names and artifacts no declared harness supports.
+- `artifact_path` and `previous_paths` require an explicit `harness` argument.
+  The per-location helpers `check_artifact`, `write_artifact`, and
+  `stale_local` also require it. `find_repo_root` accepts a sequence of
+  `harnesses` instead of one `harness` and recognizes any config directory.
+- `Check.harness` identifies the harness for each verdict.
+  `skill_stub_paths` returns `(skill, mode, harness, path)` tuples.
+
 ## [0.5.1] - 2026-09-12
 
 ### Fixed

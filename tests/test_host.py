@@ -8,7 +8,7 @@ from multihost.cli import HOST as MULTI
 from solohost.cli import HOST as SOLO
 
 from pkgskills.frontmatter import split_frontmatter
-from pkgskills.harness import CLAUDE_CODE, Harness, Kind
+from pkgskills.harness import CLAUDE_CODE, CODEX, HARNESSES, Harness, Kind
 from pkgskills.host import Agent, Doc, Host, Rule, Skill, source_name
 from pkgskills.spec import SPEC, SpecError
 
@@ -140,7 +140,7 @@ def test_validation_rejects_bad_declarations() -> None:
             dist="d",
             cli="c",
             prompts="p",
-            harness=bare,
+            harnesses=(bare,),
             artifacts=(Agent("a", "a.md"),),
         )
 
@@ -274,6 +274,21 @@ def test_claude_code_loading_discipline_per_kind() -> None:
     assert all(bare.both_load(kind) for kind in Kind)
 
 
+def test_codex_layout_and_loading_discipline() -> None:
+    assert CODEX.name == "codex"
+    assert CODEX.config_dir == ".codex"
+    assert dict(CODEX.layout) == {Kind.SKILL: ".agents/skills/{name}/SKILL.md"}
+    assert CODEX.relative_path(Kind.SKILL, "x").as_posix() == (
+        ".agents/skills/x/SKILL.md"
+    )
+    assert CODEX.both_load(Kind.SKILL)
+    assert not CODEX.shadows(Kind.SKILL)
+    assert CODEX.supports(Kind.SKILL)
+    assert not CODEX.supports(Kind.RULE)
+    assert not CODEX.supports(Kind.AGENT)
+    assert HARNESSES == (CLAUDE_CODE, CODEX)
+
+
 @pytest.mark.parametrize("host", [EXAMPLE, SOLO, MULTI], ids=lambda h: h.dist)
 def test_conformant_sources_match_the_spec_layout(host: Host) -> None:
     """Every skill source is `<name>/SKILL.md` with matching frontmatter.
@@ -377,3 +392,41 @@ def test_lines_are_validated() -> None:
         Host("d", "c", "p", lines=(Line("f", "k", "  "),))
     with pytest.raises(ValueError, match="duplicate line"):
         Host("d", "c", "p", lines=(Line("f", "k", "v"), Line("f", "k", "w")))
+
+
+def test_harnesses_for_filters_in_declared_order() -> None:
+    assert EXAMPLE.harnesses == HARNESSES
+    assert EXAMPLE.harnesses_for(Kind.SKILL) == (CLAUDE_CODE, CODEX)
+    assert EXAMPLE.harnesses_for(Kind.RULE) == (CLAUDE_CODE,)
+    assert EXAMPLE.harnesses_for(Kind.AGENT) == (CLAUDE_CODE,)
+    host = Host("d", "c", "p", harnesses=(CODEX, CLAUDE_CODE))
+    assert host.harnesses_for(Kind.SKILL) == (CODEX, CLAUDE_CODE)
+    assert host.harnesses_for(Kind.RULE) == (CLAUDE_CODE,)
+
+
+@pytest.mark.parametrize("harnesses", [(CLAUDE_CODE, CODEX), (CODEX, CLAUDE_CODE)])
+def test_placements_preserves_artifact_and_harness_order(
+    harnesses: tuple[Harness, ...],
+) -> None:
+    host = Host("d", "c", "p", artifacts=EXAMPLE.artifacts, harnesses=harnesses)
+    skill, rule, agent = host.artifacts
+    assert host.placements() == (
+        (skill, harnesses[0]),
+        (skill, harnesses[1]),
+        (rule, CLAUDE_CODE),
+        (agent, CLAUDE_CODE),
+    )
+    assert Host("d", "c", "p").placements() == ()
+
+
+def test_validation_rejects_bad_harnesses() -> None:
+    with pytest.raises(ValueError, match="at least one harness"):
+        Host("d", "c", "p", harnesses=())
+    duplicate = Harness(name="codex", config_dir=".other")
+    with pytest.raises(ValueError, match="duplicate harness names"):
+        Host("d", "c", "p", harnesses=(CODEX, duplicate))
+    bare = Harness(name="bare", config_dir=".bare")
+    with pytest.raises(
+        ValueError, match="harnesses 'codex, bare' cannot install rule 'r'"
+    ):
+        Host("d", "c", "p", harnesses=(CODEX, bare), artifacts=(Rule("r", "r.md"),))

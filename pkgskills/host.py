@@ -36,7 +36,7 @@ from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Literal
 
-from pkgskills.harness import CLAUDE_CODE, Harness, Kind
+from pkgskills.harness import HARNESSES, Harness, Kind
 from pkgskills.permissions import LEVELS, Level
 from pkgskills.spec import SPEC, SpecError, Violation
 
@@ -268,6 +268,8 @@ class Host:
     * ``render_cli`` is the default for every artifact and doc that leaves its
       own ``render_cli`` unset. A host whose every body uses ``{cli}`` sets it
       once here instead of repeating the flag on each declaration.
+    * ``harnesses`` are the target tools, in declared order. Each artifact
+      installs in every harness that supports its kind.
     * ``modes`` are the install modes this host supports, in preference order;
       the first is what the CLI uses when given no mode flag. A host whose
       skills only mean anything inside one repository declares
@@ -299,7 +301,7 @@ class Host:
     render_cli: bool = False
     modes: tuple[Mode, ...] = MODES
     local_prefix: str = "uv run"
-    harness: Harness = CLAUDE_CODE
+    harnesses: tuple[Harness, ...] = HARNESSES
     version: str | None = None
     after_install: Callable[[InstallReport], None] | None = None
     extra_checks: Callable[[Host, Path, Mode | None], Sequence[ExtraCheck]] | None = (
@@ -325,11 +327,16 @@ class Host:
                 )
         if len(set(self.modes)) != len(self.modes):
             raise ValueError("Host declares an install mode twice")
+        if not self.harnesses:
+            raise ValueError("Host must support at least one harness")
+        if len({h.name for h in self.harnesses}) != len(self.harnesses):
+            raise ValueError("Host declares duplicate harness names")
         seen: set[tuple[Kind, str]] = set()
         for art in self.artifacts:
-            if not self.harness.supports(art.kind):
+            if not self.harnesses_for(art.kind):
+                harness_names = ", ".join(h.name for h in self.harnesses)
                 raise ValueError(
-                    f"harness {self.harness.name!r} cannot install "
+                    f"harnesses {harness_names!r} cannot install "
                     f"{art.kind.value} {art.name!r}"
                 )
             key = (art.kind, art.name)
@@ -512,6 +519,18 @@ class Host:
         return self.render_cli if art.render_cli is None else art.render_cli
 
     # -- artifact lookup ---------------------------------------------------
+
+    def harnesses_for(self, kind: Kind) -> tuple[Harness, ...]:
+        """The harnesses that support ``kind``, in declared order."""
+        return tuple(h for h in self.harnesses if h.supports(kind))
+
+    def placements(self) -> tuple[tuple[Artifact, Harness], ...]:
+        """Supported pairs in artifact order, then declared harness order."""
+        return tuple(
+            (art, harness)
+            for art in self.artifacts
+            for harness in self.harnesses_for(art.kind)
+        )
 
     def of_kind(self, kind: Kind) -> tuple[Artifact, ...]:
         return tuple(art for art in self.artifacts if art.kind is kind)
