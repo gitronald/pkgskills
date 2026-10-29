@@ -1,10 +1,10 @@
 ---
 id: 13
 slug: codex-harness
-status: implemented
+status: done
 branch: feature/codex-harness
 created: 2026-10-28T10:18:56-07:00
-concluded:
+concluded: 2026-10-29T11:35:24-07:00
 pr: https://github.com/gitronald/pkgskills/pull/22
 ---
 
@@ -71,3 +71,12 @@ temporary home and project directory.
   - Conscious no-op: the `locations` dict in `check()`; the per-harness precomputation keeps mode-major row order, and a zipped list is a marginal gain. Rejected: Codex allows not carrying Claude deny/ask narrowing, which is intended and documented.
   - The brief needed no revision pass. Codex kept `installed_mode` alongside the new occupancy check (mode intent and path occupancy are separate facts) and adjusted two existing stale tests to write the global copy they now need.
   - Verified locally: ruff, ruff format, pyrefly (0 errors), pytest 357 passed at 98.68% coverage.
+
+## Retrospective
+
+- The plan's belief held: Codex's `workspace-write` keeps `.git` read-only, so lifecycle commits cannot run sandboxed. The docs check before the brief settled it, and also showed that Codex loads only skills from a prompt directory. That scoped `CODEX` to one kind.
+- Replacing `Host.harness` with `Host.harnesses` (no alias) was the right cut. Every path and `Check` row now names its harness, which is what let the review spot a decision still made across harnesses.
+- The bug the review found came from that change: `stale_local` kept a host-wide fact (`installed_mode`) where it needed a per-harness one (a global copy at this harness's path). When a single-target value becomes a collection, check each guard that read the old value for whether it now needs to be per element.
+- Translating permissions across tools needs an explicit "can this match at all" test. A literal prefix with `&&` in it is valid output that matches nothing, which is worse than reporting it.
+- Two Codex passes (implementation, review fixes), each briefed with seams, decisions to return, and per-item gates, needed no revision. Main-session time went to verifying and splitting commits, not rework.
+- Still open, out of scope: rendering Codex agents as TOML, rules for Codex through `AGENTS.md`, and the dispatcher stub's Claude-style `/name sub` wording.
