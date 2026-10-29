@@ -3,9 +3,9 @@
 Ship prompts inside a CLI package and install thin, version-stamped stubs
 where the harness reads them.
 
-A *host* is a Python package that bundles its Claude Code skills, rules, and
-subagent definitions as package data. `pkgskills` gives that package three
-things:
+A *host* is a Python package that bundles skills, rules, and subagent
+definitions as package data for Claude Code and Codex. `pkgskills` gives that
+package three things:
 
 - a `skill` command that prints a bundled prompt on demand, so the text an
   agent reads always comes from the installed version and there is no copy to
@@ -21,7 +21,25 @@ when to fire, plus an instruction to run `<cli> skill <name>` and follow the
 output.
 Rules and agents are installed as *copies*, because the harness reads their
 full text with no model in the loop. Both carry the same stamp and the same
-drift check. Reference *documents* are the fourth thing a host declares and
+drift check. By default, every supported harness receives each artifact kind:
+
+| Harness | Skills | Rules | Agents |
+|---|---|---|---|
+| Claude Code | `.claude/skills/<name>/SKILL.md` | `.claude/rules/<name>.md` | `.claude/agents/<name>.md` |
+| Codex | `.agents/skills/<name>/SKILL.md` | Not installed | Not installed |
+
+These paths are relative to `$HOME` for global mode or the repository root
+for local mode. Codex discovers repo skills in `.agents/skills` from the
+working directory up to the repository root, and user skills in
+`~/.agents/skills`. It loads global and local skills with the same name as
+separate entries; they are neither merged nor shadowed. Codex custom agents
+use TOML rather than these Markdown definitions, and its `.rules` files are
+execution policy rather than prompt rules, so neither kind is installed.
+`Host.harnesses` defaults to `(CLAUDE_CODE, CODEX)`; set it explicitly to
+restrict the target tools. An artifact installs only where its kind is
+supported, and a declaration no harness supports is rejected.
+
+Reference *documents* are the fourth thing a host declares and
 the one that is never installed at all: they are printed by `<cli> doc <name>`,
 which is how a body defers detail to a sidecar it can no longer reach by path.
 
@@ -112,15 +130,15 @@ yourtool = "yourtool.cli:HOST"
 | `yourtool doc [NAME] [--list]` | Print a reference document (only when the host ships docs). |
 | `yourtool rule [NAME] [--list]` | Print a rule (only when the host ships rules). |
 | `yourtool agent [NAME] [--list]` | Print an agent definition (only when the host ships agents). |
-| `yourtool install` | Write every artifact for the host's default mode — under `~/.claude/` unless the host restricts its `modes`. |
-| `yourtool install --local` / `--global` | Write them under the enclosing repository, or under `~/.claude/`. Naming a mode the host does not declare is an error. |
+| `yourtool install` | Write every artifact for the host's default mode — under `~/.claude/` and `~/.agents/` unless the host restricts its `modes`. |
+| `yourtool install --local` / `--global` | Write them under the enclosing repository, or under `~/.claude/` and `~/.agents/`. Naming a mode the host does not declare is an error. |
 | `yourtool install --check` | Report `ok`, `drifted`, `stale`, `missing`, or `foreign` per file (and `unreadable` per declared line); exit 1 unless all ok. |
 | `yourtool install --force` | Replace files the host did not generate. |
-| `yourtool permissions [--level L] [--global] [--apply]` | Print or apply an automation-level allow-rule profile (only when the host declares one). |
+| `yourtool permissions [--level L] [--global] [--apply] [--codex]` | Print or apply an automation-level allow-rule profile; `--codex` prints a Codex rules fragment and refuses `--apply` (only when the host declares one). |
 
 The enclosing repository is the nearest ancestor of the working directory
-holding `.git` or `.claude/`, so a local install from a subdirectory still
-lands where the harness loads from.
+holding `.git`, `.claude/`, or `.codex/`, so a local install from a subdirectory
+still lands where the harness loads from.
 
 ## Modes
 
@@ -132,8 +150,9 @@ the same at both bases, so the two never collide.
 A file's mode is the one its location implies. A stub rendered for local mode
 and carried to the global path reads as drifted, because the commands inside
 it are wrong where it sits. When both a global and a local copy of a skill
-exist, the global one is what the harness loads; `install` and `--check` say
-so.
+exist, Claude Code loads the global one; `install` and `--check` say so.
+Codex loads both, so its local copy is reported as `stale` once a global
+install resolves.
 
 ### A host that supports only one
 
@@ -247,16 +266,17 @@ left alone, mentioned in a note, and never gates. A single-source skill's stub
 lifts the source's `name`, so renaming one means renaming the source's
 frontmatter as well; a dispatcher renames from the declaration alone.
 
-`stale` is the asymmetric case. The harness auto-loads rules and agents from
+`stale` is the asymmetric case. Claude Code auto-loads rules and agents from
 the global *and* the local location at once, so a per-repo copy left behind
 after a switch to global is an extra file live in context whatever its content
 says. The verdict therefore outranks both `ok` and `drifted`: the check gates on
 it and says `remove:`, not `repair:` — rewriting the file is not the fix, and a
-reinstall would only recreate it. Skills are exempt, because a
-global skill shadows the local stub rather than loading alongside it; which
-kinds load from both bases is declared on the `Harness`. A *global* copy during
-a local install is never flagged: it is shared infrastructure serving every
-other repository.
+reinstall would only recreate it. Claude Code skills are exempt, because a
+global skill shadows the local stub rather than loading alongside it. Codex
+skills load from both bases, so its leftover local stubs are `stale` too;
+which kinds load from both bases is declared on each `Harness`. A *global*
+copy during a local install is never flagged: it is shared infrastructure
+serving every other repository.
 
 ## One line in a file the host does not own
 
@@ -423,6 +443,39 @@ with `--global`). The merge is additive and never downgrades: a rule already on
 is a no-op, and an apply with nothing to add leaves the file untouched. So the
 command is safe to run blind.
 
+### Codex sandbox
+
+In Codex's `workspace-write` sandbox, the workspace and `/tmp` are writable,
+with protected directories inside those roots:
+
+- Every command that writes git state (`git commit`, `git branch`,
+  `git worktree add`, `git merge`, `git tag`, and similar operations) fails
+  because `.git` is read-only, whether it is a directory or a pointer file.
+  In a linked worktree, the resolved git directory is protected too.
+- `install --local` fails when the `.agents/` directory already exists:
+  Codex keeps it read-only recursively even inside the workspace. `.codex/`
+  and `.aws/` directories are protected the same way.
+- A global `install` writes under `~/.claude/` and `~/.agents/`, outside the
+  workspace, so it also needs permission to run outside the sandbox.
+- `install --check` and `skill`/`doc` printing are read-only and run sandboxed.
+
+Approve the escalation when prompted with the `on-request` approval policy,
+grant the needed command prefixes with `yourtool permissions --codex`, or run
+the command outside Codex. `--codex` prints a paste-ready execution-policy
+fragment for the requested level. Its target is
+`.codex/rules/yourtool.rules` locally (loaded only for a trusted project), or
+`~/.codex/rules/default.rules` with `--global`.
+
+An `allow` rule runs matching commands **outside the sandbox without
+prompting**. Codex also accepts `prompt` and `forbidden`; the most restrictive
+matching decision wins. Translation covers `Bash(<words>:*)` and
+`Bash(<words> *)` with a trailing ` *`, splitting the words the way a shell
+would into a command prefix. An exact `Bash(<words>)` is not translated:
+Codex matches by prefix only, so the rule would grant every extension of the
+command as well. Exact rules, other wildcards, and non-Bash tools appear as
+`# not translated:` comments. Review the fragment and paste it into the target file;
+`--codex --apply` is refused, and pkgskills never writes Codex `.rules` files.
+
 ## The `pkgskills` script
 
 ```bash
@@ -434,10 +487,10 @@ pkgskills check    # run each host's drift check from the current repository
 
 `pkgskills.testing.sandbox(tmp_path, monkeypatch)` pins `$HOME` and the working
 directory to fresh directories, so a suite never touches the developer's real
-`~/.claude`. `pkgskills.testing.wheel_files(project_root, out_dir)` builds a
-wheel in-process and lists its contents, which is the only way to prove the
-prompts ship: an editable install resolves package data straight to the
-checkout.
+`~/.claude` or `~/.agents`.
+`pkgskills.testing.wheel_files(project_root, out_dir)` builds a wheel
+in-process and lists its contents, which is the only way to prove the prompts
+ship: an editable install resolves package data straight to the checkout.
 
 `pkgskills.testing.assert_spec_conformant(host)` checks every skill the host
 ships against the

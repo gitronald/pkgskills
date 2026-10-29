@@ -35,8 +35,8 @@ not justify a package: the extraction was conditioned on a fourth host or a
 second harness actually appearing, on the reasoning that three hand-kept copies
 are cheaper than a library nothing new exercises, with a written contract plus a
 conformance suite as the fallback if the shared code stayed thin and every host
-still needed overrides. A fourth host has since adopted it, which is the
-condition being met.
+still needed overrides. A fourth host has since adopted it, and Codex is now
+the second harness, meeting both conditions.
 
 ## Decisions
 
@@ -61,9 +61,16 @@ location, never from the stamp: a stub carried to the other location reads as
 drifted because its embedded commands are wrong there.
 
 **Kinds behind an adapter.** Skills, rules, and agents each have a location
-per mode, held in one `Harness` value. Claude Code is the only adapter until
-a second harness is actually in use; the seam exists so that landing one is a
-new value, not a redesign.
+per mode and supporting harness, held in `Harness` values. `Host.harnesses`
+defaults to `(CLAUDE_CODE, CODEX)` and each artifact installs in every harness
+that supports its kind. Claude Code reads `.claude/skills/<name>/SKILL.md`,
+`.claude/rules/<name>.md`, and `.claude/agents/<name>.md`. Codex reads skills
+from `.agents/skills/<name>/SKILL.md`; its TOML agents need a different renderer,
+and its `.rules` files are execution policy, so it gets no agent or prompt-rule
+location. Paths are relative to `$HOME` or the repo root. Claude Code's global
+skills shadow local copies, while Codex loads both, even with the same name.
+Thus leftover local Codex skills are stale under a resolved global install.
+Rendering stays shared: both harnesses receive byte-identical stubs.
 
 **Stubs versus copies.** A skill is a stub because the harness loads it and a
 model then runs the CLI. A rule or agent is a copy because the harness reads
@@ -96,8 +103,9 @@ skipped. Distinct from the project-level mode declaration under "Not yet": that
 is a per-repository setting, this is a per-host constraint.
 
 **Anchoring.** Mode-derived locations anchor to `$HOME` or to the repository
-root found by walking up to `.git` or the harness config directory. Nothing
-anchors to the working directory, which is how a local install from a
+root found by walking up to `.git` or any declared harness config directory
+(`.claude` or `.codex` by default). Nothing anchors to the working directory,
+which is how a local install from a
 subdirectory ends up where the harness loads from.
 
 **Version coupling.** A change to `pkgskills`'s rendered text would flip every
@@ -147,7 +155,8 @@ CLI prints, and each has a test.
 
 ## Not yet
 
-- A second harness adapter.
+- A second harness adapter: done with Codex skills; agent TOML rendering and
+  prompt rules through `AGENTS.md` remain out of scope.
 - A project-level declaration of expected mode and harness, so a CI check
   needs no flags.
 - Reserving `<host>.md` for generated rules and steering hand-written repo
