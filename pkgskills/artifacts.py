@@ -478,9 +478,10 @@ def installed_mode(host: Host, root: Path) -> Mode | None:
     :attr:`~pkgskills.host.Host.default_mode` themselves, while callers asking "has
     this repo been pinned to global?" need the difference.
     """
+    artifacts = host.skills or host.artifacts
     for mode in host.modes:
         for harness in host.harnesses:
-            for art in host.skills or host.artifacts:
+            for art in artifacts:
                 if harness.supports(art.kind) and occupied(
                     artifact_path(host, art, mode, root, harness)
                 ):

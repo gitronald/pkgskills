@@ -420,7 +420,6 @@ def _permissions_command(host: Host) -> typer.Typer:
             raise typer.Exit(1) from None
 
         mode: Mode = "local" if local_ else "global"
-        root = install_mod.find_repo_root(harnesses=host.harnesses)
         rules = perms.rules_for(host, lvl, mode)
 
         if codex:
@@ -440,6 +439,7 @@ def _permissions_command(host: Host) -> typer.Typer:
             typer.echo(perms.render_codex_rules(rules), nl=False)
             return
 
+        root = install_mod.find_repo_root(harnesses=host.harnesses)
         path = perms.settings_path(root, mode)
 
         if not apply:
