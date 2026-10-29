@@ -1,7 +1,7 @@
 ---
 id: 13
 slug: codex-harness
-status: active
+status: implemented
 branch: feature/codex-harness
 created: 2026-10-28T10:18:56-07:00
 concluded:
@@ -62,3 +62,4 @@ temporary home and project directory.
   Verified locally: ruff, ruff format, pyrefly (0 errors), pytest 337 passed at 98.67% coverage.
   Follow-ups noted, not done: Codex agent TOML rendering; rules for Codex via AGENTS.md; the dispatcher stub's Claude-style `/name sub` wording.
 - **2026-10-29T10:46:16-07:00** — PR opened: https://github.com/gitronald/pkgskills/pull/22
+- **2026-10-29T10:46:18-07:00** — Implemented: 5 commits ahead of `dev`.
