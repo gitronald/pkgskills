@@ -356,12 +356,11 @@ def leftover_previous(host: Host, mode: Mode, root: Path) -> list[Path]:
     path is not a leftover rule that will be auto-loaded.
     """
     found: list[Path] = []
-    for art in host.artifacts:
-        for harness in host.harnesses_for(art.kind):
-            for _, path in previous_paths(host, art, mode, root, harness):
-                text = read_plain(path)
-                if text is not None and not is_stamped(text, host):
-                    found.append(path)
+    for art, harness in host.placements():
+        for _, path in previous_paths(host, art, mode, root, harness):
+            text = read_plain(path)
+            if text is not None and not is_stamped(text, host):
+                found.append(path)
     return found
 
 
@@ -574,14 +573,13 @@ def guard(host: Host, root: Path, mode: Mode, *, force: bool) -> None:
     """Refuse the install if any target is foreign and ``force`` is off."""
     if force:
         return
-    for art in host.artifacts:
-        for harness in host.harnesses_for(art.kind):
-            path = artifact_path(host, art, mode, root, harness)
-            if occupied(path) and not is_generated(path, host):
-                status, reason = classify(path, host, "", mode)
-                raise ForeignArtifactError(
-                    path, reason if status == "foreign" else "foreign"
-                )
+    for art, harness in host.placements():
+        path = artifact_path(host, art, mode, root, harness)
+        if occupied(path) and not is_generated(path, host):
+            status, reason = classify(path, host, "", mode)
+            raise ForeignArtifactError(
+                path, reason if status == "foreign" else "foreign"
+            )
 
 
 def write_artifact(
@@ -610,14 +608,13 @@ def remove_stale_local(host: Host, root: Path) -> list[Path]:
     the global copy that serves every other repository.
     """
     removed: list[Path] = []
-    for art in host.artifacts:
-        for harness in host.harnesses_for(art.kind):
-            local = artifact_path(host, art, "local", root, harness)
-            if local == artifact_path(host, art, "global", root, harness):
-                continue
-            if is_generated(local, host):
-                local.unlink()
-                removed.append(local)
+    for art, harness in host.placements():
+        local = artifact_path(host, art, "local", root, harness)
+        if local == artifact_path(host, art, "global", root, harness):
+            continue
+        if is_generated(local, host):
+            local.unlink()
+            removed.append(local)
     return removed
 
 
@@ -633,23 +630,21 @@ def remove_previous(host: Host, mode: Mode, root: Path) -> list[Path]:
     removed: list[Path] = []
     current = {
         artifact_path(host, art, mode, root, harness)
-        for art in host.artifacts
-        for harness in host.harnesses_for(art.kind)
+        for art, harness in host.placements()
     }
-    for art in host.artifacts:
-        for harness in host.harnesses_for(art.kind):
-            for _, path in previous_paths(host, art, mode, root, harness):
-                # Guarded by validate, but the cost of a second check is nothing
-                # next to deleting a file that was just written.
-                if path in current or not is_generated(path, host):
-                    continue
-                path.unlink()
-                removed.append(path)
-                if art.kind is Kind.SKILL:
-                    try:
-                        path.parent.rmdir()
-                    except OSError:
-                        pass
+    for art, harness in host.placements():
+        for _, path in previous_paths(host, art, mode, root, harness):
+            # Guarded by validate, but the cost of a second check is nothing
+            # next to deleting a file that was just written.
+            if path in current or not is_generated(path, host):
+                continue
+            path.unlink()
+            removed.append(path)
+            if art.kind is Kind.SKILL:
+                try:
+                    path.parent.rmdir()
+                except OSError:
+                    pass
     return removed
 
 
@@ -677,8 +672,7 @@ def install(
     previous = installed_mode(host, root)
     written = tuple(
         write_artifact(host, art, mode, root, harness)
-        for art in host.artifacts
-        for harness in host.harnesses_for(art.kind)
+        for art, harness in host.placements()
     )
     removed: tuple[Path, ...] = ()
     shadowed: tuple[Path, ...] = ()

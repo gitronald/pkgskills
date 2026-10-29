@@ -524,6 +524,14 @@ class Host:
         """The harnesses that support ``kind``, in declared order."""
         return tuple(h for h in self.harnesses if h.supports(kind))
 
+    def placements(self) -> tuple[tuple[Artifact, Harness], ...]:
+        """Supported pairs in artifact order, then declared harness order."""
+        return tuple(
+            (art, harness)
+            for art in self.artifacts
+            for harness in self.harnesses_for(art.kind)
+        )
+
     def of_kind(self, kind: Kind) -> tuple[Artifact, ...]:
         return tuple(art for art in self.artifacts if art.kind is kind)
 

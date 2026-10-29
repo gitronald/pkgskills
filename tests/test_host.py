@@ -404,6 +404,21 @@ def test_harnesses_for_filters_in_declared_order() -> None:
     assert host.harnesses_for(Kind.RULE) == (CLAUDE_CODE,)
 
 
+@pytest.mark.parametrize("harnesses", [(CLAUDE_CODE, CODEX), (CODEX, CLAUDE_CODE)])
+def test_placements_preserves_artifact_and_harness_order(
+    harnesses: tuple[Harness, ...],
+) -> None:
+    host = Host("d", "c", "p", artifacts=EXAMPLE.artifacts, harnesses=harnesses)
+    skill, rule, agent = host.artifacts
+    assert host.placements() == (
+        (skill, harnesses[0]),
+        (skill, harnesses[1]),
+        (rule, CLAUDE_CODE),
+        (agent, CLAUDE_CODE),
+    )
+    assert Host("d", "c", "p").placements() == ()
+
+
 def test_validation_rejects_bad_harnesses() -> None:
     with pytest.raises(ValueError, match="at least one harness"):
         Host("d", "c", "p", harnesses=())
