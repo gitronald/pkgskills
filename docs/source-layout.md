@@ -158,7 +158,7 @@ what lets a failure say which rule broke and what to do:
 
 ```
 brokenhost ships skills that do not follow the Agent Skills specification
-(skills-ref validate checks the same rules):
+(skills-ref validate also rejects unknown keys):
   misfiled/SKILL.md:
     - frontmatter declares no `description` [description-missing] -- add
       `description`: 1-1024 characters saying what the skill does and when to use it
@@ -212,9 +212,9 @@ metadata:
 ```
 
 `pkgskills.frontmatter.parse_fields` flattens a nested block, so the check
-parses the raw frontmatter with YAML itself and reads the mapping from there. `pkgskills` splices nothing into `metadata` of its own: a single-source
+parses the raw frontmatter with YAML itself and reads the mapping from there. `pkgskills` adds only its `pkgskills-*` stamp keys to `metadata`: a single-source
 stub lifts whatever the source declares, `version` included, byte for byte, and a
-dispatcher stub [declares none](frontmatter.md#a-dispatchers-sources). The check
+dispatcher stub [declares none of its own](frontmatter.md#a-dispatchers-sources). The check
 still covers a dispatcher's sources, because a linter reads them too.
 
 Which bare versions pass, and why to quote them anyway, is in

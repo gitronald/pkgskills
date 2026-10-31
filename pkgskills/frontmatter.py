@@ -34,6 +34,11 @@ class Frontmatter:
     raw: str
     fields: dict[str, str] = field(default_factory=dict)
 
+    @property
+    def inner(self) -> str:
+        """The block's YAML: ``raw`` without its two fence lines."""
+        return "".join(self.raw.splitlines(keepends=True)[1:-1])
+
     def get(self, key: str, default: str | None = None) -> str | None:
         """The value of ``key``, or ``default`` when the block lacks it."""
         return self.fields.get(key, default)

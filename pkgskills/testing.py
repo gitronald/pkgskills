@@ -247,6 +247,9 @@ def assert_spec_conformant(host: Host) -> None:
     suite is. Every violation is reported at once, each naming the rule it
     breaks and what to do about it.
 
+    It also fails on a rule or agent source the provenance stamp cannot join,
+    which would otherwise surface only when a consumer ran ``install``.
+
     The layout is one of those rules, so a flat source fails here though it
     installs. A host keeping flat sources on purpose filters
     :meth:`Host.check_spec` by ``rule`` in its own test instead.
@@ -258,7 +261,7 @@ def assert_spec_conformant(host: Host) -> None:
                 violations,
                 header=(
                     f"{host.dist} ships skills that do not follow the Agent "
-                    f"Skills specification ({VALIDATOR} checks the same rules):"
+                    f"Skills specification ({VALIDATOR} also rejects unknown keys):"
                 ),
             )
         )

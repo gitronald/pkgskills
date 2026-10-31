@@ -56,7 +56,8 @@ def stub_frontmatter(host: Host, skill: Skill) -> str:
     text -- and any ``metadata`` the source declares, its own ``version``
     included -- has one home. A dispatcher generates its own block from
     ``description`` or from the subcommand list; it has no source to carry a
-    version, so it declares no ``metadata`` at all.
+    version, so it declares no ``metadata`` of its own. The stamp joins either
+    block afterwards, in :func:`render_stub`.
     """
     if not skill.dispatches:
         source = skill.sources[0]
@@ -69,6 +70,7 @@ def stub_frontmatter(host: Host, skill: Skill) -> str:
         if front is None:
             raise SpecError(violations, header=header)
         violations.extend(SPEC.check_skill_name(source, front, skill))
+        violations.extend(SPEC.check_stampable(source, front))
         if violations:
             raise SpecError(violations, header=header)
         return front.raw
@@ -156,9 +158,10 @@ environment; install it first.
 def render_copy(
     host: Host, art: Rule | Agent, mode: Mode, *, stamp: bool = True
 ) -> str:
-    """The installed text of a rule or agent: the source, stamped after any frontmatter.
+    """The installed text of a rule or agent: the source, with the stamp in frontmatter.
 
-    With ``stamp`` off, the same text minus the stamp line, for printing.
+    A source with no block gains one. With ``stamp`` off, the source's own block
+    and body, for printing.
     """
     text = host.read(art.source)
     front, body = split_frontmatter(text)
@@ -168,6 +171,11 @@ def render_copy(
     body = body.strip() + "\n"
     if not stamp:
         return f"{raw}\n{body}" if raw else body
+    violations = SPEC.check_copy(art.source, front)
+    if violations:
+        raise SpecError(
+            violations, header=f"{art.kind.value} {art.name!r} cannot be rendered"
+        )
     return place_stamp(raw, render_stamp(host, mode), body)
 
 

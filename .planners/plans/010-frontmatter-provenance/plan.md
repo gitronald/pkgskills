@@ -1,11 +1,11 @@
 ---
 id: 10
 slug: frontmatter-provenance
-status: active
+status: done
 branch: feature/frontmatter-provenance
 created: 2026-09-12T16:42:22-07:00
-concluded:
-pr:
+concluded: 2026-10-31T16:51:50-07:00
+pr: https://github.com/gitronald/pkgskills/pull/28
 ---
 
 # Move the provenance stamp into frontmatter
@@ -188,3 +188,67 @@ that plan's validation.
   - Base: `dev` at `ed4f8da`
   - Worktree: `.worktrees/010-frontmatter-provenance`
   - PR: pending
+- **2026-10-31T16:30:08-07:00** — Took the Plan's fallback: the stamp is `pkgskills-*` keys under `metadata`, not a top-level `pkgskills` map.
+    - The Plan said to confirm the top-level key against the spec and fall back if the spec is stricter than the checker. It is. The spec's field table has no slot for it and its `metadata` section is where it sends "additional properties not defined by the Agent Skills spec". The reference validator enforces that: `skills-ref/src/skills_ref/validator.py` has `ALLOWED_FIELDS` and reports `Unexpected fields in frontmatter`, pinned by `test_unexpected_fields`.
+    - `spec.py` only checks the fields it names, so it would have passed the key while the validator it recommends rejects the stub.
+    - Evidence is reading the validator's source and tests on its `main` branch. Running `skills-ref validate` was not done: the session's permission classifier refused running code fetched from outside the repo. Not verified by execution.
+    - Keys: `pkgskills-host`, `pkgskills-host-version`, `pkgskills-version`, `pkgskills-mode`, all quoted strings. They join a source's `metadata` after its own keys, and the same keys go in a rule or agent.
+    - The cost the Plan named comes back: tool provenance and author metadata share a map, so a source declaring a `pkgskills-` key under `metadata` is a violation, covering rules and agents as well as skills.
+    - A dispatcher stub now has a `metadata` block, holding only those keys.
+- **2026-10-31T16:30:16-07:00** — PR opened: https://github.com/gitronald/pkgskills/pull/28
+- **2026-10-31T16:36:40-07:00** — Implemented the Plan's steps 1 to 5, with the top-level key replaced by the `metadata` keys logged above. Calls the Plan left open:
+    - The reserved-prefix check is not in `check_parsed`. A first version put it there, and a stub failed `check_frontmatter` on its own stamp, which an existing test caught. It is now `check_reserved`, called for single-source skills and for rules and agents. A dispatcher source is exempt, since nothing from it reaches a stub.
+    - The prefix is reserved whole, not only the four keys, so a later key cannot collide.
+    - `SPEC.check_copy` is new, since the existing path only covered skills. It holds rules and agents to what the stamp needs (a mapping, a `metadata` that is a mapping, no reserved key) and to none of the skill rules. `check_host` runs it. `render_copy` runs it when stamping, so such a source fails at install where it used to install. Printing with `stamp=False` does not.
+    - `place_stamp` re-reads its result and refuses a block whose existing values would change, rather than installing altered content or a file that reads `foreign`. Aliased `metadata`, a keep-chomped trailing scalar, and a flow-style root all land there.
+    - Flow-style `metadata` is supported, keys going inside the braces, because it is conformant and plan 004 lifted the old rejection of it.
+    - `mask_versions` locates the two values by YAML node rather than by regex, so neither a description nor a body quoting a key is masked.
+    - The comment entry is strict. A line that begins like the comment and then says something else, or lacks the `do not edit` tail, is now `foreign`, where plan 012 noted the old `_line_re` accepted it.
+    - The `Host.validate` message changed to `matches pkgskills' own stamp`.
+    Consequences to know:
+    - Rule and agent files no longer say "do not edit" anywhere, and do not carry the regenerate command. A bare `install` still overwrites edits to them. The Plan accepted losing the command; the lost warning follows from it and is worth a reviewer's eye.
+    - An older pkgskills does not recognize the new stamp, so a downgrade needs `--force` once. Stated in the changelog.
+    - `spec.py` still does not reject unknown top-level keys in a source, though `skills-ref` does, so `assert_spec_conformant`'s "checks the same rules" is not quite true. Not changed here; only what a stub carries is pinned, by a test.
+    Evidence:
+    - ruff check, ruff format, pyrefly, and pytest pass in the worktree: 455 tests, 99% coverage. Every `test_foreign_shapes` row and reason is unchanged.
+    - Seven real comment-stamped files from `pkgskills` 0.5.1, read from a developer machine's global skill and rule directories, all match the built-in entry. Read-only; nothing was reinstalled.
+    Not verified:
+    - `skills-ref validate` was not run (see the entry above). A test asserts a stub's top-level keys are within the spec's fields, which is the rule at issue.
+    - That Claude Code loads an agent carrying a `metadata` block. The Plan's observation was on a rule, and `claude agents` turned out to list background sessions, not definitions, so the probe showed nothing, and a real one needs a model call.
+    - That Codex loads a stub with these keys. `metadata` is a spec field, so it should, but no Codex session ran.
+    Left for hosts: Plan step 6. The first host release pinning this version should tell users a bare `install` is enough. The changelog asks for that.
+- **2026-10-31T16:37:31-07:00** — Implemented: 6 commits ahead of `dev`.
+- **2026-10-31T16:40:39-07:00** — Items to look at before this plan closes. None is decided or done yet.
+    Review:
+    - The missing "do not edit" warning. Rule and agent files no longer say it anywhere, yet a bare `install` still overwrites edits to them. The Plan accepted dropping the regenerate command; losing the warning came with that and was not decided on its own.
+    - Downgrades. An older `pkgskills` does not recognize the new stamp, so going back needs `--force` once. The changelog states this; decide whether that is enough.
+    - The gap in `spec.py`. It still accepts unknown top-level keys in a source, which `skills-ref` rejects, so `assert_spec_conformant`'s "checks the same rules" is not quite true. A test covers what stubs carry, not what sources carry.
+    Not verified:
+    - `skills-ref validate` has not been run on a stub. The permission classifier refused running code from outside the repo, so the evidence is the validator's source and tests, plus the test on a stub's top-level keys.
+    - Claude Code loading an agent that carries a `metadata` block. The Plan's observation was on a rule, and a real check needs a model call.
+    - Codex loading a stub with these keys. `metadata` is a spec field, so it should, but no Codex session ran.
+    Still open:
+    - Plan step 6, which falls to host maintainers: the first host release pinning this version should tell users a bare `install` is enough. The changelog asks them to.
+- **2026-10-31T16:52:08-07:00** — Closed the review gate and settled the items the previous entry left open.
+  - Review follow-up: `/code-review` at `medium` on PR 28, posted as a PR comment. 9 candidates, 8 verified, 7 confirmed, 1 rejected. Commit `4105960` actions four, with tests in `tests/test_spec.py`.
+    - Conformance passed frontmatter `place_stamp` refuses (flow root, aliased `metadata`, trailing keep scalar). `stamp_fits` now backs a `stamp-cannot-join` violation, and `check_reserved` is renamed `check_stampable`. `docs/frontmatter.md` already promised this.
+    - `safe_load`'s `ValueError` on an impossible date crashed the new checks. Rules and agents now read with `BaseLoader`, so such a rule installs as it did. `check_parsed` had the same gap on `dev` for skills and now reports `frontmatter-invalid`.
+    - A stale docstring named `check_parsed`, and `check_copy` parsed the block twice.
+    - Conscious no-ops: the repeated parses in `stamped_mode`, `_recorded`, and `place_stamp`. `classify` measured 1.72 ms per file, so removing them adds machinery for no visible gain. Rejected: reusing `SkillSpec._views` in `stamp.py`.
+  - The missing warning: decided by the owner on 2026-10-31 to bring it back. Commit `bd6e98d` adds a fifth key, `pkgskills-note: "generated; install overwrites edits"`, departing from the Plan's four keys. Nothing reads it back, and a stamp without it reads `drifted`, not `foreign`. The regenerate command stays out of the file, as the Plan decided.
+  - Downgrades: the changelog is enough. An older `pkgskills` reads the file as `foreign` and prints the `--force` remedy, so nothing is lost silently.
+  - The `spec.py` gap: behavior unchanged. Rejecting unknown top-level keys would fail hosts that use harness-specific skill fields, so the report's "checks the same rules" now says `skills-ref validate` also rejects unknown keys.
+  Checks: ruff check, ruff format, pyrefly, and pytest pass in the worktree, 471 tests at 98.70% coverage.
+  Not verified, and owned by nobody further here:
+  - `skills-ref validate` has not been run on a stub, and the note key adds nothing the earlier evidence would not cover.
+  - Claude Code loading an agent that carries a `metadata` block.
+  - Codex loading a stub with these keys.
+  Left for hosts: Plan step 6, which the changelog asks of the first host release pinning this version.
+
+## Retrospective
+
+- The Plan's instruction to confirm the top-level key against the spec paid off immediately: the checker was laxer than the reference validator, so the design moved to `metadata` before any code was written. Checking a checker against what it claims to mirror is worth doing up front.
+- Keeping `place_stamp` as the last line of defense was right, but the conformance check should have asked the same question from the start. A refusal only the consumer's `install` can reach defeats the point of `assert_spec_conformant`, and the docs had already promised otherwise.
+- `safe_load` was the wrong reader for a check that only cares about a block's shape. It rejected files the harness accepts, and the Log's evidence (a green suite at 99% coverage) could not show that, because no test held an unresolvable value.
+- The list of open items written just before close made the review decisive. The one real product call, the lost "do not edit" warning, was a consequence of an earlier decision and would have shipped unnoticed had it not been named separately.
+- Three "not verified" items remain about how harnesses load these files. They need a model call or code from outside the repo, so a host's first release is where they would surface.

@@ -26,6 +26,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- The provenance stamp moved from an HTML comment into the frontmatter, as five
+  quoted keys under `metadata`: `pkgskills-host`, `pkgskills-host-version`,
+  `pkgskills-version`, `pkgskills-mode`, and `pkgskills-note`, a fixed warning that
+  `install` overwrites edits. Rules and agents carry them too, and
+  one whose source has no frontmatter gains a block. `pkgskills` no longer writes
+  the comment, and the regenerate command is no longer in the file, except that a
+  stub's body still prints it. Host maintainers: comment-stamped files read
+  `drifted` and keep refreshing on a bare `install`, with no `--force`, so say that
+  in the changelog of the first release that pins this version. An older
+  `pkgskills` does not recognize the new stamp, so a downgrade needs `--force` once.
+- The `pkgskills-` prefix under `metadata` is reserved. A single-source skill, rule,
+  or agent source declaring such a key fails `assert_spec_conformant`
+  (`metadata-key-reserved`) and cannot be rendered. `SkillSpec.check_host` now also
+  reads rule and agent sources, for whether they can take the stamp, and installing
+  one whose frontmatter cannot take it now fails rather than writing the file. A
+  block the keys cannot join without changing what it says, such as an aliased
+  `metadata`, fails the same check (`stamp-cannot-join`).
+- A skill source with a value YAML cannot resolve, such as an impossible date, now
+  reports `frontmatter-invalid` rather than raising `ValueError`.
+- A `Host.legacy_stamps` pattern is rejected when it matches the HTML comment form
+  or a line of the stamp's map. The error now reads `matches pkgskills' own stamp`.
+- A line that begins like a current stamp and goes on to say something else no
+  longer counts as one. The comment form has to match its whole line.
 - `Host.harness` is replaced by `Host.harnesses`, defaulting to
   `(CLAUDE_CODE, CODEX)`, with no compatibility alias. `harnesses_for(kind)`
   selects supported targets in declared order; validation rejects empty or
@@ -39,8 +62,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The host guide now says how a host's own commands should find the repository
   root (`find_repo_root(harnesses=HOST.harnesses)`), and how to refuse to write
   outside a repository, since the walk can return a directory outside one.
-- The docs now say that a dispatcher stub declares no `metadata`, so a
-  `metadata.version` on a dispatcher's source stays in the package, and that a
+- The docs now say that a `metadata.version` on a dispatcher's source stays in the
+  package, since a dispatcher stub's `metadata` holds only the stamp, and that a
   bare `1.0.0` passes the check while a bare `1.0` does not.
 - The docs now agree about flat sources: they install, but
   `assert_spec_conformant` fails them. A host that keeps them filters
