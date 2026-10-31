@@ -29,6 +29,7 @@ the install mode, so it sits on :attr:`Host.lines`.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from importlib import metadata, resources
@@ -290,6 +291,16 @@ class Host:
       allow-rules that level *adds* over the one below it; declaring any of
       them mounts the ``permissions`` command. See :mod:`pkgskills.permissions` for
       what the ladder's rungs mean.
+    * ``legacy_stamps`` describes the stamp lines the host wrote before it
+      adopted ``pkgskills``. Each pattern has to match a whole line and capture
+      the recorded mode, ``global`` or ``local``, as a named group ``mode``. A
+      file with such a line counts as generated: it reads ``drifted``, a bare
+      ``install`` overwrites it, edits included, and it is deleted as a stale
+      local copy or at a previous name. So declare a pattern only for a stamp
+      that also told readers not to edit the file, and match that stamp exactly,
+      with any version token as ``\\S+``: a loose pattern hands ``install`` a
+      hand-written file. A host can drop a pattern once no supported upgrade
+      starts from a release that wrote it; ``pkgskills`` cannot tell when.
     """
 
     dist: str
@@ -310,6 +321,7 @@ class Host:
     permissions: Mapping[Level, tuple[str, ...]] = field(
         default_factory=lambda: MappingProxyType(dict[Level, tuple[str, ...]]())
     )
+    legacy_stamps: tuple[re.Pattern[str], ...] = ()
 
     def __post_init__(self) -> None:
         self.validate()
@@ -422,6 +434,26 @@ class Host:
         # ladder's floor a lie, since every higher level inherits it.
         if self.permissions.get(Level.none):
             raise ValueError("permission level 'none' must grant nothing")
+        self._validate_legacy_stamps()
+
+    def _validate_legacy_stamps(self) -> None:
+        """Reject a legacy pattern that records no mode or takes in today's stamp."""
+        if not self.legacy_stamps:
+            return
+        # Here rather than at the top of the module: stamp imports this module,
+        # and only a host that declares a pattern needs a render at construction.
+        from pkgskills.stamp import render_stamp
+
+        current = [render_stamp(self, mode) for mode in MODES]
+        for pattern in self.legacy_stamps:
+            if "mode" not in pattern.groupindex:
+                raise ValueError(
+                    f"legacy stamp {pattern.pattern!r} captures no group named 'mode'"
+                )
+            if any(pattern.fullmatch(stamp) for stamp in current):
+                raise ValueError(
+                    f"legacy stamp {pattern.pattern!r} matches the current stamp"
+                )
 
     # -- identity ----------------------------------------------------------
 

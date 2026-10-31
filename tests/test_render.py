@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import re
 
 import pytest
 import yaml
@@ -21,6 +22,8 @@ from pkgskills.rendering import (
     stub_frontmatter,
 )
 from pkgskills.stamp import (
+    is_stamped,
+    legacy_reason,
     mask_versions,
     render_stamp,
     stamped_by,
@@ -163,6 +166,38 @@ def test_mask_versions_leaves_a_source_declared_version_alone() -> None:
     ) == mask_versions(one, MULTI)
     revised = one.replace('version: "2.1"', 'version: "2.2"')
     assert mask_versions(revised, MULTI) != mask_versions(one, MULTI)
+
+
+def test_legacy_stamps_are_read_from_the_host_in_declared_order() -> None:
+    first = re.compile(r"<!-- old (?P<mode>global|local) -->")
+    second = re.compile(r"<!-- older (?P<mode>global|local) -->")
+    host = dataclasses.replace(SOLO, legacy_stamps=(first, second))
+    text = "<!-- older global -->\n<!-- old local -->\n"
+
+    assert is_stamped(text, host)
+    # The first entry that matches, wherever its line sits in the file.
+    assert stamped_mode(text, host) == "local"
+    assert legacy_reason(text, host) == (
+        "stamped by solohost before it adopted pkgskills"
+    )
+    # The field is the host's: a host that declares nothing reads none of it.
+    assert not is_stamped(text, SOLO)
+    assert stamped_mode(text, SOLO) is None
+    assert legacy_reason(text, SOLO) is None
+
+
+def test_a_legacy_pattern_with_an_unset_mode_group_records_nothing() -> None:
+    pattern = re.compile(r"<!-- old (?P<mode>local)?-->")
+    host = dataclasses.replace(SOLO, legacy_stamps=(pattern,))
+    assert stamped_mode("<!-- old local-->\n", host) == "local"
+    assert not is_stamped("<!-- old -->\n", host)
+
+
+def test_mask_versions_leaves_a_legacy_stamp_alone() -> None:
+    pattern = re.compile(r"<!-- old \S+ (?P<mode>global|local) -->")
+    host = dataclasses.replace(SOLO, legacy_stamps=(pattern,))
+    text = "<!-- old 1.0 local -->\n"
+    assert mask_versions(text, host) == text
 
 
 def test_render_prompt_strips_frontmatter_and_renders_cli_on_request() -> None:

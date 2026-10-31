@@ -1,11 +1,11 @@
 ---
 id: 12
 slug: host-legacy-stamps
-status: active
+status: done
 branch: feature/host-legacy-stamps
 created: 2026-10-28T09:08:00-07:00
-concluded:
-pr:
+concluded: 2026-10-31T16:12:23-07:00
+pr: https://github.com/gitronald/pkgskills/pull/27
 ---
 
 # Let a host declare its pre-adoption stamp as its own
@@ -156,3 +156,26 @@ current-stamp check cannot apply to a YAML map.
   - Base: `dev` at `8272974`
   - Worktree: `.worktrees/012-host-legacy-stamps`
   - PR: pending
+- **2026-10-31T16:07:19-07:00** — PR opened: https://github.com/gitronald/pkgskills/pull/27
+- **2026-10-31T16:08:54-07:00** — Implemented as specified, with these calls the Plan left open.
+  - Whole-line matching uses `fullmatch` on each line from `splitlines`, so a pattern needs no anchors of its own.
+  - A `mode` group that captures anything but `global` or `local`, or stays unset, is no match. The file then stays `foreign`.
+  - A file carrying a current stamp is never a legacy one, even when its body quotes a declared line.
+  - The current-stamp check imports `render_stamp` inside `Host`, because `stamp` imports `host`. Only a host that declares a pattern pays for the render at construction.
+  - Tests went where their subject already lives, not all in `tests/test_install.py`: validation in `test_host.py`, the lookup in `test_render.py`, and an added end-to-end upgrade in `test_cli.py`.
+  - For plan 010: `_line_re` has no end anchor, so a line that begins with the current form reads as a current stamp however it ends, and a legacy pattern never sees it.
+- **2026-10-31T16:08:59-07:00** — Implemented: 5 commits ahead of `dev`.
+- **2026-10-31T16:23:33-07:00** — Added `Host.legacy_stamps` with validation, the legacy entry list and lookup in `stamp.py`, the `classify` reason, tests, and docs.
+  - Review follow-up: a `medium` review raised 6 candidates and confirmed 2. Reviewed and approved for merge by the owner.
+  - Actioned: the lookup split lines with `splitlines`, so a declared stamp followed by a form feed or U+2028 and prose read as generated. It now splits on newlines only, with regression cases in `test_a_legacy_pattern_has_to_match_a_whole_line`.
+  - Actioned: a test comment claimed anchored patterns were covered. The test now runs one, and also covers CRLF endings.
+  - Conscious no-ops: the three scans `classify` makes of a legacy file, measured at about 1.2 ms over 40 files; `_as_mode` and the per-call entry tuple, which are shape only, with no failure behind them.
+  - Checks at the review fix: ruff check, ruff format, pyrefly, and pytest pass locally (406 tests); CI's test job passes on Python 3.11 through 3.14.
+
+## Retrospective
+
+- Routing the lookup through `is_stamped` kept the change small, as the plan predicted: `guard`, both removals, and the leftovers scan needed no edits and agree by construction.
+- The one real defect was in the destructive direction and came from an unconsidered default. "Whole line" was specified, and `splitlines` quietly meant something wider than the `(?m)^` rule beside it. When a check guards an overwrite, compare its line rule with the one it sits next to.
+- The Plan said a whole-line match but left open what a loose `mode` capture does. Treating a non-mode token as no match keeps a corrupted file `foreign`, which is the safe side for a field that lets `install` delete files.
+- `_line_re` has no end anchor, which surfaced only when a test fixture read as a current stamp. It limits what a legacy pattern can claim, and plan 010 replaces that matching, so it is noted for that plan in this Log rather than changed here.
+- The list with a per-entry reason has one source so far, so it looks heavier than this plan needs. It is the seam plan 010 fills, and it was kept for that reason.
