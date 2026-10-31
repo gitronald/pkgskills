@@ -141,3 +141,13 @@ Any change to the stamp, the install/check flow, the pre-commit wiring, or
 the `Line` mechanism. Making a host's own commands walk up is the host's
 change, not this library's; this plan only decides what the library says and
 offers about it.
+
+## Log
+
+- **2026-10-31T12:31:37-07:00** — Review: narrowed. All three seams are still open in the code and docs at 421e9f2, with one part of seam 2 already done and several facts in the spec out of date.
+  - Already done: the quoting rule. `docs/frontmatter.md`, `docs/source-layout.md`, and the README's testing section all state it, so "mentioned nowhere a host author reads" no longer holds. Remaining scope for seam 2: say that a dispatcher source's `metadata` never reaches the stub.
+  - Wrong in the spec: bare `1.0.0` does not read as a number. `yaml.safe_load` returns the string `1.0.0`, so it passes; `1.0`, `1`, and a bare date are what fail.
+  - Stale in the spec: `find_repo_root` takes `harnesses`, a sequence, since 6b8085d, and `register` mounts up to six commands (`skill`, `install`, and, when declared, `doc`, `rule`, `agent`, `permissions`).
+  - Overlap: draft plan 010 proposes a Version column in the dispatcher's subcommand table, which is this plan's "surface it" option. 010 owns that option.
+  - Evidence gap: `test_dispatcher_stub_declares_no_metadata` uses `examplehost`, whose dispatcher sources declare no `metadata`, so the test cannot fail for the behaviour seam 2 describes.
+  - New finding: `find_repo_root` with harnesses stops at `$HOME` when `~/.claude` exists, so from a directory under home with no repository it returns home, not `start`. Checked by running it against a temporary tree.
