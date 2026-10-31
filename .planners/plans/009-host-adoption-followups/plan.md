@@ -1,7 +1,7 @@
 ---
 id: 9
 slug: host-adoption-followups
-status: active
+status: implemented
 branch: feature/host-adoption-followups
 created: 2026-09-12T13:08:14-07:00
 concluded:
@@ -215,3 +215,4 @@ offers about it.
   - Worktree: `.worktrees/009-host-adoption-followups`
   - PR: pending
 - **2026-10-31T12:34:00-07:00** — PR opened: https://github.com/gitronald/pkgskills/pull/25
+- **2026-10-31T12:35:02-07:00** — Implemented: 3 commits ahead of `dev`.
