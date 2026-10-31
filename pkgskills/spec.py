@@ -48,6 +48,10 @@ if TYPE_CHECKING:
 #: The reference validator the spec points at, named in the repair advice.
 VALIDATOR = "skills-ref validate"
 
+#: The ``metadata`` key prefix the provenance stamp is written under, so a source
+#: may not use it. :mod:`pkgskills.stamp` builds its keys from this.
+RESERVED_PREFIX = "pkgskills-"
+
 
 def _reads_as(value: object) -> str:
     """What YAML resolved an unquoted scalar to, named for the error message."""
@@ -371,9 +375,7 @@ class SkillSpec:
                 )
             ]
         try:
-            parsed, written = self._views(
-                "".join(front.raw.splitlines(keepends=True)[1:-1])
-            )
+            parsed, written = self._views(front.inner)
         except yaml.YAMLError as exc:
             return [
                 Violation(
@@ -465,6 +467,75 @@ class SkillSpec:
                 )
         return out
 
+    def check_copy(self, source: str, front: Frontmatter | None) -> list[Violation]:
+        """Violations that stop a rule or agent source taking the stamp.
+
+        Not the skill rules: the spec does not govern these files, and any block
+        the harness accepts is fine so long as the stamp can join it. That needs a
+        YAML mapping, with a ``metadata`` that is a mapping if it is there and has
+        no key in the prefix the stamp uses.
+        """
+        if front is None:
+            return []
+
+        def invalid(detail: str) -> list[Violation]:
+            return [
+                Violation(
+                    source,
+                    "frontmatter-invalid",
+                    detail,
+                    "use a YAML mapping, so the provenance stamp can join it",
+                )
+            ]
+
+        try:
+            parsed = yaml.safe_load(front.inner)
+        except yaml.YAMLError as exc:
+            return invalid(str(exc))
+        if parsed is None:
+            return []
+        if not isinstance(parsed, dict):
+            return invalid("frontmatter is not a YAML mapping")
+        if "metadata" not in parsed:
+            return []
+        metadata = parsed["metadata"]
+        if not isinstance(metadata, dict):
+            return [
+                Violation(
+                    source,
+                    "metadata-not-a-mapping",
+                    f"`metadata` is {metadata!r}, not a mapping",
+                    "use a mapping, or drop the key; the provenance stamp goes in it",
+                )
+            ]
+        return self.check_reserved(source, front)
+
+    def check_reserved(self, source: str, front: Frontmatter) -> list[Violation]:
+        """Violations for ``metadata`` keys in the prefix the stamp is written under.
+
+        A rule for a source that reaches an installed file, not one of the spec's:
+        its key there would be a duplicate in that file, or would pass for
+        provenance. So :meth:`check_parsed` leaves it out, and a stub, which holds
+        those keys by design, stays conformant.
+        """
+        try:
+            parsed = yaml.safe_load(front.inner)
+        except yaml.YAMLError:
+            return []  # reported as invalid by whichever check owns the file
+        metadata = parsed.get("metadata") if isinstance(parsed, dict) else None
+        if not isinstance(metadata, dict):
+            return []
+        return [
+            Violation(
+                where=source,
+                rule="metadata-key-reserved",
+                detail=f"`metadata.{key}` is in the prefix pkgskills stamps with",
+                fix=f"rename it; every `{RESERVED_PREFIX}` key is written at install",
+            )
+            for key in metadata
+            if isinstance(key, str) and key.startswith(RESERVED_PREFIX)
+        ]
+
     # -- whole declarations ------------------------------------------------
 
     def check_skill(self, host: Host, skill: Skill) -> list[Violation]:
@@ -487,6 +558,7 @@ class SkillSpec:
             out.extend(self.check_parsed(source, front))
             if not skill.dispatches and front is not None:
                 out.extend(self.check_skill_name(source, front, skill))
+                out.extend(self.check_reserved(source, front))
         return out
 
     def check_skill_name(
@@ -509,8 +581,17 @@ class SkillSpec:
         ]
 
     def check_host(self, host: Host) -> list[Violation]:
-        """Every violation across every skill ``host`` declares."""
-        return [v for skill in host.skills for v in self.check_skill(host, skill)]
+        """Every violation across ``host``'s skills, rules, and agents.
+
+        The skills against the spec, and the rules and agents only on whether
+        they can take the stamp.
+        """
+        out = [v for skill in host.skills for v in self.check_skill(host, skill)]
+        for art in (*host.rules, *host.agents):
+            if host.has_source(art.source):
+                front, _ = split_frontmatter(host.read(art.source))
+                out.extend(self.check_copy(art.source, front))
+        return out
 
 
 #: The spec as written, and what every caller in ``pkgskills`` uses.

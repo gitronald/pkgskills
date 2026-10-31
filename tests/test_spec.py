@@ -14,7 +14,7 @@ from multihost.cli import HOST as MULTI
 from solohost.cli import HOST as SOLO
 
 from pkgskills.frontmatter import split_frontmatter
-from pkgskills.host import Doc, Host, Skill
+from pkgskills.host import Agent, Doc, Host, Rule, Skill
 from pkgskills.rendering import render_stub
 from pkgskills.spec import SPEC, SkillSpec, SpecError, Violation, report
 from pkgskills.testing import assert_spec_conformant
@@ -480,3 +480,71 @@ def test_host_spec_check_catches_declaration_mismatch() -> None:
         SOLO, artifacts=(Skill("other", SOLO.skills[0].sources),)
     )
     assert "name-matches-declaration" in rules(host.check_spec())
+
+
+# -- the keys the stamp reserves ---------------------------------------------
+
+RESERVED = (
+    "---\nname: use-solo\ndescription: d\n"
+    "metadata:\n  pkgskills-host: mine\n---\nbody\n"
+)
+
+
+def _reading(monkeypatch: pytest.MonkeyPatch, text: str) -> None:
+    """Have every host read ``text`` for every source."""
+    monkeypatch.setattr(Host, "read", lambda self, source: text)
+
+
+def test_a_single_source_skill_may_not_declare_a_stamp_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reading(monkeypatch, RESERVED)
+    assert "metadata-key-reserved" in rules(SOLO.check_spec())
+    with pytest.raises(SpecError, match=r"metadata\.pkgskills-host"):
+        render_stub(SOLO, SOLO.skills[0], "local")
+
+
+def test_a_dispatcher_source_keeps_its_metadata_in_the_package(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Nothing from a dispatcher source reaches a stub, so nothing can collide."""
+    _reading(monkeypatch, RESERVED)
+    bundle = Skill(name="bundle", sources=("a/SKILL.md", "b/SKILL.md"))
+    host = dataclasses.replace(EXAMPLE, artifacts=(bundle,))
+    assert "metadata-key-reserved" not in rules(host.check_spec())
+
+
+def test_a_stub_holding_the_stamp_is_conformant() -> None:
+    """The reserved prefix binds a source. A stub holds those keys by design."""
+    for host in (SOLO, EXAMPLE):
+        for skill in host.skills:
+            stub = render_stub(host, skill, "local")
+            found = SPEC.check_frontmatter(f"{skill.name}/{SPEC.entry_file}", stub)
+            assert found == []
+
+
+@pytest.mark.parametrize(
+    "art", [Rule("r", "r.md"), Agent("a", "a.md")], ids=["rule", "agent"]
+)
+def test_check_host_covers_rules_and_agents_for_the_stamp_only(
+    art: Rule | Agent, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    host = dataclasses.replace(EXAMPLE, artifacts=(art,))
+    monkeypatch.setattr(Host, "has_source", lambda self, source: True)
+    _reading(monkeypatch, RESERVED)
+    assert rules(host.check_spec()) == {"metadata-key-reserved"}
+    # Not the skill rules: this block has no `name`, and a metadata float is fine.
+    _reading(monkeypatch, "---\nmetadata:\n  n: 1.0\n---\nbody\n")
+    assert host.check_spec() == []
+
+
+def test_check_host_leaves_a_missing_copy_source_to_the_install() -> None:
+    host = dataclasses.replace(EXAMPLE, artifacts=(Rule("r", "nowhere.md"),))
+    assert host.check_spec() == []
+
+
+def test_check_reserved_leaves_invalid_yaml_to_the_check_that_owns_the_file() -> None:
+    front, _ = split_frontmatter("---\n{not: [yaml\n---\n")
+    assert front is not None
+    assert SPEC.check_reserved("x.md", front) == []
+    assert rules(SPEC.check_parsed("x/SKILL.md", front)) == {"frontmatter-invalid"}

@@ -299,7 +299,9 @@ class Host:
       local copy or at a previous name. So declare a pattern only for a stamp
       that also told readers not to edit the file, and match that stamp exactly,
       with any version token as ``\\S+``: a loose pattern hands ``install`` a
-      hand-written file. A host can drop a pattern once no supported upgrade
+      hand-written file. A pattern cannot claim a stamp ``pkgskills`` wrote: the
+      HTML comment of earlier releases is already recognized, and the current
+      stamp is frontmatter. A host can drop a pattern once no supported upgrade
       starts from a release that wrote it; ``pkgskills`` cannot tell when.
     """
 
@@ -437,22 +439,31 @@ class Host:
         self._validate_legacy_stamps()
 
     def _validate_legacy_stamps(self) -> None:
-        """Reject a legacy pattern that records no mode or takes in today's stamp."""
+        """Reject a legacy pattern that records no mode or takes in a pkgskills stamp.
+
+        A pattern matches one line, so it is tried on the comment form, which would
+        overlap the built-in entry, and on each line of the rendered map, bare and
+        as a block map indents it.
+        """
         if not self.legacy_stamps:
             return
         # Here rather than at the top of the module: stamp imports this module,
         # and only a host that declares a pattern needs a render at construction.
-        from pkgskills.stamp import render_stamp
+        from pkgskills.stamp import render_comment_stamp, render_stamp
 
-        current = [render_stamp(self, mode) for mode in MODES]
+        own: list[str] = []
+        for mode in MODES:
+            own.append(render_comment_stamp(self, mode))
+            for line in render_stamp(self, mode).splitlines():
+                own += [line, f"  {line}"]
         for pattern in self.legacy_stamps:
             if "mode" not in pattern.groupindex:
                 raise ValueError(
                     f"legacy stamp {pattern.pattern!r} captures no group named 'mode'"
                 )
-            if any(pattern.fullmatch(stamp) for stamp in current):
+            if any(pattern.fullmatch(line) for line in own):
                 raise ValueError(
-                    f"legacy stamp {pattern.pattern!r} matches the current stamp"
+                    f"legacy stamp {pattern.pattern!r} matches pkgskills' own stamp"
                 )
 
     # -- identity ----------------------------------------------------------
