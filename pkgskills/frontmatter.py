@@ -43,6 +43,21 @@ class Frontmatter:
         """The value of ``key``, or ``default`` when the block lacks it."""
         return self.fields.get(key, default)
 
+    def metadata_field(self, key: str) -> str | None:
+        """The scalar under ``metadata.<key>`` as written, or ``None``.
+
+        The same unresolved read as ``fields``, and as forgiving: a block with
+        no such scalar yields ``None`` whatever its shape, since judging the
+        shape belongs to the spec checker.
+        """
+        try:
+            parsed = yaml.load(self.inner, Loader=yaml.BaseLoader)
+        except yaml.YAMLError:
+            return None
+        metadata = parsed.get("metadata") if isinstance(parsed, dict) else None
+        value = metadata.get(key) if isinstance(metadata, dict) else None
+        return value if isinstance(value, str) else None
+
 
 def split_frontmatter(text: str) -> tuple[Frontmatter | None, str]:
     """Split ``text`` into ``(frontmatter, body)``.
