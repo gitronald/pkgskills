@@ -1,10 +1,10 @@
 ---
 id: 10
 slug: frontmatter-provenance
-status: implemented
+status: done
 branch: feature/frontmatter-provenance
 created: 2026-09-12T16:42:22-07:00
-concluded:
+concluded: 2026-10-31T16:51:50-07:00
 pr: https://github.com/gitronald/pkgskills/pull/28
 ---
 
@@ -244,3 +244,11 @@ that plan's validation.
   - Claude Code loading an agent that carries a `metadata` block.
   - Codex loading a stub with these keys.
   Left for hosts: Plan step 6, which the changelog asks of the first host release pinning this version.
+
+## Retrospective
+
+- The Plan's instruction to confirm the top-level key against the spec paid off immediately: the checker was laxer than the reference validator, so the design moved to `metadata` before any code was written. Checking a checker against what it claims to mirror is worth doing up front.
+- Keeping `place_stamp` as the last line of defense was right, but the conformance check should have asked the same question from the start. A refusal only the consumer's `install` can reach defeats the point of `assert_spec_conformant`, and the docs had already promised otherwise.
+- `safe_load` was the wrong reader for a check that only cares about a block's shape. It rejected files the harness accepts, and the Log's evidence (a green suite at 99% coverage) could not show that, because no test held an unresolvable value.
+- The list of open items written just before close made the review decisive. The one real product call, the lost "do not edit" warning, was a consequence of an earlier decision and would have shipped unnoticed had it not been named separately.
+- Three "not verified" items remain about how harnesses load these files. They need a model call or code from outside the repo, so a host's first release is where they would surface.
