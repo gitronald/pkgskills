@@ -60,6 +60,21 @@ foreign and is never replaced without `--force`. Mode is inferred from
 location, never from the stamp: a stub carried to the other location reads as
 drifted because its embedded commands are wrong there.
 
+**A stamp from before adoption.** From the line alone, pkgskills cannot tell a
+host's pre-adoption stamp from a pkgskills stamp that a formatter wrapped or
+whose mode was corrupted, so all three read `foreign`. The host can tell, since
+it wrote the old format, and `Host.legacy_stamps` lets it say so. A matching line
+counts as the host's stamp through `is_stamped`, so `guard`, the stale and
+previous-name removals, and the leftovers scan agree without knowing about it,
+and the file reads `drifted`. That follows the policy for a current stamp: the
+line said "do not edit", so a bare `install` rewrites it, edits included. A
+pattern has to capture the mode so that a file in the wrong location reads the
+same mode reason a current stamp does. Versions stay
+unmasked, because a file under an old stamp is changed by definition and only
+masking keeps an unchanged file `ok`. The entries live in one list in `stamp.py`,
+each a pattern with its own reason. A declarative field covers this without a
+pre-install hook, which would give hosts a write path ahead of the foreign check.
+
 **Kinds behind an adapter.** Skills, rules, and agents each have a location
 per mode and supporting harness, held in `Harness` values. `Host.harnesses`
 defaults to `(CLAUDE_CODE, CODEX)` and each artifact installs in every harness

@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   translate prefix-form Bash rules and report the rest, exact
   rules and shell syntax included, as comments. Applying
   Codex rules is refused; the command names the file to paste into.
+- `Host.legacy_stamps` lets a host declare the stamp lines it wrote before it
+  adopted pkgskills. A matching file reads `drifted` instead of `foreign`, so a
+  bare `install` upgrades it without `--force`, edits included, and it can be
+  removed as a stale local copy or at a previous name. The field is optional,
+  so no host changes behavior until it declares a pattern.
 
 ### Changed
 
