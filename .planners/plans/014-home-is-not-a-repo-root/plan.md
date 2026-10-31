@@ -132,6 +132,10 @@ one exists on at least one development machine.
   - **Verified:** full suite, 391 passed, coverage 98.69%, with ruff and pyrefly clean. The plan's reproduction also ran as real processes with a sandboxed `$HOME`: from a directory under home the check exits 0 with `ok` rows only, `install --local` writes under that directory and leaves the global stub at `mode=global`, and from home `--local` and `--local --check` both exit 1. With `.git` added at home, the check from a fresh subdirectory exits 0 and `--local` is refused.
   - **Not changed:** a harness directory above home still marks a root, as any other directory's does. This only arises on a machine with such a directory in a parent of home.
 - **2026-10-31T14:36:02-07:00** — Implemented: 6 commits ahead of `dev`.
+- **2026-10-31T14:47:23-07:00** — Final log. Review ran at medium level through the code-review skill, and CI passed on Python 3.11 to 3.14 at the head it reviewed.
+  - Review follow-up: 6 findings confirmed. Fixed: the `no_home` stub and the symlinked-home setup became fixtures, and `skill_stub_paths` derives its modes once. These are refactors with no behaviour change, so they have no paired regression tests, and the existing tests cover them.
+  - Conscious no-ops: `stale_local`'s per-row `resolve()` calls and the repeated `location_modes` derivation within one check, both immaterial next to the render and file read each row does. A local-only host installed at a home with no `.git` is not found from a subdirectory. The maintainer accepted this at the review gate, since a directory under home resolves like any other, which is decision 1.
+  - The review comment on the PR says 5 candidates were rejected. The count is 4 rejected and 1 nit dropped before verification. The edit that would correct it was refused, so the comment stands as posted.
 
 ## Handoff
 
