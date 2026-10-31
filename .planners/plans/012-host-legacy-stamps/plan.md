@@ -165,3 +165,9 @@ current-stamp check cannot apply to a YAML map.
   - Tests went where their subject already lives, not all in `tests/test_install.py`: validation in `test_host.py`, the lookup in `test_render.py`, and an added end-to-end upgrade in `test_cli.py`.
   - For plan 010: `_line_re` has no end anchor, so a line that begins with the current form reads as a current stamp however it ends, and a legacy pattern never sees it.
 - **2026-10-31T16:08:59-07:00** — Implemented: 5 commits ahead of `dev`.
+- **2026-10-31T16:23:33-07:00** — Added `Host.legacy_stamps` with validation, the legacy entry list and lookup in `stamp.py`, the `classify` reason, tests, and docs.
+  - Review follow-up: a `medium` review raised 6 candidates and confirmed 2. Reviewed and approved for merge by the owner.
+  - Actioned: the lookup split lines with `splitlines`, so a declared stamp followed by a form feed or U+2028 and prose read as generated. It now splits on newlines only, with regression cases in `test_a_legacy_pattern_has_to_match_a_whole_line`.
+  - Actioned: a test comment claimed anchored patterns were covered. The test now runs one, and also covers CRLF endings.
+  - Conscious no-ops: the three scans `classify` makes of a legacy file, measured at about 1.2 ms over 40 files; `_as_mode` and the per-call entry tuple, which are shape only, with no failure behind them.
+  - Checks at the review fix: ruff check, ruff format, pyrefly, and pytest pass locally (406 tests); CI's test job passes on Python 3.11 through 3.14.
