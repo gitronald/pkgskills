@@ -229,3 +229,18 @@ that plan's validation.
     - Codex loading a stub with these keys. `metadata` is a spec field, so it should, but no Codex session ran.
     Still open:
     - Plan step 6, which falls to host maintainers: the first host release pinning this version should tell users a bare `install` is enough. The changelog asks them to.
+- **2026-10-31T16:52:08-07:00** — Closed the review gate and settled the items the previous entry left open.
+  - Review follow-up: `/code-review` at `medium` on PR 28, posted as a PR comment. 9 candidates, 8 verified, 7 confirmed, 1 rejected. Commit `4105960` actions four, with tests in `tests/test_spec.py`.
+    - Conformance passed frontmatter `place_stamp` refuses (flow root, aliased `metadata`, trailing keep scalar). `stamp_fits` now backs a `stamp-cannot-join` violation, and `check_reserved` is renamed `check_stampable`. `docs/frontmatter.md` already promised this.
+    - `safe_load`'s `ValueError` on an impossible date crashed the new checks. Rules and agents now read with `BaseLoader`, so such a rule installs as it did. `check_parsed` had the same gap on `dev` for skills and now reports `frontmatter-invalid`.
+    - A stale docstring named `check_parsed`, and `check_copy` parsed the block twice.
+    - Conscious no-ops: the repeated parses in `stamped_mode`, `_recorded`, and `place_stamp`. `classify` measured 1.72 ms per file, so removing them adds machinery for no visible gain. Rejected: reusing `SkillSpec._views` in `stamp.py`.
+  - The missing warning: decided by the owner on 2026-10-31 to bring it back. Commit `bd6e98d` adds a fifth key, `pkgskills-note: "generated; install overwrites edits"`, departing from the Plan's four keys. Nothing reads it back, and a stamp without it reads `drifted`, not `foreign`. The regenerate command stays out of the file, as the Plan decided.
+  - Downgrades: the changelog is enough. An older `pkgskills` reads the file as `foreign` and prints the `--force` remedy, so nothing is lost silently.
+  - The `spec.py` gap: behavior unchanged. Rejecting unknown top-level keys would fail hosts that use harness-specific skill fields, so the report's "checks the same rules" now says `skills-ref validate` also rejects unknown keys.
+  Checks: ruff check, ruff format, pyrefly, and pytest pass in the worktree, 471 tests at 98.70% coverage.
+  Not verified, and owned by nobody further here:
+  - `skills-ref validate` has not been run on a stub, and the note key adds nothing the earlier evidence would not cover.
+  - Claude Code loading an agent that carries a `metadata` block.
+  - Codex loading a stub with these keys.
+  Left for hosts: Plan step 6, which the changelog asks of the first host release pinning this version.
