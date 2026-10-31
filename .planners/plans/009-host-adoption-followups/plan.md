@@ -5,7 +5,7 @@ status: active
 branch: feature/host-adoption-followups
 created: 2026-09-12T13:08:14-07:00
 concluded:
-pr:
+pr: https://github.com/gitronald/pkgskills/pull/25
 ---
 
 # Smooth the seams a host meets after adopting the library
@@ -214,3 +214,4 @@ offers about it.
   - Base: `dev` at `a1023e8`
   - Worktree: `.worktrees/009-host-adoption-followups`
   - PR: pending
+- **2026-10-31T12:34:00-07:00** — PR opened: https://github.com/gitronald/pkgskills/pull/25
