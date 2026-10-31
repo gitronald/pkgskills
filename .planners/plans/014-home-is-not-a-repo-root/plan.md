@@ -109,6 +109,14 @@ one exists on at least one development machine.
 - `permissions`: its local and global settings paths differ, so nothing coincides.
   Decision 1 corrects where its local file goes under home.
 
+## Log
+
+- **2026-10-31T14:21:41-07:00** — Relation to earlier decisions: decision 1 here replaces part of plan 009, and this plan supersedes that part. Recommended: still do it.
+  - Reversed from plan 009: decision 1's "the fallback stays as it is", and the docs and test that describe the walk stopping at `$HOME` as expected. Plan 009's out-of-scope line on the install and check flow was a scope limit, not a judgement that the flow was sound.
+  - Why it does not hold: that call concerned hosts' own commands and was made without running the mounted ones, which recorded the risk as unverified. Running them showed the check suggesting a repair that overwrites the global stubs. The wording is unreleased, on `dev` and under `[Unreleased]`, so reversing it costs little.
+  - Unchanged: `register` mounts no callback, hosts pass `harnesses`, the README's repository guard stays, and plan 009's other decisions stand. Plan 002's guard for `$HOME` as a root is extended, not undone.
+  - Narrower option: decision 2 alone reverses nothing and stops both the false failure and the overwrite. Only decision 1 reverses plan 009. Doing both is recommended, because with decision 2 alone a local install under home is refused rather than placed there, and host commands following the README still get `$HOME` as their root. Decision 2 alone remains a safe first step if the walk change is deferred.
+
 ## Handoff
 
 State: draft, nothing started. The problem is verified by running it, and decision 1
