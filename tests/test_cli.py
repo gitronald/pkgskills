@@ -24,6 +24,7 @@ from pkgskills.harness import CLAUDE_CODE, Kind
 from pkgskills.host import ExtraCheck, Host, Line, Mode
 from pkgskills.permissions import Level
 from pkgskills.rendering import render
+from pkgskills.stamp import stamped_mode
 from pkgskills.testing import Sandbox
 
 runner = CliRunner()
@@ -733,3 +734,135 @@ def test_check_prints_both_harness_names_and_codex_paths(box: Sandbox) -> None:
     result = runner.invoke(example_app, ["install", "--local", "--check"])
     assert result.exit_code == 0
     assert "ok      local  .agents/skills/example/SKILL.md" in result.output
+
+
+# -- home as the root --------------------------------------------------------
+
+
+@pytest.fixture(params=[False, True], ids=["bare-home", "dotfiles-repo"])
+def at_home(
+    request: pytest.FixtureRequest, box: Sandbox, monkeypatch: pytest.MonkeyPatch
+) -> Path:
+    """The working directory at a home that really is the root, either way it can be."""
+    if request.param:
+        (box.home / ".git").mkdir()
+    monkeypatch.chdir(box.home)
+    return box.home
+
+
+@pytest.mark.usefixtures("no_outer_markers")
+def test_a_healthy_global_install_passes_its_check_at_home(at_home: Path) -> None:
+    assert runner.invoke(example_app, ["install", "--global"]).exit_code == 0
+
+    result = runner.invoke(example_app, ["install", "--check"])
+    assert result.exit_code == 0, result.output
+    rows = [line for line in result.output.splitlines() if line.startswith("ok")]
+    assert len(rows) == len(list(EXAMPLE.placements()))
+    assert all(" global " in row for row in rows)
+    assert "local" not in result.output
+
+
+@pytest.mark.usefixtures("no_outer_markers")
+def test_a_local_stamp_at_home_reads_drifted_with_the_global_repair(
+    at_home: Path,
+) -> None:
+    inst.install(EXAMPLE, at_home, "global")
+    rule = EXAMPLE.rules[0]
+    inst.write_artifact(EXAMPLE, rule, "local", at_home, CLAUDE_CODE)
+
+    result = runner.invoke(example_app, ["install", "--check"])
+    assert result.exit_code == 1
+    assert "drifted global .claude/rules/examplehost.md" in result.output
+    assert "rendered for mode=local, installed where mode=global" in result.output
+    assert "repair: examplehost install --force" in result.output
+    assert "--local" not in result.output
+
+    assert runner.invoke(example_app, ["install", "--force"]).exit_code == 0
+    assert runner.invoke(example_app, ["install", "--check"]).exit_code == 0
+
+
+@pytest.mark.usefixtures("no_outer_markers")
+@pytest.mark.parametrize(
+    "args", [["install", "--local"], ["install", "--local", "--check"]]
+)
+def test_local_at_home_is_refused_and_leaves_the_files_alone(
+    at_home: Path, args: list[str]
+) -> None:
+    report = inst.install(EXAMPLE, at_home, "global")
+    before = {path: path.read_bytes() for path in report.written}
+
+    result = runner.invoke(example_app, args)
+    assert result.exit_code == 1
+    assert "same files" in result.output
+    assert "`examplehost install`" in result.output
+    assert {path: path.read_bytes() for path in report.written} == before
+
+
+@pytest.mark.usefixtures("no_outer_markers")
+def test_force_does_not_get_a_local_install_past_home(at_home: Path) -> None:
+    result = runner.invoke(example_app, ["install", "--local", "--force"])
+    assert result.exit_code == 1
+    assert not (at_home / ".claude").exists()
+
+
+@pytest.mark.usefixtures("no_outer_markers")
+def test_a_local_only_host_still_installs_at_home(at_home: Path) -> None:
+    assert runner.invoke(multi_app, ["install"]).exit_code == 0
+    result = runner.invoke(multi_app, ["install", "--check"])
+    assert result.exit_code == 0, result.output
+    assert "global" not in result.output
+
+
+@pytest.mark.usefixtures("no_outer_markers")
+def test_a_local_first_host_at_home_is_pointed_at_global(at_home: Path) -> None:
+    host = dataclasses.replace(SOLO, modes=("local", "global"))
+    app = typer_app(host)
+
+    # A bare install means local on this host, which has nowhere to go here.
+    refused = runner.invoke(app, ["install"])
+    assert refused.exit_code == 1
+    assert "`solohost install --global`" in refused.output
+    assert not (at_home / ".claude").exists()
+
+    # A flagless check judges what is there, and is not refused.
+    missing = runner.invoke(app, ["install", "--check"])
+    assert missing.exit_code == 1
+    assert "repair: solohost install --global --force" in missing.output
+
+    assert runner.invoke(app, ["install", "--global"]).exit_code == 0
+    assert runner.invoke(app, ["install", "--check"]).exit_code == 0
+
+
+@pytest.mark.usefixtures("no_outer_markers")
+def test_a_note_about_a_previous_name_prints_once_at_home(at_home: Path) -> None:
+    skill = dataclasses.replace(SOLO.skills[0], previous_names=("old-solo",))
+    host = dataclasses.replace(SOLO, artifacts=(skill,))
+    inst.install(host, at_home, "global")
+    old = at_home / ".claude/skills/old-solo/SKILL.md"
+    old.parent.mkdir(parents=True)
+    old.write_text("mine\n", encoding="utf-8")
+
+    result = runner.invoke(typer_app(host), ["install", "--check"])
+    assert result.output.count(".claude/skills/old-solo/SKILL.md sits at") == 1
+
+
+@pytest.mark.usefixtures("no_outer_markers")
+def test_commands_from_a_directory_under_home_keep_the_global_install(
+    box: Sandbox, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    report = inst.install(EXAMPLE, box.home, "global")
+    stub = box.home / ".claude/skills/example/SKILL.md"
+    assert stub in report.written
+    before = stub.read_bytes()
+    notes = box.home / "notes" / "deep"
+    notes.mkdir(parents=True)
+    monkeypatch.chdir(notes)
+
+    check = runner.invoke(example_app, ["install", "--check"])
+    assert check.exit_code == 0, check.output
+    assert "repair" not in check.output
+
+    assert runner.invoke(example_app, ["install", "--local"]).exit_code == 0
+    assert (notes / ".claude/skills/example/SKILL.md").is_file()
+    assert stub.read_bytes() == before
+    assert stamped_mode(stub.read_text(encoding="utf-8"), EXAMPLE) == "global"

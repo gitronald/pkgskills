@@ -26,6 +26,24 @@ def _statuses(host: Host, root: Path, mode: str | None = None) -> dict[str, str]
     }
 
 
+@pytest.fixture
+def home_link(box: Sandbox, tmp_path: Path) -> Path:
+    """A symlink to the sandbox's home directory."""
+    link = tmp_path / "link"
+    link.symlink_to(box.home)
+    return link
+
+
+@pytest.fixture
+def no_home(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A machine where no home directory can be determined."""
+
+    def raises() -> Path:
+        raise RuntimeError("could not determine home directory")
+
+    monkeypatch.setattr(inst, "global_base", raises)
+
+
 def test_artifact_paths_per_mode_and_kind(box: Sandbox) -> None:
     skill, rule, agent = EXAMPLE.artifacts
     assert inst.artifact_path(EXAMPLE, skill, "global", box.repo, CLAUDE_CODE) == (
@@ -42,17 +60,7 @@ def test_artifact_paths_per_mode_and_kind(box: Sandbox) -> None:
     )
 
 
-@pytest.fixture
-def no_outer_git(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Root discovery must not depend on whether pytest itself runs inside a repo."""
-    exists = Path.exists
-    outside_markers = {parent / ".git" for parent in tmp_path.parents}
-    monkeypatch.setattr(
-        Path, "exists", lambda path: path not in outside_markers and exists(path)
-    )
-
-
-@pytest.mark.usefixtures("no_outer_git")
+@pytest.mark.usefixtures("no_outer_markers")
 def test_find_repo_root_walks_up_and_falls_back(box: Sandbox, tmp_path: Path) -> None:
     sub = box.repo / "a" / "b"
     sub.mkdir(parents=True)
@@ -511,12 +519,75 @@ def test_after_install_hook_sees_force(box: Sandbox) -> None:
 def test_no_stale_removal_when_repo_root_is_home(box: Sandbox) -> None:
     os.chdir(box.home)
     (box.home / ".git").mkdir()
-    inst.install(SOLO, box.home, "local")
+    # Written directly, since a local install at home is refused.
+    inst.write_artifact(SOLO, SOLO.skills[0], "local", box.home, CLAUDE_CODE)
     report = inst.install(SOLO, box.home, "global")
     assert report.removed == ()
     assert inst.artifact_path(
         SOLO, SOLO.skills[0], "global", box.home, CLAUDE_CODE
     ).exists()
+
+
+def test_a_global_install_keeps_its_files_under_a_symlinked_home(
+    box: Sandbox, home_link: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The root is resolved and the global base is not, so comparing built paths
+    # took the file just written for a leftover local copy and deleted it.
+    (box.home / ".git").mkdir()
+    monkeypatch.setenv("HOME", str(home_link))
+    monkeypatch.chdir(home_link)
+    root = inst.find_repo_root(harnesses=SOLO.harnesses)
+    assert root == box.home
+
+    report = inst.install(SOLO, root, "global")
+    assert report.removed == ()
+    assert all(path.is_file() for path in report.written)
+    assert {row.status for row in inst.check(SOLO, root)} == {"ok"}
+
+
+def test_root_is_home(box: Sandbox, home_link: Path) -> None:
+    assert inst.root_is_home(box.home)
+    assert not inst.root_is_home(box.repo)
+    assert inst.root_is_home(home_link)
+
+
+@pytest.mark.usefixtures("no_home")
+def test_root_is_home_is_false_where_no_home_can_be_determined(box: Sandbox) -> None:
+    assert not inst.root_is_home(box.home)
+
+
+def test_local_install_at_home_is_refused_before_any_write(box: Sandbox) -> None:
+    with pytest.raises(ValueError, match="same files"):
+        inst.install(EXAMPLE, box.home, "local")
+    assert not (box.home / ".claude").exists()
+
+
+def test_a_local_only_host_keeps_its_one_location_at_home(box: Sandbox) -> None:
+    assert inst.location_modes(MULTI, box.home) == ("local",)
+    report = inst.install(MULTI, box.home, "local")
+    assert report.written
+    assert {row.status for row in inst.check(MULTI, box.home)} == {"ok"}
+
+
+def test_a_local_first_host_at_home_resolves_to_global(box: Sandbox) -> None:
+    host = dataclasses.replace(SOLO, modes=("local", "global"))
+    assert inst.printing_mode(host, box.home) == "global"
+    rows = inst.check(host, box.home)
+    assert {(row.mode, row.status) for row in rows} == {("global", "missing")}
+
+    inst.install(host, box.home, "global")
+    assert inst.installed_mode(host, box.home) == "global"
+    assert {(r.mode, r.status) for r in inst.check(host, box.home)} == {
+        ("global", "ok")
+    }
+
+
+def test_stub_paths_at_home_list_each_file_once(box: Sandbox) -> None:
+    rows = inst.skill_stub_paths(SOLO, box.home)
+    assert [path for *_, path in rows] == [
+        box.home / ".claude/skills/use-solo/SKILL.md",
+        box.home / ".agents/skills/use-solo/SKILL.md",
+    ]
 
 
 # -- lines -------------------------------------------------------------------
@@ -800,14 +871,53 @@ def test_find_repo_root_stops_at_codex_directory(box: Sandbox) -> None:
     assert inst.find_repo_root(sub) == box.repo
 
 
-def test_find_repo_root_stops_at_a_harness_directory_in_home(box: Sandbox) -> None:
+@pytest.mark.usefixtures("no_outer_markers")
+def test_find_repo_root_passes_a_harness_directory_in_home(box: Sandbox) -> None:
     (box.home / ".claude").mkdir()
+    (box.home / ".codex").mkdir()
     notes = box.home / "notes" / "deep"
     notes.mkdir(parents=True)
+    assert inst.find_repo_root(notes, EXAMPLE.harnesses) == notes
+    # Started at home itself, the walk has nowhere better to fall back to.
+    assert inst.find_repo_root(box.home, EXAMPLE.harnesses) == box.home
+
+
+@pytest.mark.usefixtures("no_outer_markers")
+def test_find_repo_root_passes_home_through_a_symlink(
+    box: Sandbox, home_link: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (box.home / ".claude").mkdir()
+    notes = box.home / "notes"
+    notes.mkdir()
+    monkeypatch.setenv("HOME", str(home_link))
+    assert inst.find_repo_root(home_link / "notes", EXAMPLE.harnesses) == notes
+
+
+def test_find_repo_root_keeps_a_dotfiles_repository_at_home(box: Sandbox) -> None:
+    (box.home / ".git").mkdir()
+    (box.home / ".claude").mkdir()
+    notes = box.home / "notes"
+    notes.mkdir()
     assert inst.find_repo_root(notes, EXAMPLE.harnesses) == box.home
 
 
-@pytest.mark.usefixtures("no_outer_git")
+def test_find_repo_root_keeps_a_harness_directory_below_home(box: Sandbox) -> None:
+    (box.home / ".claude").mkdir()
+    project = box.home / "project"
+    (project / ".claude").mkdir(parents=True)
+    sub = project / "a"
+    sub.mkdir()
+    assert inst.find_repo_root(sub, EXAMPLE.harnesses) == project
+
+
+@pytest.mark.usefixtures("no_home")
+def test_find_repo_root_works_where_no_home_can_be_determined(box: Sandbox) -> None:
+    project = box.repo / "inner"
+    (project / ".claude").mkdir(parents=True)
+    assert inst.find_repo_root(project, EXAMPLE.harnesses) == project
+
+
+@pytest.mark.usefixtures("no_outer_markers")
 def test_the_documented_repository_guard(box: Sandbox, tmp_path: Path) -> None:
     """The README's refusal: `.git` at the walk's result or above it."""
 
@@ -821,7 +931,7 @@ def test_the_documented_repository_guard(box: Sandbox, tmp_path: Path) -> None:
     assert inst.find_repo_root(nested, EXAMPLE.harnesses) == nested
     assert in_repository(nested)
     assert in_repository(box.repo)
-    # A home directory is a marker for the walk, and not a repository.
+    # A home directory holding a harness config is not a repository.
     (box.home / ".claude").mkdir()
     notes = box.home / "notes"
     notes.mkdir()

@@ -11,6 +11,9 @@ A file's mode is the one its location implies. A copy rendered for one mode
 and carried to the other location reads as drifted, because the commands
 embedded in it are wrong where it sits.
 
+Where the repository root is ``$HOME`` itself the two locations are one, and it
+is the global one: see :func:`location_modes`.
+
 Which of the two a given host uses is the host's to declare: everything here
 walks :attr:`Host.modes <pkgskills.host.Host.modes>` rather than both, so a host that
 supports one mode is never checked at, or written to, the other's location.
@@ -142,6 +145,14 @@ def global_base() -> Path:
     return Path.home()
 
 
+def _resolved_home() -> Path | None:
+    """The home directory with symlinks resolved, or ``None`` where there is none."""
+    try:
+        return global_base().resolve()
+    except RuntimeError:
+        return None
+
+
 def find_repo_root(
     start: Path | None = None, harnesses: Sequence[Harness] = ()
 ) -> Path:
@@ -151,9 +162,13 @@ def find_repo_root(
     install must target the root the harness loads from, not whatever
     subdirectory the command ran in. Falls back to ``start`` itself.
 
-    The result is not proof of a repository. With ``harnesses`` given, a
-    ``~/.claude`` or ``~/.codex`` makes ``$HOME`` the root of everything under it
-    that no nearer marker claims. A host command that must not write outside a
+    A harness directory in ``$HOME`` is not a marker: ``~/.claude`` and
+    ``~/.codex`` are where a global install lives, so they say nothing about the
+    directories under them. ``~/.git`` is one, so a dotfiles repository keeps its
+    root.
+
+    The result is not proof of a repository, since the fallback returns a
+    directory outside any. A host command that must not write outside a
     repository looks for ``.git`` at the result and above it.
 
     Deliberately a filesystem walk, never a question put to git: an ambient
@@ -161,12 +176,54 @@ def find_repo_root(
     :mod:`pkgskills.proc` keeps the same posture on the write side.
     """
     base = (start or Path.cwd()).resolve()
+    home = _resolved_home()
     for candidate in (base, *base.parents):
         if (candidate / ".git").exists():
             return candidate
-        if any((candidate / h.config_dir).is_dir() for h in harnesses):
+        if candidate != home and any(
+            (candidate / h.config_dir).is_dir() for h in harnesses
+        ):
             return candidate
     return base
+
+
+def root_is_home(root: Path) -> bool:
+    """True when ``root`` is the home directory, however either is spelled.
+
+    Both sides are resolved: a root comes out of :func:`find_repo_root` resolved
+    and :func:`global_base` does not, so comparing built paths would miss a home
+    reached through a symlink and take one file for two.
+    """
+    return _resolved_home() == root.resolve()
+
+
+def location_modes(host: Host, root: Path) -> tuple[Mode, ...]:
+    """The modes that name a location of their own for ``host`` at ``root``.
+
+    The host's declared modes, except where the root is ``$HOME`` and the host
+    has a global mode. Local and global paths then name the same files, which
+    serve every repository on the machine, so the one location counts as global.
+    A local-only host keeps its mode: it has no global copy to overwrite, and the
+    only location it has is the one it asked for.
+    """
+    if host.supports_mode("global") and root_is_home(root):
+        return ("global",)
+    return host.modes
+
+
+def require_mode(host: Host, root: Path, mode: Mode) -> None:
+    """Raise ``ValueError`` unless ``host`` can be installed in ``mode`` at ``root``."""
+    if not host.supports_mode(mode):
+        raise ValueError(
+            f"{host.dist} does not install in {mode} mode; "
+            f"it supports: {', '.join(host.modes)}"
+        )
+    if mode not in location_modes(host, root):
+        raise ValueError(
+            f"{root} is the home directory, where {host.dist}'s {mode} and global "
+            f"paths are the same files; run `{host.install_command('global')}` here, "
+            f"or use --{mode} inside a repository"
+        )
 
 
 def artifact_path(
@@ -307,15 +364,16 @@ def check(host: Host, root: Path, mode: Mode | None = None) -> list[Check]:
     declared mode order (global first by default), then harness order. Kinds
     loaded from both bases can leave a stale copy at either. For each harness,
     an artifact present at neither location reports ``missing`` once, against
-    its default mode's path.
+    its default mode's path. Where :func:`location_modes` finds one location,
+    each file is judged once.
     """
     # One fact for the whole run: which mode an existing install resolves to.
     # Re-deriving it per row would re-walk the filesystem for every artifact.
     installed = installed_mode(host, root)
+    modes = (mode,) if mode is not None else location_modes(host, root)
     results: list[Check] = []
     for art in host.artifacts:
         harnesses = host.harnesses_for(art.kind)
-        modes = (mode,) if mode is not None else host.modes
         locations = {
             harness.name: [
                 m
@@ -323,7 +381,7 @@ def check(host: Host, root: Path, mode: Mode | None = None) -> list[Check]:
                 if mode is not None
                 or occupied(artifact_path(host, art, m, root, harness))
             ]
-            or [host.default_mode]
+            or [modes[0]]
             for harness in harnesses
         }
         for m in modes:
@@ -484,7 +542,7 @@ def installed_mode(host: Host, root: Path) -> Mode | None:
     this repo been pinned to global?" need the difference.
     """
     artifacts = host.skills or host.artifacts
-    for mode in host.modes:
+    for mode in location_modes(host, root):
         for harness in host.harnesses:
             for art in artifacts:
                 if harness.supports(art.kind) and occupied(
@@ -497,13 +555,14 @@ def installed_mode(host: Host, root: Path) -> Mode | None:
 def printing_mode(host: Host, root: Path) -> Mode:
     """The mode a *printed* body should render ``{cli}`` for.
 
-    :func:`installed_mode` when anything is installed, the host's
-    :attr:`~pkgskills.host.Host.default_mode` when nothing is — which is the whole
-    of the "which prefix do I print?" decision, exported because a host that
+    :func:`installed_mode` when anything is installed, the first mode with a
+    location at ``root`` when nothing is, which is the host's
+    :attr:`~pkgskills.host.Host.default_mode` everywhere but ``$HOME``. That is the
+    whole of the "which prefix do I print?" decision, exported because a host that
     keeps a print command of its own has to make it the same way ``skill`` and
     ``doc`` do or the commands it prints will not run.
     """
-    return installed_mode(host, root) or host.default_mode
+    return installed_mode(host, root) or location_modes(host, root)[0]
 
 
 def stale_local(
@@ -533,8 +592,8 @@ def stale_local(
       a repo with no global install still reads ``ok``.
     * Only when this harness's global path is occupied: another harness's copy
       cannot supersede this one.
-    * Only when the two paths differ, which they do not when the repo root is
-      ``$HOME`` — there is one file there, not a leftover second one.
+    * Only when the root is not ``$HOME``, where the two paths name one file,
+      not a leftover second one.
 
     ``installed`` lets a caller judging many artifacts hand in
     :func:`installed_mode`'s answer instead of paying for it once per row.
@@ -547,7 +606,7 @@ def stale_local(
     if resolved != "global":
         return False
     glob = artifact_path(host, art, "global", root, harness)
-    return occupied(glob) and glob != artifact_path(host, art, "local", root, harness)
+    return occupied(glob) and not root_is_home(root)
 
 
 def shadowed_skills(host: Host, root: Path) -> list[Path]:
@@ -558,7 +617,7 @@ def shadowed_skills(host: Host, root: Path) -> list[Path]:
     the two paths coincide and there is really only one file, and empty for a
     host with no global mode, which never puts a stub there to shadow with.
     """
-    if not host.supports_mode("global"):
+    if not host.supports_mode("global") or root_is_home(root):
         return []
     out: list[Path] = []
     for skill in host.skills:
@@ -567,7 +626,7 @@ def shadowed_skills(host: Host, root: Path) -> list[Path]:
                 continue
             glob = artifact_path(host, skill, "global", root, harness)
             local = artifact_path(host, skill, "local", root, harness)
-            if glob != local and occupied(glob) and occupied(local):
+            if occupied(glob) and occupied(local):
                 out.append(local)
     return out
 
@@ -613,11 +672,11 @@ def remove_stale_local(host: Host, root: Path) -> list[Path]:
     The reverse cleanup is deliberately absent: a local install never deletes
     the global copy that serves every other repository.
     """
+    if root_is_home(root):
+        return []
     removed: list[Path] = []
     for art, harness in host.placements():
         local = artifact_path(host, art, "local", root, harness)
-        if local == artifact_path(host, art, "global", root, harness):
-            continue
         if is_generated(local, host):
             local.unlink()
             removed.append(local)
@@ -664,14 +723,12 @@ def install(
 
     Raises :class:`ForeignArtifactError` before writing anything when a target
     is not ours and ``force`` is off, and ``ValueError`` when ``mode`` is not
-    one the host supports — a local-only host must not be written under
-    ``$HOME`` by a caller that bypassed the CLI's own check.
+    one the host supports, or names a location that is really the global one —
+    a local-only host must not be written under ``$HOME`` by a caller that
+    bypassed the CLI's own check, and neither must a local stub replace the
+    global one.
     """
-    if not host.supports_mode(mode):
-        raise ValueError(
-            f"{host.dist} does not install in {mode} mode; "
-            f"it supports: {', '.join(host.modes)}"
-        )
+    require_mode(host, root, mode)
     guard(host, root, mode, force=force)
     # Resolved before the first write, since afterwards the fresh files always
     # read as the requested mode.
@@ -709,9 +766,10 @@ def install(
 
 def skill_stub_paths(host: Host, root: Path) -> list[tuple[Skill, Mode, Harness, Path]]:
     """Every skill stub location, for callers that narrate state."""
+    modes = location_modes(host, root)
     return [
         (skill, mode, harness, artifact_path(host, skill, mode, root, harness))
         for skill in host.skills
-        for mode in host.modes
+        for mode in modes
         for harness in host.harnesses_for(skill.kind)
     ]

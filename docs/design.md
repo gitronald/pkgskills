@@ -106,7 +106,14 @@ is a per-repository setting, this is a per-host constraint.
 root found by walking up to `.git` or any declared harness config directory
 (`.claude` or `.codex` by default). Nothing anchors to the working directory,
 which is how a local install from a
-subdirectory ends up where the harness loads from. A host's own commands sit
+subdirectory ends up where the harness loads from. A harness directory in `$HOME`
+is not a marker: `~/.claude` is the global install's own location, and treating it
+as one made home the root of everything under it, where local and global paths
+name the same files. `~/.git` still marks a root, so that coincidence remains
+possible and has its own rule: there is one location, it is the global one, and
+asking for the other is an error rather than a redirect, as it is for a mode the
+host does not support. A local-only host is exempt, having no global copy to
+overwrite. A host's own commands sit
 outside this: `find_repo_root` is public so they can anchor the same way, and the
 host guide tells them to, but nothing on `Host` or in `register` can make them. A
 callback mounted by `register` could hand every command a root, at the price of

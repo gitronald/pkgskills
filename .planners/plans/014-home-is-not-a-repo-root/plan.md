@@ -1,11 +1,11 @@
 ---
 id: 14
 slug: home-is-not-a-repo-root
-status: active
+status: done
 branch: feature/home-is-not-a-repo-root
 created: 2026-10-31T14:10:56-07:00
-concluded:
-pr:
+concluded: 2026-10-31T14:40:23-07:00
+pr: https://github.com/gitronald/pkgskills/pull/26
 ---
 
 # Stop treating the home directory as a repository root
@@ -121,26 +121,54 @@ one exists on at least one development machine.
   - Base: `dev` at `23c4015`
   - Worktree: `.worktrees/014-home-is-not-a-repo-root`
   - PR: pending
+- **2026-10-31T14:33:20-07:00** — PR opened: https://github.com/gitronald/pkgskills/pull/26
+- **2026-10-31T14:35:45-07:00** — Implemented all four steps. Departures from the spec, and what running it showed:
+  - **Second cause of the same class, not in the plan.** The guards compared built paths, a resolved root with an unresolved home. Under a symlinked `$HOME` holding `.git`, they did not fire: run against the code before this plan, a global install deleted the four stubs it had just written and reported them as stale local copies. `root_is_home` resolves both sides and replaces the three comparisons, and a regression test pins it. Reproduce it with a home that is a symlink to a directory holding `.git`, then a global install from there.
+  - **Coincidence is decided on the root, not per path.** Both modes share one relative layout, so a root at home makes all of a host's paths coincide or none. `location_modes(host, root)` is the single answer, used by `check`, `installed_mode`, `printing_mode`, `skill_stub_paths`, and the leftover notes. `require_mode` carries the refusal for `install` and the CLI.
+  - **A flagless install on a local-first host is refused at home too.** Decision 2 names `--local`. A bare `install` on a host declaring `modes=("local", "global")` means local, so it would have done the same overwrite. It gets the refusal, which names `--global`. Its flagless check is not refused. `check`'s `missing` fallback now uses the first location mode, since the host's default would have produced no row there.
+  - **`check(host, root, "local")` called directly is unchanged at home.** An explicit mode judges that one location, as it always has. The CLI refuses before reaching it.
+  - **The fixture is renamed `no_outer_markers` and moved to `tests/conftest.py`.** The plan's `no_outer_git` hid only `.git`, and the first run of the new tests stopped at a stray harness directory above the temporary directory. It now hides `.git`, `.claude`, and `.codex` above it.
+  - **Docs beyond the plan's list:** README's Modes section said the two locations never collide, and the `[Unreleased]` line saying the walk can stop at `$HOME` was no longer true. Both are corrected.
+  - **Verified:** full suite, 391 passed, coverage 98.69%, with ruff and pyrefly clean. The plan's reproduction also ran as real processes with a sandboxed `$HOME`: from a directory under home the check exits 0 with `ok` rows only, `install --local` writes under that directory and leaves the global stub at `mode=global`, and from home `--local` and `--local --check` both exit 1. With `.git` added at home, the check from a fresh subdirectory exits 0 and `--local` is refused.
+  - **Not changed:** a harness directory above home still marks a root, as any other directory's does. This only arises on a machine with such a directory in a parent of home.
+- **2026-10-31T14:36:02-07:00** — Implemented: 6 commits ahead of `dev`.
+- **2026-10-31T14:47:23-07:00** — Final log. Review ran at medium level through the code-review skill, and CI passed on Python 3.11 to 3.14 at the head it reviewed.
+  - Review follow-up: 6 findings confirmed. Fixed: the `no_home` stub and the symlinked-home setup became fixtures, and `skill_stub_paths` derives its modes once. These are refactors with no behaviour change, so they have no paired regression tests, and the existing tests cover them.
+  - Conscious no-ops: `stale_local`'s per-row `resolve()` calls and the repeated `location_modes` derivation within one check, both immaterial next to the render and file read each row does. A local-only host installed at a home with no `.git` is not found from a subdirectory. The maintainer accepted this at the review gate, since a directory under home resolves like any other, which is decision 1.
+  - The review comment on the PR says 5 candidates were rejected. The count is 4 rejected and 1 nit dropped before verification. The edit that would correct it was refused, so the comment stands as posted.
 
 ## Handoff
 
-State: draft, nothing started. The problem is verified by running it, and decision 1
-by a monkeypatched walk in a scratch script: from `~/notes/deep` the check exits 0
-with `ok` rows only, and `install --local` wrote under that directory and left the
-global stub at `mode=global`. That probe stopped its walk short of a stray `/tmp/.git`,
-so it does not cover a parent marker above home. Decision 2 is not prototyped.
+State: finished, with nothing uncommitted. Merged through the plan's PR.
 
-Open questions:
+Questions:
 
-1. **Should a host's `Line` rows count outside a repository?** After this plan, a host
-   that declares lines still fails `install --check` from a non-repository directory,
-   with `missing` rows, and its repair writes the line file there. This holds for any
-   directory with no repository, under home or not. Skipping lines when no `.git` is
-   at or above the root looks right for `.gitattributes`, but a `Line` can name any
-   file, and a directory rooted by `.claude/` alone is a legitimate root. Recommended:
-   leave the behaviour as it is here and settle this at activation, either in this
-   plan or as a follow-up, since it needs one host's view of what a line is for. Waits
-   on the maintainer.
+1. **Should a host's `Line` rows count outside a repository?** Answered 2026-10-31: the
+   behaviour stays as it is here, and the question moves to plan 015, which is drafted
+   with what was measured.
 
-Order: 1 -> 2 -> 3 -> 4, then release, since hosts only get the fix through a new
-`pkgskills` version.
+Settled at the review gate, 2026-10-31: a local-only host installed at a home with no
+`.git` is not found from a directory under it, and that stands.
+
+Not verified: the fix against a released host. It ran only with the fixture hosts, in
+the test suite and as real processes under a sandboxed `$HOME`. Hosts get it through a
+new `pkgskills` version, which this plan did not cut.
+
+## Retrospective
+
+- Both decisions held as written. The plan's prototype of decision 1 proved the walk, and
+  what the plan had not reached turned up once decision 2 was built: a local-first host's
+  bare `install`, and the `missing` fallback that would have produced no row for it.
+- Replacing the path comparisons with one resolved predicate exposed a worse bug than the
+  one being fixed: a global install under a symlinked home deleted its own stubs. Guards
+  that compare built paths inherit any spelling difference between their two bases, so
+  compare the bases, resolved.
+- Deciding coincidence on the root rather than per path made it one function, because both
+  modes share a relative layout. Every site that had walked `host.modes` then needed the
+  same answer, so `location_modes` went in once rather than as a guard at each.
+- The test fixture named in the plan hid only `.git`, and a stray harness directory above
+  the temporary directory failed the new tests on one machine while CI would have passed.
+  A fixture that isolates a walk has to hide everything the walk looks for.
+- A real-process run under a sandboxed `$HOME` was worth doing beside `CliRunner`, but its
+  first dotfiles case proved nothing, because an earlier step had left a harness directory
+  in the start directory. Each scenario in such a run needs a clean start directory.

@@ -33,13 +33,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `skill_stub_paths` returns `(skill, mode, harness, path)` tuples.
 - The host guide now says how a host's own commands should find the repository
   root (`find_repo_root(harnesses=HOST.harnesses)`), and how to refuse to write
-  outside a repository, since the walk can stop at `$HOME`.
+  outside a repository, since the walk can return a directory outside one.
 - The docs now say that a dispatcher stub declares no `metadata`, so a
   `metadata.version` on a dispatcher's source stays in the package, and that a
   bare `1.0.0` passes the check while a bare `1.0` does not.
 - The docs now agree about flat sources: they install, but
   `assert_spec_conformant` fails them. A host that keeps them filters
   `Host.check_spec()` by rule.
+
+### Fixed
+
+- `find_repo_root` no longer stops at `~/.claude` or `~/.codex`, which made
+  `$HOME` the root of every directory under it. From such a directory, a healthy
+  global install failed `install --check`, and the repair it printed,
+  `install --local --force`, overwrote the global stubs with ones that told every
+  repository to run `uv run <cli>`. A directory under home now resolves as any
+  other directory does. `~/.git` still marks a root. An install clobbered this way
+  reads `drifted` in a flagless `install --check`, and the global install it prints
+  as the repair restores it.
+- Where the root really is `$HOME`, local and global paths now count as one global
+  location. A flagless check judges each file once, `--local` is refused for
+  `install` and `install --check`, and `pkgskills.install` raises `ValueError`. A
+  local-only host is exempt.
+- A global install under a symlinked `$HOME` holding `.git` no longer deletes the
+  stubs it just wrote. The guard compared a resolved root with an unresolved home,
+  so it took each new file for a leftover local copy.
 
 ## [0.5.1] - 2026-09-12
 
