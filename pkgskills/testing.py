@@ -246,6 +246,10 @@ def assert_spec_conformant(host: Host) -> None:
     consumer points at the package, and neither is running while the host's own
     suite is. Every violation is reported at once, each naming the rule it
     breaks and what to do about it.
+
+    The layout is one of those rules, so a flat source fails here though it
+    installs. A host keeping flat sources on purpose filters
+    :meth:`Host.check_spec` by ``rule`` in its own test instead.
     """
     violations = SPEC.check_host(host)
     if violations:

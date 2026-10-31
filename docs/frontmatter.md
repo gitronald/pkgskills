@@ -32,7 +32,22 @@ frontmatter block byte for byte; a dispatcher generates `name` and
   fallback to the host release.
 
 Quote the value. A version is a string, and an unquoted `1.0` reads back as a
-float.
+float and fails `assert_spec_conformant` (`metadata-value-not-a-string`), as do
+`1` and a bare date. A bare `1.0.0` happens to read as a string and passes, but
+quote it anyway: the same key becomes a float the day it reads `2.0`.
+
+## A dispatcher's sources
+
+A dispatcher stub declares no `metadata`. It has one frontmatter block and
+several sources, and it takes only each source's `description`, for its list of
+subcommands. A `metadata` block on a dispatcher source is therefore the source's
+own: the conformance check reads it, and so does a linter or a person looking
+at the package, but it reaches no installed file. Adding one or bumping a
+version in it leaves the stub unchanged, so nothing drifts.
+
+Set it if those readers are worth it, and quote it the same way, since the
+check covers every source. The release of a dispatcher as a whole is the host's,
+and the stamp already records that.
 
 ## Where the release provenance lives
 
@@ -53,16 +68,17 @@ frontmatter is passed through untouched.
 
 `install --check` masks the two version tokens in the stamp line before
 comparing, so upgrading either package never reports drift on a file whose
-content did not change. A source-declared `metadata.version` is *not* masked:
-it is the skill's own, so changing it is a real content change and the stub
-should drift until it is reinstalled.
+content did not change. A `metadata.version` in a single-source stub is *not*
+masked: it is the skill's own, so changing it is a real content change and the
+stub should drift until it is reinstalled.
 
 ## Writing a source prompt
 
 - Declare `metadata.version` if the skill is versioned on its own schedule, and
   leave it out if it is not. `pkgskills` writes no metadata keys, so nothing it
   emits can collide with what the source declares.
-- Every `metadata` key a source declares is kept, in the order the source wrote
-  them.
+- Every `metadata` key a single-source skill declares is kept, in the order the
+  source wrote them. A [dispatcher's sources](#a-dispatchers-sources) keep theirs
+  in the package.
 - Where the source file itself belongs, and how its path names it, is
   [Source layout](source-layout.md).

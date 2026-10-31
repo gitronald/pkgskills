@@ -15,6 +15,7 @@ from solohost.cli import HOST as SOLO
 
 from pkgskills.frontmatter import split_frontmatter
 from pkgskills.host import Doc, Host, Skill
+from pkgskills.rendering import render_stub
 from pkgskills.spec import SPEC, SkillSpec, SpecError, Violation, report
 from pkgskills.testing import assert_spec_conformant
 
@@ -204,6 +205,37 @@ def test_the_exemplary_fixtures_are_conformant(host: Host) -> None:
     assert_spec_conformant(host)
 
 
+@pytest.mark.parametrize(
+    ("sources", "left"),
+    [
+        (("flat-skill.md",), set()),
+        (
+            ("flat-skill.md", "bad-metadata/SKILL.md"),
+            {"metadata-value-not-a-string"},
+        ),
+    ],
+    ids=["single-source", "dispatcher"],
+)
+def test_filtering_entry_file_keeps_a_flat_host_checked_on_everything_else(
+    sources: tuple[str, ...], left: set[str]
+) -> None:
+    """The call the docs give a host that keeps flat sources on purpose."""
+    host = dataclasses.replace(
+        BROKEN, artifacts=(Skill(name="flat-skill", sources=sources),)
+    )
+    with pytest.raises(AssertionError, match="entry-file"):
+        assert_spec_conformant(host)
+    assert rules([v for v in host.check_spec() if v.rule != "entry-file"]) == left
+
+
+def test_a_flat_single_source_installs_a_conformant_skill() -> None:
+    """The layout rule is about the package: the stub's path comes from the name."""
+    skill = Skill(name="flat-skill", sources=("flat-skill.md",))
+    host = dataclasses.replace(BROKEN, artifacts=(skill,))
+    stub = render_stub(host, skill, "global")
+    assert SPEC.check_frontmatter(f"{skill.name}/{SPEC.entry_file}", stub) == []
+
+
 def test_assert_spec_conformant_names_the_rule_and_the_fix() -> None:
     with pytest.raises(AssertionError) as exc:
         assert_spec_conformant(BROKEN)
@@ -297,6 +329,13 @@ def test_a_string_valued_metadata_mapping_is_accepted() -> None:
     # An unquoted plain scalar is still a string; only YAML's other resolutions
     # are the problem.
     assert metadata_check("metadata:\n  author: example-org\n") == []
+
+
+def test_a_bare_three_part_version_reads_as_a_string() -> None:
+    # The docs say this passes and that the same key fails at two parts.
+    assert metadata_check("metadata:\n  version: 1.0.0\n") == []
+    (violation,) = metadata_check("metadata:\n  version: 2.0\n")
+    assert violation.rule == "metadata-value-not-a-string"
 
 
 def test_metadata_absent_is_not_a_violation() -> None:

@@ -31,6 +31,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `harnesses` instead of one `harness` and recognizes any config directory.
 - `Check.harness` identifies the harness for each verdict.
   `skill_stub_paths` returns `(skill, mode, harness, path)` tuples.
+- The host guide now says how a host's own commands should find the repository
+  root (`find_repo_root(harnesses=HOST.harnesses)`), and how to refuse to write
+  outside a repository, since the walk can stop at `$HOME`.
+- The docs now say that a dispatcher stub declares no `metadata`, so a
+  `metadata.version` on a dispatcher's source stays in the package, and that a
+  bare `1.0.0` passes the check while a bare `1.0` does not.
+- The docs now agree about flat sources: they install, but
+  `assert_spec_conformant` fails them. A host that keeps them filters
+  `Host.check_spec()` by rule.
 
 ## [0.5.1] - 2026-09-12
 

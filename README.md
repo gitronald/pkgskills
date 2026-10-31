@@ -86,9 +86,9 @@ holding the skill's `references/` and `scripts/` too — so the `prompts/` tree
 passes a skills linter as it stands. The `skills/` group above is a
 convenience, not a requirement: `pkgskills` reads only the last two components
 of the path, so a host that ships nothing but skills can drop it and write
-`sources=("add/SKILL.md",)`. A flat `skills/add.md` still works and may be
-mixed in. `assert_spec_conformant(HOST)` reports anything misfiled, naming the
-rule and the fix — see
+`sources=("add/SKILL.md",)`. A flat `skills/add.md` still installs and may be
+mixed in, but `assert_spec_conformant(HOST)` reports it, along with anything else
+misfiled, naming the rule and the fix — see
 [docs/source-layout.md](docs/source-layout.md).
 
 A skill with one source lifts that file's frontmatter into the stub byte for
@@ -97,9 +97,10 @@ byte — including a `metadata.version` the source declares as the skill's own
 *skill's* name — `<cli> skill use-solo` — so the source need not be named
 after it. A skill with several sources becomes a dispatcher: each source's
 name — its directory, or its stem for a flat file — is a subcommand, and the
-stub tells the agent to run `<cli> skill <subcommand>`. The two namespaces
-share one argument, so a dispatcher subcommand may not collide with another
-skill's name; `Host` rejects that at construction, as it rejects a
+stub tells the agent to run `<cli> skill <subcommand>`. Its stub declares no
+`metadata`, so a `metadata.version` on a dispatcher's source stays in the package.
+The two namespaces share one argument, so a dispatcher subcommand may not collide
+with another skill's name; `Host` rejects that at construction, as it rejects a
 `Skill.name` outside the spec's grammar.
 
 A body must not point at a file by a path relative to the stub: after
@@ -538,6 +539,16 @@ for (an unquoted `version: 1.0` is a float, not a string), and that no field
 runs past its limit. Every
 violation is reported at once, each naming the rule it breaks and the fix — see
 [docs/source-layout.md](docs/source-layout.md#checking-a-host-against-the-spec).
+
+That includes the layout, so a host that adopts the helper as written uses
+`<name>/SKILL.md` for every source, a dispatcher's included. A host that keeps
+flat sources on purpose filters the report instead
+([why](docs/source-layout.md#flat-sources-still-work)):
+
+```python
+violations = [v for v in HOST.check_spec() if v.rule != "entry-file"]
+assert not violations, "\n".join(map(str, violations))
+```
 
 `pkgskills.testing.assert_prompt_commands(host, app)` closes the loop the whole
 pattern exists for. `pkgskills` renders `{cli}`, but nothing otherwise checks

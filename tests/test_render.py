@@ -59,6 +59,18 @@ def test_dispatcher_stub_declares_no_metadata() -> None:
     assert "metadata" not in front.fields
 
 
+def test_dispatcher_stub_lifts_nothing_from_a_source_declaring_metadata() -> None:
+    source, _ = split_frontmatter(MULTI.read("audit/SKILL.md"))
+    assert source is not None and "metadata" in source.fields  # not vacuous
+    bundle = Skill(name="bundle", sources=("audit/SKILL.md", "tidy/SKILL.md"))
+    host = dataclasses.replace(MULTI, artifacts=(bundle,))
+    stub = render_stub(host, bundle, MULTI.default_mode)
+    front, _ = split_frontmatter(stub)
+    assert front is not None
+    assert "metadata" not in front.fields
+    assert '"2.1"' not in stub
+
+
 def test_single_skill_stub_holds_no_instructions() -> None:
     stub = render_stub(SOLO, SOLO.skills[0], "global")
     assert "SOLO-BODY-SENTINEL" not in stub
