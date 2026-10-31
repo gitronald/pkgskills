@@ -13,7 +13,7 @@ pr:
 ## Plan
 
 A host that finishes adopting the library ends up with two kinds of command
-on one CLI: the four the library mounts, and the ones the host wrote itself.
+on one CLI: the ones the library mounts, and the ones the host wrote itself.
 Reviewing a completed adoption turned up three seams between the two, none of
 them a defect in the library, each a place where the library's behaviour and
 what a host author is led to assume have drifted apart. This plan explores
@@ -26,9 +26,10 @@ exploration may conclude that one of them is fine as it stands.
 
 ### 1. Two notions of the repository root on one CLI
 
-The mounted commands (`install`, `skill`, `rule`, `permissions`) resolve the
-repo root with `find_repo_root`, which walks up from the working directory to
-the nearest `.git` or harness config directory. That is right for them: a
+The mounted commands (`skill`, `install`, and, when declared, `doc`, `rule`,
+`agent`, `permissions`) resolve the repo root with `find_repo_root`, which walks
+up from the working directory to the nearest `.git` or harness config directory.
+That is right for them: a
 local install has to land where the harness loads from, not in whatever
 subdirectory the command ran in (`docs/design.md` says so).
 
@@ -52,10 +53,10 @@ Questions to settle:
   the app — so the shared notion is something a host opts into rather than
   something it has to remember? Weigh that against the library's stance of
   staying out of the host's command grammar.
-- The `harness` argument: a host's own commands do not know the harness the
-  library resolved. Document whether they should pass it (the config-directory
-  fallback only fires with it) or whether `.git` alone is the right marker for
-  host-side work.
+- The `harnesses` argument: a host's own commands do not pass the harnesses the
+  library walks with unless told to. Document whether they should pass them (the
+  config-directory fallback only fires with them) or whether `.git` alone is the
+  right marker for host-side work.
 - Confirm the "falls back to `start` itself" case is what a host wants when no
   marker exists, since a host command may prefer to refuse rather than write
   into an arbitrary directory.
@@ -91,9 +92,10 @@ asymmetry. Options, in rough order of preference:
   Probably too loud; record the reasoning if rejected.
 
 Whatever the decision, the plan should also settle the quoting rule the spec
-check enforces (`"1.0.0"` passes, bare `1.0.0` reads as a number and fails),
-since that is the first thing an author hits when adding the field, and it is
-mentioned nowhere a host author reads.
+check enforces (a bare `1.0` or `1` reads as a number and fails, a bare date
+reads as a timestamp and fails, and a bare `1.0.0` reads as a string and passes),
+since that is the first thing an author hits when adding the field. The docs
+state the rule for `1.0` and do not say that `1.0.0` passes.
 
 ### 3. The layout doc says flat sources are fine; the test helper fails them
 
@@ -134,6 +136,61 @@ Decide which of these the library means:
 The third option is the most principled and the most work; the first is a
 paragraph. Whichever wins, the two documents and the helper must end up
 saying the same thing.
+
+### Decisions
+
+Settled at review, against the code as it stands. No seam needs new public API;
+each fix is documentation, plus tests that keep the documentation true.
+
+1. **Seam 1 is documentation.** Hosts are told to resolve their root with
+   `find_repo_root(harnesses=HOST.harnesses)`, in the README's host guide, the
+   `register` docstring, and the design doc's Anchoring decision.
+   - No callback or dependency from `register`. Typer gives an app one callback,
+     so one mounted by the library would collide with a host's own
+     `@app.callback()`, and the call is one line. A helper or option for this is
+     also held back by "Two hosts before an option" in `docs/design.md`.
+   - Pass `harnesses`. It is the only form that agrees with the mounted commands
+     in every tree: without it, a nested directory holding `.claude/` or `.codex/`
+     is a root to the library and not to the host.
+   - The fallback stays as it is. A host command that must refuse outside a
+     repository tests `(root / ".git").exists()` on the result. That test also
+     covers the case the walk's docstring does not mention: under a home directory
+     holding `.claude/`, the walk stops at `$HOME` rather than falling back to
+     `start`.
+2. **Seam 2 is documentation.**
+   - Document it: a dispatcher stub declares no `metadata`, and a dispatcher
+     source's `metadata` is the source's own, read by a linter or a person and
+     never lifted. The stub does not carry a `metadata.version` for the host's
+     release either, since the stamp already records it.
+   - Surfacing per-source versions belongs to plan 010, whose subcommand table
+     has a Version column. When 010 lands, it revises the sentence this plan
+     writes.
+   - Rejected: an informational check on a dispatcher source's `metadata.version`.
+     The value is legitimate for a linter and harmless to the stub, so a note
+     would flag correct sources in every host that versions them.
+   - Quoting: the rule is to quote every version. A bare `1.0.0` passes today, and
+     the docs say so, because an author who sees it pass will otherwise doubt the
+     rule. Quoting stays the advice since the same key turns into a float the day
+     it reads `2.0`.
+   - Add the test the review found missing: a dispatcher whose sources declare
+     `metadata`, with none of it in the stub.
+3. **Seam 3 takes the first option, and names the existing route out.**
+   `assert_spec_conformant` means the whole spec, so a host that adopts it uses the
+   directory layout, dispatcher sources included. The layout doc and the testing
+   section both say so.
+   - A host that keeps flat sources on purpose filters the report it already has:
+     `Host.check_spec()` returns `Violation`s with stable `rule` slugs. Both docs
+     show that call and a test pins it, so `ignore=` adds nothing and is held back
+     by "Two hosts before an option".
+   - Rejected: scoping `entry-file` by role. Its premise is that a single-source
+     skill's source is installed as a skill, but what installs is the stub, at a
+     path built from `Skill.name`. Only the source's frontmatter travels, and a
+     flat single-source file installs a fully conformant skill, which is exactly
+     what the docs promise for `skills/audit-body.md`. So the layout rule applies
+     to neither role at install time, and matters to both only when a linter reads
+     the package.
+   - `check_layout`'s docstring is corrected to say which surfaces raise on a flat
+     source, so all three agree.
 
 ### Out of scope
 
