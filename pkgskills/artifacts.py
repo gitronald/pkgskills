@@ -766,9 +766,10 @@ def install(
 
 def skill_stub_paths(host: Host, root: Path) -> list[tuple[Skill, Mode, Harness, Path]]:
     """Every skill stub location, for callers that narrate state."""
+    modes = location_modes(host, root)
     return [
         (skill, mode, harness, artifact_path(host, skill, mode, root, harness))
         for skill in host.skills
-        for mode in location_modes(host, root)
+        for mode in modes
         for harness in host.harnesses_for(skill.kind)
     ]

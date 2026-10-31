@@ -26,6 +26,24 @@ def _statuses(host: Host, root: Path, mode: str | None = None) -> dict[str, str]
     }
 
 
+@pytest.fixture
+def home_link(box: Sandbox, tmp_path: Path) -> Path:
+    """A symlink to the sandbox's home directory."""
+    link = tmp_path / "link"
+    link.symlink_to(box.home)
+    return link
+
+
+@pytest.fixture
+def no_home(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A machine where no home directory can be determined."""
+
+    def raises() -> Path:
+        raise RuntimeError("could not determine home directory")
+
+    monkeypatch.setattr(inst, "global_base", raises)
+
+
 def test_artifact_paths_per_mode_and_kind(box: Sandbox) -> None:
     skill, rule, agent = EXAMPLE.artifacts
     assert inst.artifact_path(EXAMPLE, skill, "global", box.repo, CLAUDE_CODE) == (
@@ -511,15 +529,13 @@ def test_no_stale_removal_when_repo_root_is_home(box: Sandbox) -> None:
 
 
 def test_a_global_install_keeps_its_files_under_a_symlinked_home(
-    box: Sandbox, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    box: Sandbox, home_link: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # The root is resolved and the global base is not, so comparing built paths
     # took the file just written for a leftover local copy and deleted it.
     (box.home / ".git").mkdir()
-    link = tmp_path / "link"
-    link.symlink_to(box.home)
-    monkeypatch.setenv("HOME", str(link))
-    monkeypatch.chdir(link)
+    monkeypatch.setenv("HOME", str(home_link))
+    monkeypatch.chdir(home_link)
     root = inst.find_repo_root(harnesses=SOLO.harnesses)
     assert root == box.home
 
@@ -529,19 +545,14 @@ def test_a_global_install_keeps_its_files_under_a_symlinked_home(
     assert {row.status for row in inst.check(SOLO, root)} == {"ok"}
 
 
-def test_root_is_home(
-    box: Sandbox, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_root_is_home(box: Sandbox, home_link: Path) -> None:
     assert inst.root_is_home(box.home)
     assert not inst.root_is_home(box.repo)
-    link = tmp_path / "link"
-    link.symlink_to(box.home)
-    assert inst.root_is_home(link)
+    assert inst.root_is_home(home_link)
 
-    def no_home() -> Path:
-        raise RuntimeError("could not determine home directory")
 
-    monkeypatch.setattr(inst, "global_base", no_home)
+@pytest.mark.usefixtures("no_home")
+def test_root_is_home_is_false_where_no_home_can_be_determined(box: Sandbox) -> None:
     assert not inst.root_is_home(box.home)
 
 
@@ -873,15 +884,13 @@ def test_find_repo_root_passes_a_harness_directory_in_home(box: Sandbox) -> None
 
 @pytest.mark.usefixtures("no_outer_markers")
 def test_find_repo_root_passes_home_through_a_symlink(
-    box: Sandbox, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    box: Sandbox, home_link: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     (box.home / ".claude").mkdir()
     notes = box.home / "notes"
     notes.mkdir()
-    link = tmp_path / "link"
-    link.symlink_to(box.home)
-    monkeypatch.setenv("HOME", str(link))
-    assert inst.find_repo_root(link / "notes", EXAMPLE.harnesses) == notes
+    monkeypatch.setenv("HOME", str(home_link))
+    assert inst.find_repo_root(home_link / "notes", EXAMPLE.harnesses) == notes
 
 
 def test_find_repo_root_keeps_a_dotfiles_repository_at_home(box: Sandbox) -> None:
@@ -901,13 +910,8 @@ def test_find_repo_root_keeps_a_harness_directory_below_home(box: Sandbox) -> No
     assert inst.find_repo_root(sub, EXAMPLE.harnesses) == project
 
 
-def test_find_repo_root_works_where_no_home_can_be_determined(
-    box: Sandbox, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    def no_home() -> Path:
-        raise RuntimeError("could not determine home directory")
-
-    monkeypatch.setattr(inst, "global_base", no_home)
+@pytest.mark.usefixtures("no_home")
+def test_find_repo_root_works_where_no_home_can_be_determined(box: Sandbox) -> None:
     project = box.repo / "inner"
     (project / ".claude").mkdir(parents=True)
     assert inst.find_repo_root(project, EXAMPLE.harnesses) == project
