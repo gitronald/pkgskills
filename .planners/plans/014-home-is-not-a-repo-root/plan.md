@@ -1,0 +1,133 @@
+---
+id: 14
+slug: home-is-not-a-repo-root
+status: draft
+branch:
+created: 2026-10-31T14:10:56-07:00
+concluded:
+pr:
+---
+
+# Stop treating the home directory as a repository root
+
+## Plan
+
+### Problem
+
+`find_repo_root` treats any declared harness config directory as a repository
+marker. `~/.claude` and `~/.codex` are the global install's own location, so on any
+machine with a global install, every directory under home that no nearer marker
+claims resolves to `$HOME` as its "repository". There, local and global paths name
+the same files. Plan 009 documented the walk for hosts' own commands and left the
+mounted commands alone; running them shows the result is a bug in this library.
+
+Run against the `examplehost` fixture with a sandboxed `$HOME`, from `~/notes/deep`
+with no repository:
+
+- **A healthy install fails its check.** After `install --global`, a flagless
+  `install --check` judges each file twice. The global row reads `ok`, the local row
+  reads `drifted (rendered for mode=global, installed where mode=local)`, and it
+  exits 1.
+- **The repair it prints does the damage.** The check prints
+  `repair: uv run <cli> install --local --force`. A local install there overwrites
+  the global stubs in place and exits 0, and it does not need `--force`, because the
+  files are the host's own. The stubs are then stamped `mode=local` and tell every
+  repository on the machine to run `uv run <cli>`. The output gives the paths
+  relative to the root, so it never shows that the target was home.
+- **A released host does the same.** A host on pkgskills 0.5.1, with a healthy global
+  install, printed the same rows and repair from a directory under home and exited 1.
+  Its `Line` and hook rows also read `missing` there (see the open question below).
+  That was a read-only `--check` against a real home directory.
+
+The same double verdict appears with no walk involved: from `$HOME` itself, and from
+anywhere under a home that holds `.git` (a dotfiles repository). So the walk is one
+of two causes, and fixing it alone leaves the second.
+
+The code already knows about the coincidence. `stale_local`, `shadowed_skills`, and
+`remove_stale_local` each guard on the two paths being equal, and plan 002 calls this
+the "`$HOME`-is-the-repo-root guard". `check` and `install` have no such guard.
+
+### Decisions
+
+1. **Home's harness directory is not a marker.** In `find_repo_root`, a harness
+   config directory marks a root everywhere except at the home directory. `.git` at
+   home still does, so a dotfiles repository keeps its root. From `~/notes/deep` the
+   walk then falls back to `start`, as it does outside home.
+   - Compare against `Path.home().resolve()`, since the walk resolves its start and
+     `$HOME` can be a symlink.
+   - `Path.home()` raises `RuntimeError` where no home can be determined, which
+     `global_base` exists to defer. Catch it and apply no exclusion, so a local-only
+     host on such a machine keeps working.
+   - The alternative of leaving the walk alone and refusing `--local` at home was
+     rejected: it would keep a healthy directory's root wrong for `doc`, `skill`,
+     `rule`, `agent`, and `permissions`, and for every host command that follows the
+     guidance plan 009 published.
+2. **Where the two paths coincide, there is one location, and it is the global one.**
+   This covers what decision 1 cannot reach: a root that really is `$HOME`.
+   - `check` judges a coincident path once, as global, so a healthy install reads
+     `ok`. A file already stamped `mode=local` there reads `drifted`, and its repair
+     is the global install.
+   - For a host with both modes, `--local` is refused when any of its paths coincide,
+     for both `install` and `install --check`, and `pkgskills.install` raises the same
+     `ValueError` a caller gets for a mode the host does not support. This follows
+     `_requested_mode`: naming the wrong mode is an error, not a silent redirect.
+   - A local-only host is exempt. It has no global copy to overwrite, and its only
+     location is the one it asked for.
+3. **Hosts' guidance flips back.** The README's "Your own commands" and the
+   `find_repo_root` docstring now describe home as a marker. They should say that the
+   walk does not stop at home's harness directory. The repository guard stays, since
+   the walk still returns a directory outside any repository.
+
+### Implementation order
+
+1. `artifacts.py`: the walk (decision 1) with its tests.
+   `test_find_repo_root_stops_at_a_harness_directory_in_home` inverts, and
+   the comment on home in `test_the_documented_repository_guard` goes. New cases:
+   a symlinked `$HOME`, `~/.git` still a root, and `Path.home()` raising.
+2. `artifacts.py` and `cli.py`: the coincidence (decision 2). `test_no_stale_removal_when_repo_root_is_home`
+   installs locally at home first, so it now writes that file directly. New cases, at
+   a root of `$HOME` with and without `.git`: a flagless check reads one `ok` row per
+   file and exits 0, a `mode=local` file there reads `drifted` with the global repair,
+   `install --local` refuses and leaves the files alone, and a local-only host still
+   installs.
+3. An end-to-end test through the mounted commands from a directory under home:
+   check passes, and `install --local` writes under that directory and leaves the
+   global stub stamped `mode=global`.
+4. Docs: README "Your own commands", the `find_repo_root` docstring, and
+   `docs/design.md`'s Anchoring decision. Changelog under `### Fixed`, naming the
+   recovery for a clobbered install: the check now reports it, and `install --force`
+   from a repository repairs it.
+
+New tests need the `no_outer_git` fixture from `tests/test_install.py`. Once the walk
+passes home it can reach a stray `.git` in a parent of the temporary directory, and
+one exists on at least one development machine.
+
+### Out of scope
+
+- `install --local` outside a repository still writing to `start`. That fallback is
+  documented and tested, and it is what a first install before `git init` relies on.
+- `permissions`: its local and global settings paths differ, so nothing coincides.
+  Decision 1 corrects where its local file goes under home.
+
+## Handoff
+
+State: draft, nothing started. The problem is verified by running it, and decision 1
+by a monkeypatched walk in a scratch script: from `~/notes/deep` the check exits 0
+with `ok` rows only, and `install --local` wrote under that directory and left the
+global stub at `mode=global`. That probe stopped its walk short of a stray `/tmp/.git`,
+so it does not cover a parent marker above home. Decision 2 is not prototyped.
+
+Open questions:
+
+1. **Should a host's `Line` rows count outside a repository?** After this plan, a host
+   that declares lines still fails `install --check` from a non-repository directory,
+   with `missing` rows, and its repair writes the line file there. This holds for any
+   directory with no repository, under home or not. Skipping lines when no `.git` is
+   at or above the root looks right for `.gitattributes`, but a `Line` can name any
+   file, and a directory rooted by `.claude/` alone is a legitimate root. Recommended:
+   leave the behaviour as it is here and settle this at activation, either in this
+   plan or as a follow-up, since it needs one host's view of what a line is for. Waits
+   on the maintainer.
+
+Order: 1 -> 2 -> 3 -> 4, then release, since hosts only get the fix through a new
+`pkgskills` version.
