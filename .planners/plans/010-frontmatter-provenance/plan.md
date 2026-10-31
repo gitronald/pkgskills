@@ -175,3 +175,7 @@ stub into a table with a version column:
 6. Host follow-up: the first host release that pins the new `pkgskills` lower
    bound will regenerate its files; its changelog should tell users a bare
    `install` (no `--force`) is enough this time.
+
+## Log
+
+- **2026-10-31T12:32:07-07:00** — Handed forward from plan 009: a dispatcher stub now documents that a source's metadata never reaches it. The Version column here changes that, so revise the dispatcher paragraphs in docs/frontmatter.md and the README's host guide when this lands.
