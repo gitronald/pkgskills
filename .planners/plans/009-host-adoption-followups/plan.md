@@ -216,3 +216,10 @@ offers about it.
   - PR: pending
 - **2026-10-31T12:34:00-07:00** — PR opened: https://github.com/gitronald/pkgskills/pull/25
 - **2026-10-31T12:35:02-07:00** — Implemented: 3 commits ahead of `dev`.
+- **2026-10-31T12:39:01-07:00** — Implemented all three decisions as documentation, docstrings, and tests. No behaviour changed in `pkgskills/`.
+  - Seam 1: README section "Your own commands", the `register` and `find_repo_root` docstrings, and design.md's Anchoring decision. Tests pin the walk stopping at a home harness directory and the documented guard.
+  - Seam 2: frontmatter.md section "A dispatcher's sources", with drift, README, and source-layout wording narrowed to single-source stubs. Tests cover a dispatcher over a source that declares `metadata`, and a bare `1.0.0` against a bare `2.0`.
+  - Seam 3: source-layout.md and the README's testing section state that flat sources install but fail `assert_spec_conformant`, and show the `check_spec()` filter. The `check_layout` and `assert_spec_conformant` docstrings agree. Tests cover the filter for both roles and a flat source installing a conformant skill.
+  - Corrected at implementation: decision 1's guard looked for `.git` only at the walk's result, which refuses inside a repository whose subdirectory holds `.claude/`. It now looks at the result and above it.
+  - Review follow-up: medium `/code-review`, posted to the PR. Actioned: the copied `Path.exists` patch became the `no_outer_git` fixture, "from anywhere under home" gained "that no nearer marker claims", and source-layout.md links to frontmatter.md for the bare-version advice. These were a refactor and wording, so no paired regression tests. Conscious no-op: the filter snippet stays in both the README and source-layout.md, since decision 3 has both show it. Rejected by verifiers: four candidates, listed in the PR comment.
+  - Checks at the review-fix commit: ruff check, ruff format --check, pyrefly, and pytest (364 passed, 98.68% coverage).
