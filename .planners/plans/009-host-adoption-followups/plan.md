@@ -1,10 +1,10 @@
 ---
 id: 9
 slug: host-adoption-followups
-status: implemented
+status: done
 branch: feature/host-adoption-followups
 created: 2026-09-12T13:08:14-07:00
-concluded:
+concluded: 2026-10-31T12:38:59-07:00
 pr: https://github.com/gitronald/pkgskills/pull/25
 ---
 
@@ -223,3 +223,20 @@ offers about it.
   - Corrected at implementation: decision 1's guard looked for `.git` only at the walk's result, which refuses inside a repository whose subdirectory holds `.claude/`. It now looks at the result and above it.
   - Review follow-up: medium `/code-review`, posted to the PR. Actioned: the copied `Path.exists` patch became the `no_outer_git` fixture, "from anywhere under home" gained "that no nearer marker claims", and source-layout.md links to frontmatter.md for the bare-version advice. These were a refactor and wording, so no paired regression tests. Conscious no-op: the filter snippet stays in both the README and source-layout.md, since decision 3 has both show it. Rejected by verifiers: four candidates, listed in the PR comment.
   - Checks at the review-fix commit: ruff check, ruff format --check, pyrefly, and pytest (364 passed, 98.68% coverage).
+
+## Retrospective
+
+- All three seams resolved as documentation with no new public API. The plan's
+  options leaned toward code, and checking them against the existing surface
+  removed the need: `Host.check_spec()` and its rule slugs already were the
+  `ignore=` the plan considered.
+- Running the claims was the most useful step. The spec's bare `1.0.0` claim was
+  false, and an existing dispatcher test could not fail for the behaviour it
+  named. A plan written from reading code carries such claims forward unchecked.
+- The by-role option read as the principled one until traced: a source's path never
+  reaches the harness in either role, so there was no role to scope the rule by.
+- My first guard was wrong too, and writing its test exposed it, which is why the
+  guard in the README has a test of its own.
+- Not resolved here, and out of this plan's scope: the walk stopping at `$HOME` also
+  applies to the mounted `install --local`, which from a directory under home with no
+  repository would target home. That follows from reading `cli.py`; it was not run.
