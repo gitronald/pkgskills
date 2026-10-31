@@ -2,6 +2,8 @@
 
 | # | Plan | Status | Concluded | PR |
 |---|---|---|---|---|
+| 014 | [Stop treating the home directory as a repository root](plans/014-home-is-not-a-repo-root/plan.md) | active | — | — |
+| 015 | [Decide what a host's lines mean outside a repository](plans/015-line-rows-outside-a-repository/plan.md) | draft | — | — |
 | 012 | [Let a host declare its pre-adoption stamp as its own](plans/012-host-legacy-stamps/plan.md) | draft | — | — |
 | 010 | [Move the provenance stamp into frontmatter and tabulate subcommands](plans/010-frontmatter-provenance/plan.md) | draft | — | — |
 | 014 | [Stop treating the home directory as a repository root](plans/014-home-is-not-a-repo-root/plan.md) | done | 2026-10-31 14:40 PT | [#26](https://github.com/gitronald/pkgskills/pull/26) |
