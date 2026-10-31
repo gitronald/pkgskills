@@ -50,12 +50,13 @@ grammar on the host's own typer app so extra host commands sit beside the
 shared ones. An entry-point group (`pkgskills.hosts`) lets the standalone
 `pkgskills` script check every host at once.
 
-**One contract.** The stamp is an HTML comment after the frontmatter naming
-both versions, the mode, and the repair command. Drift masks both of its
-version tokens. It is the *only* home of that provenance: `pkgskills` writes
-nothing into a stub's frontmatter, leaving `metadata.version` to mean the
-skill's own version, declared by the source and passed through verbatim (see
-[frontmatter.md](frontmatter.md)). Anything at the path that is not a plain file this host generated is
+**One contract.** The stamp is four `pkgskills-*` keys under the frontmatter's
+`metadata`, naming the host, both versions, and the mode. Drift masks both
+version values. It is the *only* home of that provenance. A prefix rather than a
+top-level key, because the Agent Skills spec keeps extra properties in that map
+and its reference validator rejects others; a prefix rather than plain keys, so
+`metadata.version` still means the skill's own version, declared by the source and
+passed through verbatim (see [frontmatter.md](frontmatter.md)). Anything at the path that is not a plain file this host generated is
 foreign and is never replaced without `--force`. Mode is inferred from
 location, never from the stamp: a stub carried to the other location reads as
 drifted because its embedded commands are wrong there.
@@ -66,14 +67,25 @@ whose mode was corrupted, so all three read `foreign`. The host can tell, since
 it wrote the old format, and `Host.legacy_stamps` lets it say so. A matching line
 counts as the host's stamp through `is_stamped`, so `guard`, the stale and
 previous-name removals, and the leftovers scan agree without knowing about it,
-and the file reads `drifted`. That follows the policy for a current stamp: the
-line said "do not edit", so a bare `install` rewrites it, edits included. A
-pattern has to capture the mode so that a file in the wrong location reads the
+and the file reads `drifted`. That follows the policy for a current stamp: a
+generated file is the tool's to rewrite, so a bare `install` does, edits included.
+A pattern has to capture the mode so that a file in the wrong location reads the
 same mode reason a current stamp does. Versions stay
 unmasked, because a file under an old stamp is changed by definition and only
 masking keeps an unchanged file `ok`. The entries live in one list in `stamp.py`,
 each a pattern with its own reason. A declarative field covers this without a
 pre-install hook, which would give hosts a write path ahead of the foreign check.
+
+**The comment stamp is one of those entries.** Until the stamp moved into
+frontmatter, `pkgskills` wrote it as an HTML comment, so every file installed by an
+earlier release carries that line. The list holds a built-in entry for it, with its
+own reason. The entry matches the whole line, so a comment that a formatter wrapped
+or whose mode was corrupted stays `foreign`. It has no scheduled removal: a machine
+that skipped the release dropping it would read `foreign` on every file. If it is
+ever dropped, that release states the oldest version a bare `install` can upgrade
+from. `stamped_by` reads the comment permanently, since a host on an older
+`pkgskills` keeps writing it and a foreign reason has to name that host. A declared
+pattern may not match the comment form or any line of the rendered map.
 
 **Kinds behind an adapter.** Skills, rules, and agents each have a location
 per mode and supporting harness, held in `Harness` values. `Host.harnesses`
