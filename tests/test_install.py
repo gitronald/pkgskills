@@ -797,6 +797,45 @@ def test_find_repo_root_stops_at_codex_directory(box: Sandbox) -> None:
     assert inst.find_repo_root(sub) == box.repo
 
 
+def test_find_repo_root_stops_at_a_harness_directory_in_home(box: Sandbox) -> None:
+    (box.home / ".claude").mkdir()
+    notes = box.home / "notes" / "deep"
+    notes.mkdir(parents=True)
+    assert inst.find_repo_root(notes, EXAMPLE.harnesses) == box.home
+
+
+def test_the_documented_repository_guard(
+    box: Sandbox, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The README's refusal: `.git` at the walk's result or above it."""
+    # Root discovery must not depend on whether pytest itself runs inside a repo.
+    exists = Path.exists
+    outside_markers = {parent / ".git" for parent in tmp_path.parents}
+    monkeypatch.setattr(
+        Path, "exists", lambda path: path not in outside_markers and exists(path)
+    )
+
+    def in_repository(start: Path) -> bool:
+        root = inst.find_repo_root(start, EXAMPLE.harnesses)
+        return any((d / ".git").exists() for d in (root, *root.parents))
+
+    # A subdirectory holding its own harness config is still inside the repo.
+    nested = box.repo / "inner"
+    (nested / ".claude").mkdir(parents=True)
+    assert inst.find_repo_root(nested, EXAMPLE.harnesses) == nested
+    assert in_repository(nested)
+    assert in_repository(box.repo)
+    # A home directory is a marker for the walk, and not a repository.
+    (box.home / ".claude").mkdir()
+    notes = box.home / "notes"
+    notes.mkdir()
+    assert not in_repository(notes)
+    # Neither is a directory with no marker anywhere above it.
+    bare = tmp_path / "nowhere"
+    bare.mkdir()
+    assert not in_repository(bare)
+
+
 def test_codex_install_alone_resolves_the_mode(box: Sandbox) -> None:
     inst.write_artifact(SOLO, SOLO.skills[0], "local", box.repo, CODEX)
     assert inst.installed_mode(SOLO, box.repo) == "local"

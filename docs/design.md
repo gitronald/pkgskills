@@ -106,7 +106,12 @@ is a per-repository setting, this is a per-host constraint.
 root found by walking up to `.git` or any declared harness config directory
 (`.claude` or `.codex` by default). Nothing anchors to the working directory,
 which is how a local install from a
-subdirectory ends up where the harness loads from.
+subdirectory ends up where the harness loads from. A host's own commands sit
+outside this: `find_repo_root` is public so they can anchor the same way, and the
+host guide tells them to, but nothing on `Host` or in `register` can make them. A
+callback mounted by `register` could hand every command a root, at the price of
+the one callback slot Typer gives an app, which a host may want for itself. The
+call it would replace is one line.
 
 **Version coupling.** A change to `pkgskills`'s rendered text would flip every
 host's files to drifted with no host change. Masking both versions removes

@@ -153,10 +153,11 @@ each fix is documentation, plus tests that keep the documentation true.
      in every tree: without it, a nested directory holding `.claude/` or `.codex/`
      is a root to the library and not to the host.
    - The fallback stays as it is. A host command that must refuse outside a
-     repository tests `(root / ".git").exists()` on the result. That test also
-     covers the case the walk's docstring does not mention: under a home directory
-     holding `.claude/`, the walk stops at `$HOME` rather than falling back to
-     `start`.
+     repository looks for `.git` at the result and above it. Testing the result
+     alone would refuse inside a repository whose subdirectory holds `.claude/`.
+     The check also covers the case the walk's docstring does not mention: under
+     a home directory holding `.claude/`, the walk stops at `$HOME` rather than
+     falling back to `start`.
 2. **Seam 2 is documentation.**
    - Document it: a dispatcher stub declares no `metadata`, and a dispatcher
      source's `metadata` is the source's own, read by a linter or a person and

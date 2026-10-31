@@ -140,6 +140,40 @@ The enclosing repository is the nearest ancestor of the working directory
 holding `.git`, `.claude/`, or `.codex/`, so a local install from a subdirectory
 still lands where the harness loads from.
 
+### Your own commands
+
+A command you write beside these does not inherit that walk. One that reaches
+for `Path.cwd()` writes under whatever subdirectory it ran in, while
+`install --local` on the same CLI writes at the root. `pkgskills` cannot enforce
+this from `Host` or `register`, so resolve the root the way the mounted commands
+do:
+
+```python
+from pkgskills import find_repo_root
+
+
+@app.command()
+def index() -> None:
+    root = find_repo_root(harnesses=HOST.harnesses)
+    ...
+```
+
+Pass `harnesses`. Without it only `.git` marks a root, so in a repository whose
+subdirectory holds `.claude/` or `.codex/`, the two halves of the CLI pick
+different directories.
+
+The walk always returns a directory, and outside a repository that directory is
+rarely the one you want. With no marker at all it returns where it started. On a
+machine with a `~/.claude` or `~/.codex`, that directory is itself a marker, so
+from anywhere under home it returns `$HOME`. A command that should not write
+outside a repository checks for one:
+
+```python
+root = find_repo_root(harnesses=HOST.harnesses)
+if not any((d / ".git").exists() for d in (root, *root.parents)):
+    raise SystemExit("run this inside a git repository")
+```
+
 ## Modes
 
 **Global** (default) puts one copy under `$HOME` that serves every repository;

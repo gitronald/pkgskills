@@ -151,6 +151,11 @@ def find_repo_root(
     install must target the root the harness loads from, not whatever
     subdirectory the command ran in. Falls back to ``start`` itself.
 
+    The result is not proof of a repository. With ``harnesses`` given, a
+    ``~/.claude`` or ``~/.codex`` makes ``$HOME`` the root of everything under it
+    that no nearer marker claims. A host command that must not write outside a
+    repository looks for ``.git`` at the result and above it.
+
     Deliberately a filesystem walk, never a question put to git: an ambient
     ``GIT_DIR`` would otherwise name a repository the user is not looking at.
     :mod:`pkgskills.proc` keeps the same posture on the write side.
