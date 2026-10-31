@@ -218,3 +218,14 @@ that plan's validation.
     - That Codex loads a stub with these keys. `metadata` is a spec field, so it should, but no Codex session ran.
     Left for hosts: Plan step 6. The first host release pinning this version should tell users a bare `install` is enough. The changelog asks for that.
 - **2026-10-31T16:37:31-07:00** — Implemented: 6 commits ahead of `dev`.
+- **2026-10-31T16:40:39-07:00** — Items to look at before this plan closes. None is decided or done yet.
+    Review:
+    - The missing "do not edit" warning. Rule and agent files no longer say it anywhere, yet a bare `install` still overwrites edits to them. The Plan accepted dropping the regenerate command; losing the warning came with that and was not decided on its own.
+    - Downgrades. An older `pkgskills` does not recognize the new stamp, so going back needs `--force` once. The changelog states this; decide whether that is enough.
+    - The gap in `spec.py`. It still accepts unknown top-level keys in a source, which `skills-ref` rejects, so `assert_spec_conformant`'s "checks the same rules" is not quite true. A test covers what stubs carry, not what sources carry.
+    Not verified:
+    - `skills-ref validate` has not been run on a stub. The permission classifier refused running code from outside the repo, so the evidence is the validator's source and tests, plus the test on a stub's top-level keys.
+    - Claude Code loading an agent that carries a `metadata` block. The Plan's observation was on a rule, and a real check needs a model call.
+    - Codex loading a stub with these keys. `metadata` is a spec field, so it should, but no Codex session ran.
+    Still open:
+    - Plan step 6, which falls to host maintainers: the first host release pinning this version should tell users a bare `install` is enough. The changelog asks them to.
