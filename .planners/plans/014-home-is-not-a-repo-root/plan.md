@@ -1,10 +1,10 @@
 ---
 id: 14
 slug: home-is-not-a-repo-root
-status: implemented
+status: done
 branch: feature/home-is-not-a-repo-root
 created: 2026-10-31T14:10:56-07:00
-concluded:
+concluded: 2026-10-31T14:40:23-07:00
 pr: https://github.com/gitronald/pkgskills/pull/26
 ---
 
@@ -139,22 +139,36 @@ one exists on at least one development machine.
 
 ## Handoff
 
-State: all four steps are committed and pushed on the plan's branch, with the PR open.
-Nothing is uncommitted. The Log entry for the implementation says what departed from
-the spec and what was verified.
+State: finished, with nothing uncommitted. Merged through the plan's PR.
 
-Open questions:
+Questions:
 
-1. **Should a host's `Line` rows count outside a repository?** Measured on this branch:
-   a host declaring a `.gitattributes` line, with a healthy global install, run from a
-   directory under home with no repository, prints `ok` for each stub and `missing` for
-   the line, and exits 1. The repair it prints, `install --force`, would write the line
-   file into that directory. Skipping lines when no `.git` is at or above the root looks
-   right for `.gitattributes`, but a `Line` can name any file, and a directory rooted by
-   `.claude/` alone is a legitimate root. Recommended: leave the behaviour as it is here
-   and take it as a follow-up plan. Waits on the maintainer, at the review gate.
+1. **Should a host's `Line` rows count outside a repository?** Answered 2026-10-31: the
+   behaviour stays as it is here, and the question moves to plan 015, which is drafted
+   with what was measured.
 
-Not verified: the fix against a released host. Its stubs were only run with the fixture
-hosts, because hosts get it through a new `pkgskills` version.
+Settled at the review gate, 2026-10-31: a local-only host installed at a home with no
+`.git` is not found from a directory under it, and that stands.
 
-Order: review gate, close, then release.
+Not verified: the fix against a released host. It ran only with the fixture hosts, in
+the test suite and as real processes under a sandboxed `$HOME`. Hosts get it through a
+new `pkgskills` version, which this plan did not cut.
+
+## Retrospective
+
+- Both decisions held as written. The plan's prototype of decision 1 proved the walk, and
+  what the plan had not reached turned up once decision 2 was built: a local-first host's
+  bare `install`, and the `missing` fallback that would have produced no row for it.
+- Replacing the path comparisons with one resolved predicate exposed a worse bug than the
+  one being fixed: a global install under a symlinked home deleted its own stubs. Guards
+  that compare built paths inherit any spelling difference between their two bases, so
+  compare the bases, resolved.
+- Deciding coincidence on the root rather than per path made it one function, because both
+  modes share a relative layout. Every site that had walked `host.modes` then needed the
+  same answer, so `location_modes` went in once rather than as a guard at each.
+- The test fixture named in the plan hid only `.git`, and a stray harness directory above
+  the temporary directory failed the new tests on one machine while CI would have passed.
+  A fixture that isolates a walk has to hide everything the walk looks for.
+- A real-process run under a sandboxed `$HOME` was worth doing beside `CliRunner`, but its
+  first dotfiles case proved nothing, because an earlier step had left a harness directory
+  in the start directory. Each scenario in such a run needs a clean start directory.
