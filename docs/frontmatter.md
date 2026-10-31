@@ -46,15 +46,26 @@ quote it anyway: the same key becomes a float the day it reads `2.0`.
 ## A dispatcher's sources
 
 A dispatcher stub's `metadata` holds only the stamp. It has one frontmatter block
-and several sources, and it takes only each source's `description`, for its list
-of subcommands. A `metadata` block on a dispatcher source is therefore the source's
-own: the conformance check reads it, and so does a linter or a person looking
-at the package, but it reaches no installed file. Adding one or bumping a
-version in it leaves the stub unchanged, so nothing drifts.
+and several sources, so what it takes from each source goes in the body, as a row of
+its subcommand table: the `description`, and `metadata.version` in the Version
+column.
 
-Set it if those readers are worth it, and quote it the same way, since the
-check covers every source. The release of a dispatcher as a whole is the host's,
-and the stamp already records that.
+```markdown
+| Subcommand | Version | Description |
+|---|---|---|
+| `add` | 1.0.0 | Scaffold a new plan file. |
+| `close` |  | Close a finished plan. |
+```
+
+A source that declares no version gets an empty cell, for the same reason a
+single-source stub gets no `version` key: the release of a dispatcher as a whole
+is the host's, and the stamp already records that. The version is the source's own
+text, so adding one or bumping it drifts the stub until it is reinstalled.
+
+Any other `metadata` key on a dispatcher source reaches no installed file. The
+conformance check reads it, and so does a linter or a person looking at the
+package, so set it if those readers are worth it. Quote a version the same way,
+since the check covers every source.
 
 ## Where the release provenance lives
 
@@ -95,9 +106,10 @@ A file installed by an earlier release has the stamp as an HTML comment instead.
 `install --check` masks the values of `pkgskills-host-version` and
 `pkgskills-version` before comparing, so upgrading either package never reports
 drift on a file whose
-content did not change. A `metadata.version` in a single-source stub is *not*
-masked: it is the skill's own, so changing it is a real content change and the
-stub should drift until it is reinstalled.
+content did not change. A source's `metadata.version` is *not* masked, whether it
+rides in a single-source stub's frontmatter or a dispatcher's table: it is the
+skill's own, so changing it is a real content change and the stub should drift
+until it is reinstalled.
 
 ## Writing a source prompt
 
@@ -115,6 +127,6 @@ stub should drift until it is reinstalled.
   `assert_spec_conformant` (`stamp-cannot-join`) and cannot be rendered.
 - Every `metadata` key a single-source skill declares is kept, in the order the
   source wrote them. A [dispatcher's sources](#a-dispatchers-sources) keep theirs
-  in the package.
+  in the package, apart from the version its table shows.
 - Where the source file itself belongs, and how its path names it, is
   [Source layout](source-layout.md).

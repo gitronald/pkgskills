@@ -26,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- A dispatcher stub lists its subcommands in a table with a Version column, in
+  place of the bulleted list. The version is each source's own `metadata.version`,
+  and a source that declares none gets an empty cell, never the host's release.
+  It is body text, so bumping a source's version drifts the stub. Every dispatcher
+  stub reads `drifted` once a host picks this up, and a bare `install` refreshes it.
 - The provenance stamp moved from an HTML comment into the frontmatter, as five
   quoted keys under `metadata`: `pkgskills-host`, `pkgskills-host-version`,
   `pkgskills-version`, `pkgskills-mode`, and `pkgskills-note`, a fixed warning that
@@ -62,9 +67,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The host guide now says how a host's own commands should find the repository
   root (`find_repo_root(harnesses=HOST.harnesses)`), and how to refuse to write
   outside a repository, since the walk can return a directory outside one.
-- The docs now say that a `metadata.version` on a dispatcher's source stays in the
-  package, since a dispatcher stub's `metadata` holds only the stamp, and that a
-  bare `1.0.0` passes the check while a bare `1.0` does not.
+- The docs now say that a dispatcher stub's `metadata` holds only the stamp, and
+  that a bare `1.0.0` passes the check while a bare `1.0` does not.
 - The docs now agree about flat sources: they install, but
   `assert_spec_conformant` fails them. A host that keeps them filters
   `Host.check_spec()` by rule.
