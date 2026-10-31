@@ -1,7 +1,7 @@
 ---
 id: 16
 slug: subcommand-version-table
-status: active
+status: implemented
 branch: feature/subcommand-version-table
 created: 2026-10-31T15:51:53-07:00
 concluded:
@@ -58,3 +58,4 @@ a version column:
   - Worktree: `.worktrees/016-subcommand-version-table`
   - PR: pending
 - **2026-10-31T16:58:03-07:00** — PR opened: https://github.com/gitronald/pkgskills/pull/29
+- **2026-10-31T16:58:04-07:00** — Implemented: 3 commits ahead of `dev`.
