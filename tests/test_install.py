@@ -1130,13 +1130,27 @@ def test_a_legacy_pattern_has_to_match_a_whole_line(box: Sandbox) -> None:
     path = inst.artifact_path(host, skill, "local", box.repo, CLAUDE_CODE)
     path.parent.mkdir(parents=True)
     line = _legacy_line(host, "local").rstrip("\n")
-    for text in (f"The old stamp read {line}\n", f"{line} and more\n"):
-        path.write_text(text)
+    for text in (
+        f"The old stamp read {line}\n",
+        f"{line} and more\n",
+        # Only a newline ends a line, as it does for the current stamp.
+        f"{line}\x0cand more\n",
+        f"{line}\u2028and more\n",
+    ):
+        path.write_text(text, encoding="utf-8")
         row = inst.check_artifact(host, skill, "local", box.repo, CLAUDE_CODE)
         assert row.status == "foreign"
-    # A pattern's own `^` and `$`, and a line in the middle of a file, change
-    # nothing about that.
-    path.write_text(f"---\nname: use-solo\n---\n\n{line}\n\nthe old body\n")
+    # A line in the middle of a file counts, and so do CRLF endings.
+    for text in (
+        f"---\nname: use-solo\n---\n\n{line}\n\nthe old body\n",
+        f"---\r\nname: use-solo\r\n---\r\n\r\n{line}\r\n",
+    ):
+        path.write_bytes(text.encode("utf-8"))
+        row = inst.check_artifact(host, skill, "local", box.repo, CLAUDE_CODE)
+        assert row.status == "drifted"
+    # So does a pattern that spells its own anchors.
+    anchored = re.compile(rf"^{re.escape(line).replace('local', '(?P<mode>local)')}$")
+    host = dataclasses.replace(SOLO, legacy_stamps=(anchored,))
     row = inst.check_artifact(host, skill, "local", box.repo, CLAUDE_CODE)
     assert row.status == "drifted"
 

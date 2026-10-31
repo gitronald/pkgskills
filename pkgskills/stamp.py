@@ -89,7 +89,9 @@ def _as_mode(token: str | None) -> Mode | None:
 def _legacy_match(text: str, host: Host) -> tuple[Mode, str] | None:
     """The recorded mode and reason of the first legacy entry ``text`` matches.
 
-    Each pattern has to match a whole line. A line whose ``mode`` group captured
+    Each pattern has to match a whole line, and only a newline ends one, as for
+    the current stamp: ``splitlines`` would also break on a form feed or U+2028
+    and let a stamp with prose after it pass. A line whose ``mode`` group captured
     anything but an install mode is no match, so a pattern loose enough to take
     a corrupted token leaves that file ``foreign``. A file carrying a current
     stamp is not a legacy one, whatever else its body quotes.
@@ -97,7 +99,7 @@ def _legacy_match(text: str, host: Host) -> tuple[Mode, str] | None:
     entries = _legacy_entries(host)
     if not entries or _line_re(host.dist).search(text) is not None:
         return None
-    lines = text.splitlines()
+    lines = text.split("\n")
     for entry in entries:
         for line in lines:
             match = entry.pattern.fullmatch(line)
