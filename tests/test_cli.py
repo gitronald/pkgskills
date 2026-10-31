@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -866,3 +867,22 @@ def test_commands_from_a_directory_under_home_keep_the_global_install(
     assert (notes / ".claude/skills/example/SKILL.md").is_file()
     assert stub.read_bytes() == before
     assert stamped_mode(stub.read_text(encoding="utf-8"), EXAMPLE) == "global"
+
+
+def test_a_legacy_stamp_upgrades_on_a_bare_install(box: Sandbox) -> None:
+    pattern = re.compile(r"<!-- solohost \S+ \((?P<mode>global|local)\) -->")
+    app = typer_app(dataclasses.replace(SOLO, legacy_stamps=(pattern,)))
+    path = box.repo / ".claude/skills/use-solo/SKILL.md"
+    path.parent.mkdir(parents=True)
+    path.write_text("<!-- solohost 0.1.0 (local) -->\nthe old body\n")
+
+    result = runner.invoke(app, ["install", "--check", "--local"])
+    assert "stamped by solohost before it adopted pkgskills" in result.output
+    assert "repair: uv run solohost install --local --force" in result.output
+    assert result.exit_code == 1
+
+    result = runner.invoke(app, ["install", "--local"])
+    assert "refusing" not in result.output
+    assert result.exit_code == 0
+    assert "the old body" not in path.read_text()
+    assert runner.invoke(app, ["install", "--check", "--local"]).exit_code == 0
