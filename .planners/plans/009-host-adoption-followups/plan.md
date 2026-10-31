@@ -1,8 +1,8 @@
 ---
 id: 9
 slug: host-adoption-followups
-status: draft
-branch:
+status: active
+branch: feature/host-adoption-followups
 created: 2026-09-12T13:08:14-07:00
 concluded:
 pr:
@@ -208,3 +208,8 @@ offers about it.
   - Overlap: draft plan 010 proposes a Version column in the dispatcher's subcommand table, which is this plan's "surface it" option. 010 owns that option.
   - Evidence gap: `test_dispatcher_stub_declares_no_metadata` uses `examplehost`, whose dispatcher sources declare no `metadata`, so the test cannot fail for the behaviour seam 2 describes.
   - New finding: `find_repo_root` with harnesses stops at `$HOME` when `~/.claude` exists, so from a directory under home with no repository it returns home, not `start`. Checked by running it against a temporary tree.
+- **2026-10-31T12:32:07-07:00** — Activated.
+  - Branch: `feature/host-adoption-followups`
+  - Base: `dev` at `a1023e8`
+  - Worktree: `.worktrees/009-host-adoption-followups`
+  - PR: pending
