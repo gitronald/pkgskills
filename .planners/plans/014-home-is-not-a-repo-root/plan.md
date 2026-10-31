@@ -5,7 +5,7 @@ status: active
 branch: feature/home-is-not-a-repo-root
 created: 2026-10-31T14:10:56-07:00
 concluded:
-pr:
+pr: https://github.com/gitronald/pkgskills/pull/26
 ---
 
 # Stop treating the home directory as a repository root
@@ -121,6 +121,7 @@ one exists on at least one development machine.
   - Base: `dev` at `23c4015`
   - Worktree: `.worktrees/014-home-is-not-a-repo-root`
   - PR: pending
+- **2026-10-31T14:33:20-07:00** — PR opened: https://github.com/gitronald/pkgskills/pull/26
 
 ## Handoff
 
