@@ -144,3 +144,10 @@ current-stamp check cannot apply to a YAML map.
 - A pre-install hook that lets a host rewrite files before `guard` runs. The
   declarative field covers the case without giving hosts a write path ahead
   of the foreign check.
+
+## Log
+
+- **2026-10-31T15:53:19-07:00** — Compared this plan with plan 010 against the code and settled where they disagreed; the Plan section now reflects each decision.
+  - A recognized legacy stamp counts as generated everywhere. As first written, `guard` would still have refused a bare `install`, because it tests `is_generated` rather than `classify`.
+  - A mode mismatch reads `drifted` with the existing mode reason, not `foreign`.
+  - This plan lands before plan 010. Each list entry carries its own reason, and plan 010 adds the comment form.
