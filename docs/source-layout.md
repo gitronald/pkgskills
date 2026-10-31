@@ -217,8 +217,8 @@ stub lifts whatever the source declares, `version` included, byte for byte, and 
 dispatcher stub [declares none](frontmatter.md#a-dispatchers-sources). The check
 still covers a dispatcher's sources, because a linter reads them too.
 
-A bare `1.0.0` reads as a string, so it passes. Quote it anyway; the same key
-fails the day it reads `2.0`.
+Which bare versions pass, and why to quote them anyway, is in
+[Frontmatter](frontmatter.md#what-a-stub-carries).
 
 What is *not* checked is the spec's **recommendations**, as against its
 constraints: that a description say what a skill does *and* when to use it,

@@ -42,15 +42,18 @@ def test_artifact_paths_per_mode_and_kind(box: Sandbox) -> None:
     )
 
 
-def test_find_repo_root_walks_up_and_falls_back(
-    box: Sandbox, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # Root discovery must not depend on whether pytest itself runs inside a repo.
+@pytest.fixture
+def no_outer_git(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Root discovery must not depend on whether pytest itself runs inside a repo."""
     exists = Path.exists
     outside_markers = {parent / ".git" for parent in tmp_path.parents}
     monkeypatch.setattr(
         Path, "exists", lambda path: path not in outside_markers and exists(path)
     )
+
+
+@pytest.mark.usefixtures("no_outer_git")
+def test_find_repo_root_walks_up_and_falls_back(box: Sandbox, tmp_path: Path) -> None:
     sub = box.repo / "a" / "b"
     sub.mkdir(parents=True)
     assert inst.find_repo_root(sub) == box.repo
@@ -804,16 +807,9 @@ def test_find_repo_root_stops_at_a_harness_directory_in_home(box: Sandbox) -> No
     assert inst.find_repo_root(notes, EXAMPLE.harnesses) == box.home
 
 
-def test_the_documented_repository_guard(
-    box: Sandbox, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+@pytest.mark.usefixtures("no_outer_git")
+def test_the_documented_repository_guard(box: Sandbox, tmp_path: Path) -> None:
     """The README's refusal: `.git` at the walk's result or above it."""
-    # Root discovery must not depend on whether pytest itself runs inside a repo.
-    exists = Path.exists
-    outside_markers = {parent / ".git" for parent in tmp_path.parents}
-    monkeypatch.setattr(
-        Path, "exists", lambda path: path not in outside_markers and exists(path)
-    )
 
     def in_repository(start: Path) -> bool:
         root = inst.find_repo_root(start, EXAMPLE.harnesses)

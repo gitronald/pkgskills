@@ -165,9 +165,9 @@ different directories.
 
 The walk always returns a directory, and outside a repository that directory is
 rarely the one you want. With no marker at all it returns where it started. On a
-machine with a `~/.claude` or `~/.codex`, that directory is itself a marker, so
-from anywhere under home it returns `$HOME`. A command that should not write
-outside a repository checks for one:
+machine with a `~/.claude` or `~/.codex`, home is itself a marker, so from any
+directory under it that no nearer marker claims, the walk returns `$HOME`. A
+command that should not write outside a repository checks for one:
 
 ```python
 root = find_repo_root(harnesses=HOST.harnesses)
