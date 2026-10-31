@@ -521,6 +521,11 @@ def test_a_stub_holding_the_stamp_is_conformant() -> None:
             stub = render_stub(host, skill, "local")
             found = SPEC.check_frontmatter(f"{skill.name}/{SPEC.entry_file}", stub)
             assert found == []
+            # `skills-ref validate` rejects any other top-level key, which is why
+            # the stamp is under `metadata`. `check_parsed` does not check this.
+            front, _ = split_frontmatter(stub)
+            assert front is not None
+            assert set(front.fields) <= {field.name for field in SPEC.fields}
 
 
 @pytest.mark.parametrize(

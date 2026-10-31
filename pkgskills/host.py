@@ -546,7 +546,8 @@ class Host:
     def check_spec(self) -> list[Violation]:
         """Every way this host's skills depart from the Agent Skills spec.
 
-        Reads each source, so it is a deliberate call rather than something
+        Also any rule or agent source the provenance stamp cannot join. Reads each
+        source, so it is a deliberate call rather than something
         :meth:`validate` does on import. A host's own test suite is where this
         belongs — see :func:`pkgskills.testing.assert_spec_conformant`.
         """

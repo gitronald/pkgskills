@@ -353,4 +353,5 @@ def place_stamp(front: str, stamp: str, body: str) -> str:
     inner = parsed.inner if parsed is not None else ""
     spliced = _splice(inner, stamp)
     _require_intact(inner, spliced, stamp)
-    return f"{FENCE}\n{spliced}{FENCE}\n\n{body.lstrip(chr(10))}"
+    body = body.lstrip("\n")
+    return f"{FENCE}\n{spliced}{FENCE}\n\n{body}"
