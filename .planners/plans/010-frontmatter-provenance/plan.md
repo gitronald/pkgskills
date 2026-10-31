@@ -196,3 +196,24 @@ that plan's validation.
     - The cost the Plan named comes back: tool provenance and author metadata share a map, so a source declaring a `pkgskills-` key under `metadata` is a violation, covering rules and agents as well as skills.
     - A dispatcher stub now has a `metadata` block, holding only those keys.
 - **2026-10-31T16:30:16-07:00** — PR opened: https://github.com/gitronald/pkgskills/pull/28
+- **2026-10-31T16:36:40-07:00** — Implemented the Plan's steps 1 to 5, with the top-level key replaced by the `metadata` keys logged above. Calls the Plan left open:
+    - The reserved-prefix check is not in `check_parsed`. A first version put it there, and a stub failed `check_frontmatter` on its own stamp, which an existing test caught. It is now `check_reserved`, called for single-source skills and for rules and agents. A dispatcher source is exempt, since nothing from it reaches a stub.
+    - The prefix is reserved whole, not only the four keys, so a later key cannot collide.
+    - `SPEC.check_copy` is new, since the existing path only covered skills. It holds rules and agents to what the stamp needs (a mapping, a `metadata` that is a mapping, no reserved key) and to none of the skill rules. `check_host` runs it. `render_copy` runs it when stamping, so such a source fails at install where it used to install. Printing with `stamp=False` does not.
+    - `place_stamp` re-reads its result and refuses a block whose existing values would change, rather than installing altered content or a file that reads `foreign`. Aliased `metadata`, a keep-chomped trailing scalar, and a flow-style root all land there.
+    - Flow-style `metadata` is supported, keys going inside the braces, because it is conformant and plan 004 lifted the old rejection of it.
+    - `mask_versions` locates the two values by YAML node rather than by regex, so neither a description nor a body quoting a key is masked.
+    - The comment entry is strict. A line that begins like the comment and then says something else, or lacks the `do not edit` tail, is now `foreign`, where plan 012 noted the old `_line_re` accepted it.
+    - The `Host.validate` message changed to `matches pkgskills' own stamp`.
+    Consequences to know:
+    - Rule and agent files no longer say "do not edit" anywhere, and do not carry the regenerate command. A bare `install` still overwrites edits to them. The Plan accepted losing the command; the lost warning follows from it and is worth a reviewer's eye.
+    - An older pkgskills does not recognize the new stamp, so a downgrade needs `--force` once. Stated in the changelog.
+    - `spec.py` still does not reject unknown top-level keys in a source, though `skills-ref` does, so `assert_spec_conformant`'s "checks the same rules" is not quite true. Not changed here; only what a stub carries is pinned, by a test.
+    Evidence:
+    - ruff check, ruff format, pyrefly, and pytest pass in the worktree: 455 tests, 99% coverage. Every `test_foreign_shapes` row and reason is unchanged.
+    - Seven real comment-stamped files from `pkgskills` 0.5.1, read from a developer machine's global skill and rule directories, all match the built-in entry. Read-only; nothing was reinstalled.
+    Not verified:
+    - `skills-ref validate` was not run (see the entry above). A test asserts a stub's top-level keys are within the spec's fields, which is the rule at issue.
+    - That Claude Code loads an agent carrying a `metadata` block. The Plan's observation was on a rule, and `claude agents` turned out to list background sessions, not definitions, so the probe showed nothing, and a real one needs a model call.
+    - That Codex loads a stub with these keys. `metadata` is a spec field, so it should, but no Codex session ran.
+    Left for hosts: Plan step 6. The first host release pinning this version should tell users a bare `install` is enough. The changelog asks for that.
