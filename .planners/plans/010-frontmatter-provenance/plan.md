@@ -176,3 +176,10 @@ that plan's validation.
 ## Log
 
 - **2026-10-31T12:32:07-07:00** — Handed forward from plan 009: a dispatcher stub now documents that a source's metadata never reaches it. The Version column here changes that, so revise the dispatcher paragraphs in docs/frontmatter.md and the README's host guide when this lands.
+- **2026-10-31T15:53:20-07:00** — Compared this plan with plan 012 against the code and settled where they disagreed; the Plan section now reflects each decision.
+  - The comment alias became a built-in entry in plan 012's list, so plan 012 lands first.
+  - The one-release removal is dropped: a machine skipping that release would hit the defect plan 012 fixes.
+  - `stamped_by` keeps reading comment lines permanently, for foreign reasons only. pkgskills still stops writing them.
+  - Plan 012's validation is retargeted, since a whole-line pattern cannot match a YAML map.
+  - The subcommand table moved to plan 016, along with the hand-forward from plan 009 logged above.
+  - Test file names corrected: `test_stamp.py` and `test_artifacts.py` do not exist.
