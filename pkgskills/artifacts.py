@@ -142,6 +142,14 @@ def global_base() -> Path:
     return Path.home()
 
 
+def _resolved_home() -> Path | None:
+    """The home directory with symlinks resolved, or ``None`` where there is none."""
+    try:
+        return global_base().resolve()
+    except RuntimeError:
+        return None
+
+
 def find_repo_root(
     start: Path | None = None, harnesses: Sequence[Harness] = ()
 ) -> Path:
@@ -151,9 +159,13 @@ def find_repo_root(
     install must target the root the harness loads from, not whatever
     subdirectory the command ran in. Falls back to ``start`` itself.
 
-    The result is not proof of a repository. With ``harnesses`` given, a
-    ``~/.claude`` or ``~/.codex`` makes ``$HOME`` the root of everything under it
-    that no nearer marker claims. A host command that must not write outside a
+    A harness directory in ``$HOME`` is not a marker: ``~/.claude`` and
+    ``~/.codex`` are where a global install lives, so they say nothing about the
+    directories under them. ``~/.git`` is one, so a dotfiles repository keeps its
+    root.
+
+    The result is not proof of a repository, since the fallback returns a
+    directory outside any. A host command that must not write outside a
     repository looks for ``.git`` at the result and above it.
 
     Deliberately a filesystem walk, never a question put to git: an ambient
@@ -161,10 +173,13 @@ def find_repo_root(
     :mod:`pkgskills.proc` keeps the same posture on the write side.
     """
     base = (start or Path.cwd()).resolve()
+    home = _resolved_home()
     for candidate in (base, *base.parents):
         if (candidate / ".git").exists():
             return candidate
-        if any((candidate / h.config_dir).is_dir() for h in harnesses):
+        if candidate != home and any(
+            (candidate / h.config_dir).is_dir() for h in harnesses
+        ):
             return candidate
     return base
 

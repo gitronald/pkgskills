@@ -42,17 +42,7 @@ def test_artifact_paths_per_mode_and_kind(box: Sandbox) -> None:
     )
 
 
-@pytest.fixture
-def no_outer_git(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Root discovery must not depend on whether pytest itself runs inside a repo."""
-    exists = Path.exists
-    outside_markers = {parent / ".git" for parent in tmp_path.parents}
-    monkeypatch.setattr(
-        Path, "exists", lambda path: path not in outside_markers and exists(path)
-    )
-
-
-@pytest.mark.usefixtures("no_outer_git")
+@pytest.mark.usefixtures("no_outer_markers")
 def test_find_repo_root_walks_up_and_falls_back(box: Sandbox, tmp_path: Path) -> None:
     sub = box.repo / "a" / "b"
     sub.mkdir(parents=True)
@@ -800,14 +790,60 @@ def test_find_repo_root_stops_at_codex_directory(box: Sandbox) -> None:
     assert inst.find_repo_root(sub) == box.repo
 
 
-def test_find_repo_root_stops_at_a_harness_directory_in_home(box: Sandbox) -> None:
+@pytest.mark.usefixtures("no_outer_markers")
+def test_find_repo_root_passes_a_harness_directory_in_home(box: Sandbox) -> None:
     (box.home / ".claude").mkdir()
+    (box.home / ".codex").mkdir()
     notes = box.home / "notes" / "deep"
     notes.mkdir(parents=True)
+    assert inst.find_repo_root(notes, EXAMPLE.harnesses) == notes
+    # Started at home itself, the walk has nowhere better to fall back to.
+    assert inst.find_repo_root(box.home, EXAMPLE.harnesses) == box.home
+
+
+@pytest.mark.usefixtures("no_outer_markers")
+def test_find_repo_root_passes_home_through_a_symlink(
+    box: Sandbox, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (box.home / ".claude").mkdir()
+    notes = box.home / "notes"
+    notes.mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(box.home)
+    monkeypatch.setenv("HOME", str(link))
+    assert inst.find_repo_root(link / "notes", EXAMPLE.harnesses) == notes
+
+
+def test_find_repo_root_keeps_a_dotfiles_repository_at_home(box: Sandbox) -> None:
+    (box.home / ".git").mkdir()
+    (box.home / ".claude").mkdir()
+    notes = box.home / "notes"
+    notes.mkdir()
     assert inst.find_repo_root(notes, EXAMPLE.harnesses) == box.home
 
 
-@pytest.mark.usefixtures("no_outer_git")
+def test_find_repo_root_keeps_a_harness_directory_below_home(box: Sandbox) -> None:
+    (box.home / ".claude").mkdir()
+    project = box.home / "project"
+    (project / ".claude").mkdir(parents=True)
+    sub = project / "a"
+    sub.mkdir()
+    assert inst.find_repo_root(sub, EXAMPLE.harnesses) == project
+
+
+def test_find_repo_root_works_where_no_home_can_be_determined(
+    box: Sandbox, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def no_home() -> Path:
+        raise RuntimeError("could not determine home directory")
+
+    monkeypatch.setattr(inst, "global_base", no_home)
+    project = box.repo / "inner"
+    (project / ".claude").mkdir(parents=True)
+    assert inst.find_repo_root(project, EXAMPLE.harnesses) == project
+
+
+@pytest.mark.usefixtures("no_outer_markers")
 def test_the_documented_repository_guard(box: Sandbox, tmp_path: Path) -> None:
     """The README's refusal: `.git` at the walk's result or above it."""
 
@@ -821,7 +857,7 @@ def test_the_documented_repository_guard(box: Sandbox, tmp_path: Path) -> None:
     assert inst.find_repo_root(nested, EXAMPLE.harnesses) == nested
     assert in_repository(nested)
     assert in_repository(box.repo)
-    # A home directory is a marker for the walk, and not a repository.
+    # A home directory holding a harness config is not a repository.
     (box.home / ".claude").mkdir()
     notes = box.home / "notes"
     notes.mkdir()
