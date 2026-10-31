@@ -1,7 +1,7 @@
 ---
 id: 10
 slug: frontmatter-provenance
-status: active
+status: implemented
 branch: feature/frontmatter-provenance
 created: 2026-09-12T16:42:22-07:00
 concluded:
@@ -217,3 +217,4 @@ that plan's validation.
     - That Claude Code loads an agent carrying a `metadata` block. The Plan's observation was on a rule, and `claude agents` turned out to list background sessions, not definitions, so the probe showed nothing, and a real one needs a model call.
     - That Codex loads a stub with these keys. `metadata` is a spec field, so it should, but no Codex session ran.
     Left for hosts: Plan step 6. The first host release pinning this version should tell users a bare `install` is enough. The changelog asks for that.
+- **2026-10-31T16:37:31-07:00** — Implemented: 6 commits ahead of `dev`.
