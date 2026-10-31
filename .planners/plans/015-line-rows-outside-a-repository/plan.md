@@ -1,11 +1,11 @@
 ---
 id: 15
 slug: line-rows-outside-a-repository
-status: draft
-branch:
+status: retired
+branch: null
 created: 2026-10-31T14:47:00-07:00
-concluded:
-pr:
+concluded: 2026-10-31T14:59:10-07:00
+pr: null
 ---
 
 # Decide what a host's lines mean outside a repository
@@ -69,3 +69,4 @@ The design should come from what declaring hosts use lines for. Options to weigh
     - Cost accepted: `install --local` followed by `git init` no longer leaves the line in place. The next check reads `missing` and exits 1, and the repair writes the line. That step is loud and repairable, while the stray files are silent. Reinstalling there should also register the hooks, which today's flow leaves as `unregistered`; this comes from reading the code and is not measured.
     - Hosts need no change. Their tests are unaffected as long as they use `pkgskills.testing.sandbox`, whose repository has a `.git`.
     - Step 2 of the implementation order therefore also covers `precommit.py`, with tests from a bare directory, a root marked only by a harness directory, and a harness-marked root below the top of a repository.
+- **2026-10-31T15:24:58-07:00** — Retired. The maintainer chose to fix this in planners rather than here. It is the only host declaring a Line or wiring pre-commit hooks, and a library change would not reach its own commands, which also misbehave outside a repository. The decisions logged above were not implemented and are superseded. planners plan 020 has it refuse to run outside a git repository, so install never reaches the line outside one. Other hosts declaring a Line would still see this behaviour; none was found.
