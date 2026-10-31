@@ -261,7 +261,7 @@ def assert_spec_conformant(host: Host) -> None:
                 violations,
                 header=(
                     f"{host.dist} ships skills that do not follow the Agent "
-                    f"Skills specification ({VALIDATOR} checks the same rules):"
+                    f"Skills specification ({VALIDATOR} also rejects unknown keys):"
                 ),
             )
         )

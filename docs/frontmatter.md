@@ -106,8 +106,11 @@ stub should drift until it is reinstalled.
   be rendered. The rule covers rules and agents as well as single-source skills.
 - In a rule or agent, keep any frontmatter a YAML mapping, with `metadata` a
   mapping if it is there, so the stamp can join it. A source that is not fails
-  the same way, and so does a block the keys cannot join without changing what it
-  says, such as a `metadata` that is a YAML alias of another key.
+  the same way.
+- In any source that reaches an installed file, avoid a block the keys cannot join
+  without changing what it says: a flow-style root, a `metadata` that is a YAML
+  alias of another key, or a keep-chomped scalar at the end of `metadata`. It fails
+  `assert_spec_conformant` (`stamp-cannot-join`) and cannot be rendered.
 - Every `metadata` key a single-source skill declares is kept, in the order the
   source wrote them. A [dispatcher's sources](#a-dispatchers-sources) keep theirs
   in the package.

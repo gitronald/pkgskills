@@ -15,7 +15,7 @@ from solohost.cli import HOST as SOLO
 
 from pkgskills.frontmatter import split_frontmatter
 from pkgskills.host import Agent, Doc, Host, Rule, Skill
-from pkgskills.rendering import render_stub
+from pkgskills.rendering import render_copy, render_stub
 from pkgskills.spec import SPEC, SkillSpec, SpecError, Violation, report
 from pkgskills.testing import assert_spec_conformant
 
@@ -548,8 +548,83 @@ def test_check_host_leaves_a_missing_copy_source_to_the_install() -> None:
     assert host.check_spec() == []
 
 
-def test_check_reserved_leaves_invalid_yaml_to_the_check_that_owns_the_file() -> None:
+def test_check_stampable_leaves_invalid_yaml_to_the_check_that_owns_the_file() -> None:
     front, _ = split_frontmatter("---\n{not: [yaml\n---\n")
     assert front is not None
-    assert SPEC.check_reserved("x.md", front) == []
+    assert SPEC.check_stampable("x.md", front) == []
     assert rules(SPEC.check_parsed("x/SKILL.md", front)) == {"frontmatter-invalid"}
+
+
+UNJOINABLE = [
+    pytest.param(
+        '---\n{name: solohost-skill, description: "d"}\n---\nbody\n', id="flow root"
+    ),
+    pytest.param(
+        '---\nname: solohost-skill\ndescription: "d"\nx: &m\n  a: "b"\n'
+        "metadata: *m\n---\nbody\n",
+        id="aliased metadata",
+    ),
+    pytest.param(
+        '---\nname: solohost-skill\ndescription: "d"\nmetadata:\n  a: |+\n    t\n\n'
+        "---\nbody\n",
+        id="keep scalar",
+    ),
+]
+
+
+@pytest.mark.parametrize("text", UNJOINABLE)
+@pytest.mark.parametrize(
+    "art", [Rule("r", "r.md"), Agent("a", "a.md")], ids=["rule", "agent"]
+)
+def test_a_copy_the_stamp_cannot_join_fails_conformance_and_render(
+    art: Rule | Agent, text: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """What `place_stamp` would refuse is caught in the host's own suite."""
+    host = dataclasses.replace(EXAMPLE, artifacts=(art,))
+    monkeypatch.setattr(Host, "has_source", lambda self, source: True)
+    _reading(monkeypatch, text)
+    assert rules(host.check_spec()) == {"stamp-cannot-join"}
+    with pytest.raises(AssertionError, match="stamp-cannot-join"):
+        assert_spec_conformant(host)
+    with pytest.raises(SpecError, match="stamp-cannot-join"):
+        render_copy(host, art, "local")
+
+
+@pytest.mark.parametrize("text", UNJOINABLE)
+def test_a_single_source_skill_the_stamp_cannot_join_fails_the_same_way(
+    text: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    skill = SOLO.skills[0]
+    _reading(monkeypatch, text.replace("solohost-skill", skill.name))
+    assert "stamp-cannot-join" in rules(SOLO.check_spec())
+    with pytest.raises(SpecError, match="stamp-cannot-join"):
+        render_stub(SOLO, skill, "local")
+
+
+@pytest.mark.parametrize(
+    "art", [Rule("r", "r.md"), Agent("a", "a.md")], ids=["rule", "agent"]
+)
+@pytest.mark.parametrize("value", ["2026-02-30", "!!int abc"], ids=["date", "tag"])
+def test_a_copy_value_yaml_cannot_resolve_is_not_a_crash(
+    art: Rule | Agent, value: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only the block's shape matters for a copy, so it installs as it always did."""
+    host = dataclasses.replace(EXAMPLE, artifacts=(art,))
+    monkeypatch.setattr(Host, "has_source", lambda self, source: True)
+    _reading(monkeypatch, f"---\ncreated: {value}\n---\nbody\n")
+    assert host.check_spec() == []
+    assert f"created: {value}\n" in render_copy(host, art, "local")
+
+
+def test_a_skill_value_yaml_cannot_resolve_is_a_violation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A skill's values are the spec's business, so this one is reported, not raised."""
+    skill = SOLO.skills[0]
+    _reading(
+        monkeypatch,
+        f'---\nname: {skill.name}\ndescription: "d"\ncreated: 2026-02-30\n---\nbody\n',
+    )
+    assert "frontmatter-invalid" in rules(SOLO.check_spec())
+    with pytest.raises(SpecError, match="frontmatter-invalid"):
+        render_stub(SOLO, skill, "local")

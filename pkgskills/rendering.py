@@ -70,7 +70,7 @@ def stub_frontmatter(host: Host, skill: Skill) -> str:
         if front is None:
             raise SpecError(violations, header=header)
         violations.extend(SPEC.check_skill_name(source, front, skill))
-        violations.extend(SPEC.check_reserved(source, front))
+        violations.extend(SPEC.check_stampable(source, front))
         if violations:
             raise SpecError(violations, header=header)
         return front.raw

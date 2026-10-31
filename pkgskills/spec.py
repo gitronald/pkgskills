@@ -376,7 +376,7 @@ class SkillSpec:
             ]
         try:
             parsed, written = self._views(front.inner)
-        except yaml.YAMLError as exc:
+        except (yaml.YAMLError, ValueError) as exc:  # ValueError: an impossible date
             return [
                 Violation(
                     source,
@@ -473,7 +473,9 @@ class SkillSpec:
         Not the skill rules: the spec does not govern these files, and any block
         the harness accepts is fine so long as the stamp can join it. That needs a
         YAML mapping, with a ``metadata`` that is a mapping if it is there and has
-        no key in the prefix the stamp uses.
+        no key in the prefix the stamp uses. Read with ``BaseLoader``, since only
+        the block's shape matters here: a value ``safe_load`` cannot resolve, like
+        an impossible date, is the file's own business.
         """
         if front is None:
             return []
@@ -489,16 +491,14 @@ class SkillSpec:
             ]
 
         try:
-            parsed = yaml.safe_load(front.inner)
+            view = yaml.load(front.inner, Loader=yaml.BaseLoader)
         except yaml.YAMLError as exc:
             return invalid(str(exc))
-        if parsed is None:
+        if view is None:
             return []
-        if not isinstance(parsed, dict):
+        if not isinstance(view, dict):
             return invalid("frontmatter is not a YAML mapping")
-        if "metadata" not in parsed:
-            return []
-        metadata = parsed["metadata"]
+        metadata = view.get("metadata", {})
         if not isinstance(metadata, dict):
             return [
                 Violation(
@@ -508,24 +508,35 @@ class SkillSpec:
                     "use a mapping, or drop the key; the provenance stamp goes in it",
                 )
             ]
-        return self.check_reserved(source, front)
+        return self._stamp_violations(source, front.inner, metadata)
 
-    def check_reserved(self, source: str, front: Frontmatter) -> list[Violation]:
-        """Violations for ``metadata`` keys in the prefix the stamp is written under.
+    def check_stampable(self, source: str, front: Frontmatter) -> list[Violation]:
+        """Violations that stop the stamp joining a source's block.
 
-        A rule for a source that reaches an installed file, not one of the spec's:
-        its key there would be a duplicate in that file, or would pass for
-        provenance. So :meth:`check_parsed` leaves it out, and a stub, which holds
-        those keys by design, stays conformant.
+        Rules for a source that reaches an installed file, not the spec's: a key in
+        the stamp's prefix would be a duplicate in that file, or would pass for
+        provenance. So :meth:`check_parsed` leaves them out, and a stub, which holds
+        those keys by design, stays conformant. A block that is not a mapping, or
+        whose ``metadata`` is not one, is left to whichever check owns the file.
         """
         try:
-            parsed = yaml.safe_load(front.inner)
+            view = yaml.load(front.inner, Loader=yaml.BaseLoader)
         except yaml.YAMLError:
-            return []  # reported as invalid by whichever check owns the file
-        metadata = parsed.get("metadata") if isinstance(parsed, dict) else None
+            return []
+        metadata = view.get("metadata", {}) if isinstance(view, dict) else None
         if not isinstance(metadata, dict):
             return []
-        return [
+        return self._stamp_violations(source, front.inner, metadata)
+
+    @staticmethod
+    def _stamp_violations(
+        source: str, inner: str, metadata: dict[object, object]
+    ) -> list[Violation]:
+        """The reserved keys in ``metadata``, and whether the stamp fits ``inner``."""
+        # Here rather than at the top of the module: stamp imports this module.
+        from pkgskills.stamp import stamp_fits
+
+        out = [
             Violation(
                 where=source,
                 rule="metadata-key-reserved",
@@ -535,6 +546,19 @@ class SkillSpec:
             for key in metadata
             if isinstance(key, str) and key.startswith(RESERVED_PREFIX)
         ]
+        if not stamp_fits(inner):
+            out.append(
+                Violation(
+                    where=source,
+                    rule="stamp-cannot-join",
+                    detail="adding the provenance stamp would change this block",
+                    fix=(
+                        "write the frontmatter as a plain block mapping, with no "
+                        "alias for `metadata` and no keep-chomped scalar at its end"
+                    ),
+                )
+            )
+        return out
 
     # -- whole declarations ------------------------------------------------
 
@@ -558,7 +582,7 @@ class SkillSpec:
             out.extend(self.check_parsed(source, front))
             if not skill.dispatches and front is not None:
                 out.extend(self.check_skill_name(source, front, skill))
-                out.extend(self.check_reserved(source, front))
+                out.extend(self.check_stampable(source, front))
         return out
 
     def check_skill_name(

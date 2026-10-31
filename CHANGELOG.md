@@ -39,7 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   or agent source declaring such a key fails `assert_spec_conformant`
   (`metadata-key-reserved`) and cannot be rendered. `SkillSpec.check_host` now also
   reads rule and agent sources, for whether they can take the stamp, and installing
-  one whose frontmatter cannot take it now fails rather than writing the file.
+  one whose frontmatter cannot take it now fails rather than writing the file. A
+  block the keys cannot join without changing what it says, such as an aliased
+  `metadata`, fails the same check (`stamp-cannot-join`).
+- A skill source with a value YAML cannot resolve, such as an impossible date, now
+  reports `frontmatter-invalid` rather than raising `ValueError`.
 - A `Host.legacy_stamps` pattern is rejected when it matches the HTML comment form
   or a line of the stamp's map. The error now reads `matches pkgskills' own stamp`.
 - A line that begins like a current stamp and goes on to say something else no

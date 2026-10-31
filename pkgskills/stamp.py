@@ -11,7 +11,7 @@ a skill's into its own index, so the stamp costs no context.
 properties it does not define, and its reference validator rejects any other
 top-level key. So the keys share the map with whatever the source declares, and
 the ``pkgskills-`` prefix keeps the two owners apart:
-:meth:`~pkgskills.spec.SkillSpec.check_parsed` rejects a source that claims the
+:meth:`~pkgskills.spec.SkillSpec.check_stampable` rejects a source that claims the
 prefix. A source's own ``metadata.version`` still means the skill's version and
 passes through verbatim.
 
@@ -340,6 +340,22 @@ def _require_intact(before: str, after: str, stamp: str) -> None:
             "cannot add the provenance stamp to this frontmatter block; "
             f"write it as a plain block mapping:\n{before}"
         )
+
+
+def stamp_fits(inner: str) -> bool:
+    """True when the stamp can join a block's YAML without changing what it says.
+
+    The conformance checks ask this, so a source :func:`place_stamp` would refuse
+    fails in the host's own suite rather than at a consumer's ``install``. The
+    answer does not depend on the stamp's values, which are always quoted.
+    """
+    keys = (HOST_KEY, HOST_VERSION_KEY, VERSION_KEY, MODE_KEY)
+    probe = "\n".join(f'{key}: "0"' for key in keys)
+    try:
+        _require_intact(inner, _splice(inner, probe), probe)
+    except ValueError:
+        return False
+    return True
 
 
 def place_stamp(front: str, stamp: str, body: str) -> str:

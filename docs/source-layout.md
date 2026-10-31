@@ -158,7 +158,7 @@ what lets a failure say which rule broke and what to do:
 
 ```
 brokenhost ships skills that do not follow the Agent Skills specification
-(skills-ref validate checks the same rules):
+(skills-ref validate also rejects unknown keys):
   misfiled/SKILL.md:
     - frontmatter declares no `description` [description-missing] -- add
       `description`: 1-1024 characters saying what the skill does and when to use it
