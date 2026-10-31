@@ -1,8 +1,8 @@
 ---
 id: 10
 slug: frontmatter-provenance
-status: draft
-branch:
+status: active
+branch: feature/frontmatter-provenance
 created: 2026-09-12T16:42:22-07:00
 concluded:
 pr:
@@ -183,3 +183,8 @@ that plan's validation.
   - Plan 012's validation is retargeted, since a whole-line pattern cannot match a YAML map.
   - The subcommand table moved to plan 016, along with the hand-forward from plan 009 logged above.
   - Test file names corrected: `test_stamp.py` and `test_artifacts.py` do not exist.
+- **2026-10-31T16:25:16-07:00** — Activated.
+  - Branch: `feature/frontmatter-provenance`
+  - Base: `dev` at `ed4f8da`
+  - Worktree: `.worktrees/010-frontmatter-provenance`
+  - PR: pending
