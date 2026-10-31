@@ -5,7 +5,7 @@ status: active
 branch: feature/host-legacy-stamps
 created: 2026-10-28T09:08:00-07:00
 concluded:
-pr:
+pr: https://github.com/gitronald/pkgskills/pull/27
 ---
 
 # Let a host declare its pre-adoption stamp as its own
@@ -156,3 +156,4 @@ current-stamp check cannot apply to a YAML map.
   - Base: `dev` at `8272974`
   - Worktree: `.worktrees/012-host-legacy-stamps`
   - PR: pending
+- **2026-10-31T16:07:19-07:00** — PR opened: https://github.com/gitronald/pkgskills/pull/27
