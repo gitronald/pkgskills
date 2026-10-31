@@ -1,7 +1,7 @@
 ---
 id: 14
 slug: home-is-not-a-repo-root
-status: active
+status: implemented
 branch: feature/home-is-not-a-repo-root
 created: 2026-10-31T14:10:56-07:00
 concluded:
@@ -131,6 +131,7 @@ one exists on at least one development machine.
   - **Docs beyond the plan's list:** README's Modes section said the two locations never collide, and the `[Unreleased]` line saying the walk can stop at `$HOME` was no longer true. Both are corrected.
   - **Verified:** full suite, 391 passed, coverage 98.69%, with ruff and pyrefly clean. The plan's reproduction also ran as real processes with a sandboxed `$HOME`: from a directory under home the check exits 0 with `ok` rows only, `install --local` writes under that directory and leaves the global stub at `mode=global`, and from home `--local` and `--local --check` both exit 1. With `.git` added at home, the check from a fresh subdirectory exits 0 and `--local` is refused.
   - **Not changed:** a harness directory above home still marks a root, as any other directory's does. This only arises on a machine with such a directory in a parent of home.
+- **2026-10-31T14:36:02-07:00** — Implemented: 6 commits ahead of `dev`.
 
 ## Handoff
 

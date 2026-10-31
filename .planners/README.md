@@ -2,7 +2,7 @@
 
 | # | Plan | Status | Concluded | PR |
 |---|---|---|---|---|
-| 014 | [Stop treating the home directory as a repository root](plans/014-home-is-not-a-repo-root/plan.md) | active | — | [#26](https://github.com/gitronald/pkgskills/pull/26) |
+| 014 | [Stop treating the home directory as a repository root](plans/014-home-is-not-a-repo-root/plan.md) | implemented | — | [#26](https://github.com/gitronald/pkgskills/pull/26) |
 | 012 | [Let a host declare its pre-adoption stamp as its own](plans/012-host-legacy-stamps/plan.md) | draft | — | — |
 | 010 | [Move the provenance stamp into frontmatter and tabulate subcommands](plans/010-frontmatter-provenance/plan.md) | draft | — | — |
 | 009 | [Smooth the seams a host meets after adopting the library](plans/009-host-adoption-followups/plan.md) | done | 2026-10-31 12:38 PT | [#25](https://github.com/gitronald/pkgskills/pull/25) |
