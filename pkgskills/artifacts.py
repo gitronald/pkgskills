@@ -35,7 +35,13 @@ from typing import Literal
 from pkgskills.harness import Harness, Kind
 from pkgskills.host import Artifact, Host, Line, Mode, Skill
 from pkgskills.rendering import render
-from pkgskills.stamp import is_stamped, mask_versions, stamped_by, stamped_mode
+from pkgskills.stamp import (
+    is_stamped,
+    legacy_reason,
+    mask_versions,
+    stamped_by,
+    stamped_mode,
+)
 
 Status = Literal["ok", "drifted", "stale", "missing", "foreign"]
 
@@ -316,7 +322,9 @@ def classify(path: Path, host: Host, expected: str, mode: Mode) -> tuple[Status,
     recorded = stamped_mode(text, host)
     if recorded is not None and recorded != mode:
         return "drifted", f"rendered for mode={recorded}, installed where mode={mode}"
-    return "drifted", "content differs from the current render"
+    return "drifted", (
+        legacy_reason(text, host) or "content differs from the current render"
+    )
 
 
 def check_artifact(

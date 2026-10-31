@@ -14,11 +14,19 @@ Both version tokens in the stamp are masked before a drift comparison, so a
 routine upgrade of either package never flags a file whose content did not
 change. A source-declared version is not masked -- when it changes, the stub
 should drift.
+
+A host that stamped its own files before it adopted ``pkgskills`` can declare
+those lines on :attr:`Host.legacy_stamps <pkgskills.host.Host.legacy_stamps>`.
+A line a declared pattern matches counts as this host's stamp everywhere, and
+the file reads ``drifted`` until a bare ``install`` rewrites it. Its versions
+are not masked: its stamp line differs from the current render, so it is never
+``ok`` however its body reads.
 """
 
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from importlib import metadata
 
 from pkgskills.host import MODES, Host, Mode
@@ -54,13 +62,65 @@ def _line_re(dist: str) -> re.Pattern[str]:
 _ANY_RE = re.compile(rf"(?m)^{re.escape(PREFIX)}(\S+) ")
 
 
+@dataclass(frozen=True)
+class _LegacyStamp:
+    """A stamp line pkgskills no longer writes, and why a file carrying it drifts."""
+
+    pattern: re.Pattern[str]
+    reason: str
+
+
+def _legacy_entries(host: Host) -> tuple[_LegacyStamp, ...]:
+    """Every older stamp form ``host``'s files may carry, in lookup order."""
+    return tuple(
+        _LegacyStamp(pattern, f"stamped by {host.dist} before it adopted pkgskills")
+        for pattern in host.legacy_stamps
+    )
+
+
+def _as_mode(token: str | None) -> Mode | None:
+    """``token`` as an install mode, or ``None`` when it does not name one."""
+    for mode in MODES:
+        if token == mode:
+            return mode
+    return None
+
+
+def _legacy_match(text: str, host: Host) -> tuple[Mode, str] | None:
+    """The recorded mode and reason of the first legacy entry ``text`` matches.
+
+    Each pattern has to match a whole line. A line whose ``mode`` group captured
+    anything but an install mode is no match, so a pattern loose enough to take
+    a corrupted token leaves that file ``foreign``. A file carrying a current
+    stamp is not a legacy one, whatever else its body quotes.
+    """
+    entries = _legacy_entries(host)
+    if not entries or _line_re(host.dist).search(text) is not None:
+        return None
+    lines = text.splitlines()
+    for entry in entries:
+        for line in lines:
+            match = entry.pattern.fullmatch(line)
+            mode = _as_mode(match.group("mode")) if match else None
+            if mode is not None:
+                return mode, entry.reason
+    return None
+
+
+def legacy_reason(text: str, host: Host) -> str | None:
+    """Why ``text``'s legacy stamp drifts, or ``None`` when it carries none."""
+    match = _legacy_match(text, host)
+    return match[1] if match else None
+
+
 def is_stamped(text: str, host: Host) -> bool:
     """True when ``text`` carries a stamp line written for ``host``.
 
     Anchored to a whole line so a hand-written file that merely quotes the
-    marker in prose is never mistaken for a generated one.
+    marker in prose is never mistaken for a generated one. A line the host
+    declared on ``legacy_stamps`` counts.
     """
-    return _line_re(host.dist).search(text) is not None
+    return stamped_mode(text, host) is not None
 
 
 def stamped_by(text: str) -> str | None:
@@ -72,10 +132,10 @@ def stamped_by(text: str) -> str | None:
 def stamped_mode(text: str, host: Host) -> Mode | None:
     """The mode recorded in ``text``'s stamp, or ``None`` when unstamped."""
     match = _line_re(host.dist).search(text)
-    if match is None:
-        return None
-    mode = match.group(3)
-    return "global" if mode == "global" else "local"
+    if match is not None:
+        return _as_mode(match.group(3))
+    legacy = _legacy_match(text, host)
+    return legacy[0] if legacy else None
 
 
 def mask_versions(text: str, host: Host) -> str:
