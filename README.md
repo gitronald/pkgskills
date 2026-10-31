@@ -139,7 +139,9 @@ yourtool = "yourtool.cli:HOST"
 
 The enclosing repository is the nearest ancestor of the working directory
 holding `.git`, `.claude/`, or `.codex/`, so a local install from a subdirectory
-still lands where the harness loads from.
+still lands where the harness loads from. Home's own `.claude/` and `.codex/` do
+not count, since that is where a global install lives. `~/.git` does, so a
+dotfiles repository keeps its root.
 
 ### Your own commands
 
@@ -164,10 +166,9 @@ subdirectory holds `.claude/` or `.codex/`, the two halves of the CLI pick
 different directories.
 
 The walk always returns a directory, and outside a repository that directory is
-rarely the one you want. With no marker at all it returns where it started. On a
-machine with a `~/.claude` or `~/.codex`, home is itself a marker, so from any
-directory under it that no nearer marker claims, the walk returns `$HOME`. A
-command that should not write outside a repository checks for one:
+rarely the one you want. With no marker at all it returns where it started,
+including under a home with a `~/.claude` or `~/.codex`, which the walk does not
+stop at. A command that should not write outside a repository checks for one:
 
 ```python
 root = find_repo_root(harnesses=HOST.harnesses)
@@ -180,7 +181,11 @@ if not any((d / ".git").exists() for d in (root, *root.parents)):
 **Global** (default) puts one copy under `$HOME` that serves every repository;
 the CLI is on `PATH` and invoked bare. **Local** puts the copy under the
 repository root and invokes the CLI through `uv run`. The relative layout is
-the same at both bases, so the two never collide.
+the same at both bases, so the two collide only where the root is `$HOME`
+itself: from `$HOME`, or under a home that holds `.git`. The paths then name one
+set of files, which serve every repository, so they count as global. `--check`
+judges each file once, and `--local` is refused. A host that installs only
+locally is exempt, since it has no global copy to overwrite.
 
 A file's mode is the one its location implies. A stub rendered for local mode
 and carried to the global path reads as drifted, because the commands inside
