@@ -157,3 +157,10 @@ current-stamp check cannot apply to a YAML map.
   - Worktree: `.worktrees/012-host-legacy-stamps`
   - PR: pending
 - **2026-10-31T16:07:19-07:00** — PR opened: https://github.com/gitronald/pkgskills/pull/27
+- **2026-10-31T16:08:54-07:00** — Implemented as specified, with these calls the Plan left open.
+  - Whole-line matching uses `fullmatch` on each line from `splitlines`, so a pattern needs no anchors of its own.
+  - A `mode` group that captures anything but `global` or `local`, or stays unset, is no match. The file then stays `foreign`.
+  - A file carrying a current stamp is never a legacy one, even when its body quotes a declared line.
+  - The current-stamp check imports `render_stamp` inside `Host`, because `stamp` imports `host`. Only a host that declares a pattern pays for the render at construction.
+  - Tests went where their subject already lives, not all in `tests/test_install.py`: validation in `test_host.py`, the lookup in `test_render.py`, and an added end-to-end upgrade in `test_cli.py`.
+  - For plan 010: `_line_re` has no end anchor, so a line that begins with the current form reads as a current stamp however it ends, and a legacy pattern never sees it.
