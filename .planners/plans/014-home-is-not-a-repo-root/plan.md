@@ -1,8 +1,8 @@
 ---
 id: 14
 slug: home-is-not-a-repo-root
-status: draft
-branch:
+status: active
+branch: feature/home-is-not-a-repo-root
 created: 2026-10-31T14:10:56-07:00
 concluded:
 pr:
@@ -116,6 +116,11 @@ one exists on at least one development machine.
   - Why it does not hold: that call concerned hosts' own commands and was made without running the mounted ones, which recorded the risk as unverified. Running them showed the check suggesting a repair that overwrites the global stubs. The wording is unreleased, on `dev` and under `[Unreleased]`, so reversing it costs little.
   - Unchanged: `register` mounts no callback, hosts pass `harnesses`, the README's repository guard stays, and plan 009's other decisions stand. Plan 002's guard for `$HOME` as a root is extended, not undone.
   - Narrower option: decision 2 alone reverses nothing and stops both the false failure and the overwrite. Only decision 1 reverses plan 009. Doing both is recommended, because with decision 2 alone a local install under home is refused rather than placed there, and host commands following the README still get `$HOME` as their root. Decision 2 alone remains a safe first step if the walk change is deferred.
+- **2026-10-31T14:30:16-07:00** — Activated.
+  - Branch: `feature/home-is-not-a-repo-root`
+  - Base: `dev` at `23c4015`
+  - Worktree: `.worktrees/014-home-is-not-a-repo-root`
+  - PR: pending
 
 ## Handoff
 
