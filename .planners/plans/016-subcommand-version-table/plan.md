@@ -5,7 +5,7 @@ status: active
 branch: feature/subcommand-version-table
 created: 2026-10-31T15:51:53-07:00
 concluded:
-pr:
+pr: https://github.com/gitronald/pkgskills/pull/29
 ---
 
 # Add a version column to the dispatcher's subcommand table
@@ -57,3 +57,4 @@ a version column:
   - Base: `dev` at `16a8a12`
   - Worktree: `.worktrees/016-subcommand-version-table`
   - PR: pending
+- **2026-10-31T16:58:03-07:00** — PR opened: https://github.com/gitronald/pkgskills/pull/29
