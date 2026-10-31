@@ -100,10 +100,31 @@ skill's own name.
 Nothing forces the migration. A host that ships `skills/tidy.md` keeps working
 exactly as before — the stem names it — and a host may mix the two layouts.
 The only thing the flat layout costs is spec conformance of the source tree
-itself, which matters when a linter is pointed at the package. `pkgskills`'s own
+itself, which matters when a linter is pointed at the package or when a host's
+suite calls `assert_spec_conformant`. `pkgskills`'s own
 exemplary fixture hosts are all conformant, since what they ship is what a host
 author copies; the flat layout lives in `brokenhost`, the fixture whose whole
 purpose is to be wrong, and in tests that declare it inline.
+
+Working is not the same as passing. `assert_spec_conformant` asserts the whole
+spec, and the layout is part of it (the `entry-file` rule), so a host that adopts
+the helper as written uses the directory layout, a dispatcher's sources included.
+
+A host that keeps flat sources on purpose asserts everything else by filtering
+the report, which leaves the exception visible in its own test:
+
+```python
+def test_prompts_are_well_formed() -> None:
+    violations = [v for v in HOST.check_spec() if v.rule != "entry-file"]
+    assert not violations, "\n".join(map(str, violations))
+    assert_prompt_commands(HOST, app)
+```
+
+The rule does not vary by what a source is for. Neither a dispatcher's source nor
+a single-source skill's is installed where it sits: what installs is the stub, at
+a path built from `Skill.name`, so a flat source of either kind produces a
+conformant installed skill. The layout matters only to something reading the
+package, and that reader cannot tell the two kinds apart.
 
 The name a source contributes is not the name a *single-source* skill is
 addressed by. That one answers to `Skill.name` — what the stub's frontmatter
@@ -191,8 +212,13 @@ metadata:
 ```
 
 `pkgskills.frontmatter.parse_fields` flattens a nested block, so the check
-parses the raw frontmatter with YAML itself and reads the mapping from there. `pkgskills` splices nothing into `metadata` of its own: a stub
-lifts whatever the source declares, `version` included, byte for byte.
+parses the raw frontmatter with YAML itself and reads the mapping from there. `pkgskills` splices nothing into `metadata` of its own: a single-source
+stub lifts whatever the source declares, `version` included, byte for byte, and a
+dispatcher stub [declares none](frontmatter.md#a-dispatchers-sources). The check
+still covers a dispatcher's sources, because a linter reads them too.
+
+Which bare versions pass, and why to quote them anyway, is in
+[Frontmatter](frontmatter.md#what-a-stub-carries).
 
 What is *not* checked is the spec's **recommendations**, as against its
 constraints: that a description say what a skill does *and* when to use it,

@@ -1,11 +1,11 @@
 ---
 id: 9
 slug: host-adoption-followups
-status: active
+status: done
 branch: feature/host-adoption-followups
 created: 2026-09-12T13:08:14-07:00
-concluded:
-pr:
+concluded: 2026-10-31T12:38:59-07:00
+pr: https://github.com/gitronald/pkgskills/pull/25
 ---
 
 # Smooth the seams a host meets after adopting the library
@@ -153,10 +153,11 @@ each fix is documentation, plus tests that keep the documentation true.
      in every tree: without it, a nested directory holding `.claude/` or `.codex/`
      is a root to the library and not to the host.
    - The fallback stays as it is. A host command that must refuse outside a
-     repository tests `(root / ".git").exists()` on the result. That test also
-     covers the case the walk's docstring does not mention: under a home directory
-     holding `.claude/`, the walk stops at `$HOME` rather than falling back to
-     `start`.
+     repository looks for `.git` at the result and above it. Testing the result
+     alone would refuse inside a repository whose subdirectory holds `.claude/`.
+     The check also covers the case the walk's docstring does not mention: under
+     a home directory holding `.claude/`, the walk stops at `$HOME` rather than
+     falling back to `start`.
 2. **Seam 2 is documentation.**
    - Document it: a dispatcher stub declares no `metadata`, and a dispatcher
      source's `metadata` is the source's own, read by a linter or a person and
@@ -213,3 +214,29 @@ offers about it.
   - Base: `dev` at `a1023e8`
   - Worktree: `.worktrees/009-host-adoption-followups`
   - PR: pending
+- **2026-10-31T12:34:00-07:00** — PR opened: https://github.com/gitronald/pkgskills/pull/25
+- **2026-10-31T12:35:02-07:00** — Implemented: 3 commits ahead of `dev`.
+- **2026-10-31T12:39:01-07:00** — Implemented all three decisions as documentation, docstrings, and tests. No behaviour changed in `pkgskills/`.
+  - Seam 1: README section "Your own commands", the `register` and `find_repo_root` docstrings, and design.md's Anchoring decision. Tests pin the walk stopping at a home harness directory and the documented guard.
+  - Seam 2: frontmatter.md section "A dispatcher's sources", with drift, README, and source-layout wording narrowed to single-source stubs. Tests cover a dispatcher over a source that declares `metadata`, and a bare `1.0.0` against a bare `2.0`.
+  - Seam 3: source-layout.md and the README's testing section state that flat sources install but fail `assert_spec_conformant`, and show the `check_spec()` filter. The `check_layout` and `assert_spec_conformant` docstrings agree. Tests cover the filter for both roles and a flat source installing a conformant skill.
+  - Corrected at implementation: decision 1's guard looked for `.git` only at the walk's result, which refuses inside a repository whose subdirectory holds `.claude/`. It now looks at the result and above it.
+  - Review follow-up: medium `/code-review`, posted to the PR. Actioned: the copied `Path.exists` patch became the `no_outer_git` fixture, "from anywhere under home" gained "that no nearer marker claims", and source-layout.md links to frontmatter.md for the bare-version advice. These were a refactor and wording, so no paired regression tests. Conscious no-op: the filter snippet stays in both the README and source-layout.md, since decision 3 has both show it. Rejected by verifiers: four candidates, listed in the PR comment.
+  - Checks at the review-fix commit: ruff check, ruff format --check, pyrefly, and pytest (364 passed, 98.68% coverage).
+
+## Retrospective
+
+- All three seams resolved as documentation with no new public API. The plan's
+  options leaned toward code, and checking them against the existing surface
+  removed the need: `Host.check_spec()` and its rule slugs already were the
+  `ignore=` the plan considered.
+- Running the claims was the most useful step. The spec's bare `1.0.0` claim was
+  false, and an existing dispatcher test could not fail for the behaviour it
+  named. A plan written from reading code carries such claims forward unchecked.
+- The by-role option read as the principled one until traced: a source's path never
+  reaches the harness in either role, so there was no role to scope the rule by.
+- My first guard was wrong too, and writing its test exposed it, which is why the
+  guard in the README has a test of its own.
+- Not resolved here, and out of this plan's scope: the walk stopping at `$HOME` also
+  applies to the mounted `install --local`, which from a directory under home with no
+  repository would target home. That follows from reading `cli.py`; it was not run.

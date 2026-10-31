@@ -2,9 +2,9 @@
 
 | # | Plan | Status | Concluded | PR |
 |---|---|---|---|---|
-| 009 | [Smooth the seams a host meets after adopting the library](plans/009-host-adoption-followups/plan.md) | active | — | — |
 | 012 | [Let a host declare its pre-adoption stamp as its own](plans/012-host-legacy-stamps/plan.md) | draft | — | — |
 | 010 | [Move the provenance stamp into frontmatter and tabulate subcommands](plans/010-frontmatter-provenance/plan.md) | draft | — | — |
+| 009 | [Smooth the seams a host meets after adopting the library](plans/009-host-adoption-followups/plan.md) | done | 2026-10-31 12:38 PT | [#25](https://github.com/gitronald/pkgskills/pull/25) |
 | 013 | [Add a Codex harness and permission guidance](plans/013-codex-harness/plan.md) | done | 2026-10-29 11:35 PT | [#22](https://github.com/gitronald/pkgskills/pull/22) |
 | 011 | [Upgrade to proj-template v0.11.2](plans/011-template-upgrade/plan.md) | done | 2026-10-18 17:40 PT | [#17](https://github.com/gitronald/pkgskills/pull/17) |
 | 008 | [Move hook wiring, in-place line artifacts, and superseded paths upstream](plans/008-host-install-machinery/plan.md) | done | 2026-09-11 20:46 PT | [#8](https://github.com/gitronald/pkgskills/pull/8) |

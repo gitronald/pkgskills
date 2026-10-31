@@ -480,7 +480,14 @@ def _permissions_command(host: Host) -> typer.Typer:
 
 
 def register(app: typer.Typer, host: Host) -> None:
-    """Add the shared commands for ``host`` to ``app``."""
+    """Add the shared commands for ``host`` to ``app``.
+
+    These commands anchor to the repository root, not the working directory. A
+    host's own commands on ``app`` do not inherit that, and nothing here can
+    impose it: they should call
+    ``find_repo_root(harnesses=host.harnesses)`` so both halves of the CLI agree
+    from any subdirectory.
+    """
     for sub in _commands(host):
         app.registered_commands.extend(sub.registered_commands)
 

@@ -21,7 +21,7 @@ string values*, so the checks here re-read the block with YAML itself rather
 than the flat view, and judge the map-ness and the value types from what YAML
 actually resolved. The rule that earns its keep is the value one — the spec's
 own example writes ``version: "1.0"`` with the quotes because unquoted it is a
-float, and a generated stub preserves that metadata unchanged.
+float, and a single-source stub preserves that metadata unchanged.
 
 What is *not* checked is the spec's recommendations, as against its
 constraints: that a description name what the skill does *and* when to use it,
@@ -319,9 +319,11 @@ class SkillSpec:
     def check_layout(self, source: str) -> list[Violation]:
         """Violations in where a source is stored.
 
-        A flat source is a departure from the spec but not an error ``pkgskills``
-        raises on: hosts predating the layout keep working, and the rule slug
-        lets a caller decide how loudly to say so.
+        A flat source is a departure from the spec that ``install`` and ``render``
+        do not raise on, so hosts predating the layout keep working.
+        :func:`pkgskills.testing.assert_spec_conformant` does raise on it, since it
+        asserts the whole spec; the rule slug lets a caller filter it out of
+        :meth:`check_host`'s report instead.
         """
         if self.is_entry(source):
             return []
