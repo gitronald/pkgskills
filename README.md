@@ -255,7 +255,7 @@ Resolving it any other way prints commands that do not run.
 
 ## The stamp and the check
 
-Every generated file carries four keys under its frontmatter's `metadata`, and a
+Every generated file carries five keys under its frontmatter's `metadata`, and a
 rule or agent whose source has no frontmatter gains a block to hold them:
 
 ```yaml
@@ -265,6 +265,7 @@ metadata:
   pkgskills-host-version: "1.4.0"
   pkgskills-version: "0.1.0"
   pkgskills-mode: "local"
+  pkgskills-note: "generated; install overwrites edits"
 ---
 ```
 

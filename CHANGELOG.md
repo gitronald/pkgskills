@@ -26,9 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- The provenance stamp moved from an HTML comment into the frontmatter, as four
+- The provenance stamp moved from an HTML comment into the frontmatter, as five
   quoted keys under `metadata`: `pkgskills-host`, `pkgskills-host-version`,
-  `pkgskills-version`, and `pkgskills-mode`. Rules and agents carry them too, and
+  `pkgskills-version`, `pkgskills-mode`, and `pkgskills-note`, a fixed warning that
+  `install` overwrites edits. Rules and agents carry them too, and
   one whose source has no frontmatter gains a block. `pkgskills` no longer writes
   the comment, and the regenerate command is no longer in the file, except that a
   stub's body still prints it. Host maintainers: comment-stamped files read

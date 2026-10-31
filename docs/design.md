@@ -50,8 +50,9 @@ grammar on the host's own typer app so extra host commands sit beside the
 shared ones. An entry-point group (`pkgskills.hosts`) lets the standalone
 `pkgskills` script check every host at once.
 
-**One contract.** The stamp is four `pkgskills-*` keys under the frontmatter's
-`metadata`, naming the host, both versions, and the mode. Drift masks both
+**One contract.** The stamp is five `pkgskills-*` keys under the frontmatter's
+`metadata`, naming the host, both versions, and the mode, with a note that
+`install` overwrites edits. Drift masks both
 version values. It is the *only* home of that provenance. A prefix rather than a
 top-level key, because the Agent Skills spec keeps extra properties in that map
 and its reference validator rejects others; a prefix rather than plain keys, so

@@ -19,6 +19,7 @@ metadata:
   pkgskills-host-version: "0.4.0"
   pkgskills-version: "0.5.1"
   pkgskills-mode: "local"
+  pkgskills-note: "generated; install overwrites edits"
 ---
 ```
 
@@ -57,7 +58,7 @@ and the stamp already records that.
 
 ## Where the release provenance lives
 
-In the stamp, and only there. Every generated file carries four keys under
+In the stamp, and only there. Every generated file carries five keys under
 `metadata`, each a quoted string:
 
 | Key | What it records |
@@ -66,6 +67,7 @@ In the stamp, and only there. Every generated file carries four keys under
 | `pkgskills-host-version` | the host's release |
 | `pkgskills-version` | the `pkgskills` release that rendered the file |
 | `pkgskills-mode` | the install mode, `global` or `local` |
+| `pkgskills-note` | a fixed warning that a bare `install` overwrites edits |
 
 It is what `install --check` matches on. The command that repairs a file is not
 in it, because that follows from the host and the mode: a stub's body prints it,

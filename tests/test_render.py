@@ -23,6 +23,7 @@ from pkgskills.rendering import (
 )
 from pkgskills.spec import SpecError
 from pkgskills.stamp import (
+    NOTE,
     is_stamped,
     legacy_reason,
     mask_versions,
@@ -38,6 +39,7 @@ STAMP_KEYS = {
     "pkgskills-host-version",
     "pkgskills-version",
     "pkgskills-mode",
+    "pkgskills-note",
 }
 
 
@@ -162,6 +164,7 @@ def test_stamp_names_host_pkgskills_and_mode_as_quoted_strings() -> None:
     assert lines[1] == 'pkgskills-host-version: "1.2.3"'
     assert lines[2].startswith('pkgskills-version: "')
     assert lines[3] == 'pkgskills-mode: "local"'
+    assert lines[4] == f'pkgskills-note: "{NOTE}"'
     text = render(EXAMPLE, EXAMPLE.rules[0], "local")
     assert stamped_by(text) == "examplehost"
     assert stamped_mode(text, EXAMPLE) == "local"
@@ -512,3 +515,17 @@ def test_subcommand_description_preserves_trailing_hyphens(monkeypatch) -> None:
         Host, "read", lambda self, source: "---\ndescription: 'Use --'\n---\n"
     )
     assert "- `add` - Use --\n" in render_stub(EXAMPLE, EXAMPLE.skills[0], "global")
+
+
+def test_a_rule_warns_that_install_overwrites_edits() -> None:
+    """A rule has no body text saying so, unlike a stub."""
+    assert f'pkgskills-note: "{NOTE}"' in render(EXAMPLE, EXAMPLE.rules[0], "local")
+
+
+def test_a_stamp_without_the_note_still_counts_and_drifts() -> None:
+    """The note is for readers. Losing it is a content change, not a foreign file."""
+    text = render(EXAMPLE, EXAMPLE.rules[0], "local")
+    stripped = text.replace(f'  pkgskills-note: "{NOTE}"\n', "")
+    assert stripped != text
+    assert is_stamped(stripped, EXAMPLE)
+    assert mask_versions(stripped, EXAMPLE) != mask_versions(text, EXAMPLE)
