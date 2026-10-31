@@ -1,8 +1,8 @@
 ---
 id: 16
 slug: subcommand-version-table
-status: draft
-branch:
+status: active
+branch: feature/subcommand-version-table
 created: 2026-10-31T15:51:53-07:00
 concluded:
 pr:
@@ -49,3 +49,11 @@ a version column:
 3. Docs: plan 009 left a dispatcher stub documented as never receiving a
    source's metadata, so revise the dispatcher paragraphs in `docs/frontmatter.md`
    and the README's host guide. Changelog under `[Unreleased]`.
+
+## Log
+
+- **2026-10-31T16:55:14-07:00** — Activated.
+  - Branch: `feature/subcommand-version-table`
+  - Base: `dev` at `16a8a12`
+  - Worktree: `.worktrees/016-subcommand-version-table`
+  - PR: pending
