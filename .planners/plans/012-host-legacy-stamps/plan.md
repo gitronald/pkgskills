@@ -1,8 +1,8 @@
 ---
 id: 12
 slug: host-legacy-stamps
-status: draft
-branch:
+status: active
+branch: feature/host-legacy-stamps
 created: 2026-10-28T09:08:00-07:00
 concluded:
 pr:
@@ -151,3 +151,8 @@ current-stamp check cannot apply to a YAML map.
   - A recognized legacy stamp counts as generated everywhere. As first written, `guard` would still have refused a bare `install`, because it tests `is_generated` rather than `classify`.
   - A mode mismatch reads `drifted` with the existing mode reason, not `foreign`.
   - This plan lands before plan 010. Each list entry carries its own reason, and plan 010 adds the comment form.
+- **2026-10-31T16:04:07-07:00** — Activated.
+  - Branch: `feature/host-legacy-stamps`
+  - Base: `dev` at `8272974`
+  - Worktree: `.worktrees/012-host-legacy-stamps`
+  - PR: pending
