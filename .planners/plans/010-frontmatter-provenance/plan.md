@@ -188,3 +188,10 @@ that plan's validation.
   - Base: `dev` at `ed4f8da`
   - Worktree: `.worktrees/010-frontmatter-provenance`
   - PR: pending
+- **2026-10-31T16:30:08-07:00** — Took the Plan's fallback: the stamp is `pkgskills-*` keys under `metadata`, not a top-level `pkgskills` map.
+    - The Plan said to confirm the top-level key against the spec and fall back if the spec is stricter than the checker. It is. The spec's field table has no slot for it and its `metadata` section is where it sends "additional properties not defined by the Agent Skills spec". The reference validator enforces that: `skills-ref/src/skills_ref/validator.py` has `ALLOWED_FIELDS` and reports `Unexpected fields in frontmatter`, pinned by `test_unexpected_fields`.
+    - `spec.py` only checks the fields it names, so it would have passed the key while the validator it recommends rejects the stub.
+    - Evidence is reading the validator's source and tests on its `main` branch. Running `skills-ref validate` was not done: the session's permission classifier refused running code fetched from outside the repo. Not verified by execution.
+    - Keys: `pkgskills-host`, `pkgskills-host-version`, `pkgskills-version`, `pkgskills-mode`, all quoted strings. They join a source's `metadata` after its own keys, and the same keys go in a rule or agent.
+    - The cost the Plan named comes back: tool provenance and author metadata share a map, so a source declaring a `pkgskills-` key under `metadata` is a violation, covering rules and agents as well as skills.
+    - A dispatcher stub now has a `metadata` block, holding only those keys.
