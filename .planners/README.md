@@ -2,7 +2,7 @@
 
 | # | Plan | Status | Concluded | PR |
 |---|---|---|---|---|
-| 012 | [Let a host declare its pre-adoption stamp as its own](plans/012-host-legacy-stamps/plan.md) | active | — | [#27](https://github.com/gitronald/pkgskills/pull/27) |
+| 012 | [Let a host declare its pre-adoption stamp as its own](plans/012-host-legacy-stamps/plan.md) | implemented | — | [#27](https://github.com/gitronald/pkgskills/pull/27) |
 | 016 | [Add a version column to the dispatcher's subcommand table](plans/016-subcommand-version-table/plan.md) | draft | — | — |
 | 010 | [Move the provenance stamp into frontmatter](plans/010-frontmatter-provenance/plan.md) | draft | — | — |
 | 014 | [Stop treating the home directory as a repository root](plans/014-home-is-not-a-repo-root/plan.md) | done | 2026-10-31 14:40 PT | [#26](https://github.com/gitronald/pkgskills/pull/26) |

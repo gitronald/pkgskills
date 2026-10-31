@@ -1,7 +1,7 @@
 ---
 id: 12
 slug: host-legacy-stamps
-status: active
+status: implemented
 branch: feature/host-legacy-stamps
 created: 2026-10-28T09:08:00-07:00
 concluded:
@@ -164,3 +164,4 @@ current-stamp check cannot apply to a YAML map.
   - The current-stamp check imports `render_stamp` inside `Host`, because `stamp` imports `host`. Only a host that declares a pattern pays for the render at construction.
   - Tests went where their subject already lives, not all in `tests/test_install.py`: validation in `test_host.py`, the lookup in `test_render.py`, and an added end-to-end upgrade in `test_cli.py`.
   - For plan 010: `_line_re` has no end anchor, so a line that begins with the current form reads as a current stamp however it ends, and a legacy pattern never sees it.
+- **2026-10-31T16:08:59-07:00** — Implemented: 5 commits ahead of `dev`.
