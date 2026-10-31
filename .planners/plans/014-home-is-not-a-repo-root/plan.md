@@ -134,23 +134,22 @@ one exists on at least one development machine.
 
 ## Handoff
 
-State: draft, nothing started. The problem is verified by running it, and decision 1
-by a monkeypatched walk in a scratch script: from `~/notes/deep` the check exits 0
-with `ok` rows only, and `install --local` wrote under that directory and left the
-global stub at `mode=global`. That probe stopped its walk short of a stray `/tmp/.git`,
-so it does not cover a parent marker above home. Decision 2 is not prototyped.
+State: all four steps are committed and pushed on the plan's branch, with the PR open.
+Nothing is uncommitted. The Log entry for the implementation says what departed from
+the spec and what was verified.
 
 Open questions:
 
-1. **Should a host's `Line` rows count outside a repository?** After this plan, a host
-   that declares lines still fails `install --check` from a non-repository directory,
-   with `missing` rows, and its repair writes the line file there. This holds for any
-   directory with no repository, under home or not. Skipping lines when no `.git` is
-   at or above the root looks right for `.gitattributes`, but a `Line` can name any
-   file, and a directory rooted by `.claude/` alone is a legitimate root. Recommended:
-   leave the behaviour as it is here and settle this at activation, either in this
-   plan or as a follow-up, since it needs one host's view of what a line is for. Waits
-   on the maintainer.
+1. **Should a host's `Line` rows count outside a repository?** Measured on this branch:
+   a host declaring a `.gitattributes` line, with a healthy global install, run from a
+   directory under home with no repository, prints `ok` for each stub and `missing` for
+   the line, and exits 1. The repair it prints, `install --force`, would write the line
+   file into that directory. Skipping lines when no `.git` is at or above the root looks
+   right for `.gitattributes`, but a `Line` can name any file, and a directory rooted by
+   `.claude/` alone is a legitimate root. Recommended: leave the behaviour as it is here
+   and take it as a follow-up plan. Waits on the maintainer, at the review gate.
 
-Order: 1 -> 2 -> 3 -> 4, then release, since hosts only get the fix through a new
-`pkgskills` version.
+Not verified: the fix against a released host. Its stubs were only run with the fixture
+hosts, because hosts get it through a new `pkgskills` version.
+
+Order: review gate, close, then release.
