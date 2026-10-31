@@ -8,7 +8,7 @@ concluded:
 pr:
 ---
 
-# Move the provenance stamp into frontmatter and tabulate subcommands
+# Move the provenance stamp into frontmatter
 
 ## Plan
 
@@ -89,9 +89,11 @@ pkgskills:
   passes through verbatim (`render_copy` keeps `front.raw`), so a host that
   wants a path-scoped rule declares `paths` in its source today.
 
-**The HTML comment goes away.** Not both: two homes for one fact is the
-mirroring 004 removed, and `mask_versions` would have to keep two regexes in
-step.
+**pkgskills stops writing the HTML comment.** Not both: two homes for one fact
+is the mirroring 004 removed, and `mask_versions` would have to keep two regexes
+in step. It keeps reading the comment for two narrow purposes, both below:
+recognizing its own earlier files, and naming the dist in a foreign reason.
+Neither writes it, and neither puts provenance in two places in one file.
 
 ### Drift, classification, and the legacy stamp
 
@@ -101,52 +103,47 @@ step.
   into (or creates) the frontmatter block instead of writing a line below it.
 - `is_stamped`, `stamped_by`, `stamped_mode` parse the block (via the
   existing `split_frontmatter` and the BaseLoader view) instead of matching a
-  line. `stamped_by` reads `pkgskills.host`.
+  line, and consult plan 012's legacy list as they do by then. `stamped_by`
+  reads `pkgskills.host` first and falls back to the comment line's dist,
+  permanently: a host on an older pkgskills keeps writing comments, and the
+  foreign reasons and `test_foreign_shapes` depend on naming that dist.
 - `mask_versions` blanks `host-version` and `version` inside the map, and
   nothing else, so a routine upgrade of either package still never drifts a
   file whose content did not change, and a source's `metadata.version` still
   does.
-- **Legacy comment stamps read as `drifted`, not `foreign`, for one release.**
-  Every file installed by an earlier release carries the comment form. The
-  0.5.1 cutover already made every install report `foreign` once and demand
-  `--force`; doing that twice in two releases is the wrong lesson to teach.
-  `is_stamped` therefore accepts the legacy line for this release only, so a
-  bare `install` refreshes the file, and the check prints a one-line note that
-  the stamp moved. The alias is removed in the following minor release; the
-  Log of that release should say so, and this plan's Retrospective should name
-  the release that drops it.
+- **The comment form is a legacy stamp pkgskills declares for itself.** Every
+  file installed by an earlier release carries it. The 0.5.1 cutover already
+  made every install report `foreign` once and demand `--force`; doing that
+  twice in two releases is the wrong lesson to teach. This plan adds a built-in
+  entry to plan 012's list: a whole-line pattern for the comment form that
+  captures `mode`, with its own reason saying the stamp moved into frontmatter.
+  The file then counts as generated everywhere, as plan 012 specifies, so a
+  bare `install` refreshes it, and a mode mismatch reads `drifted` with today's
+  mode reason.
+- **The entry has no scheduled removal.** A one-release window would send any
+  machine that skips that release into the defect plan 012 fixes. With
+  `stamped_by` reading the comment anyway, the cost of keeping it is one
+  pattern. If it is ever dropped, the release that drops it states the minimum
+  version a bare-`install` upgrade can start from.
+- **Plan 012's validation gets a new target.** Its check against the current
+  `render_stamp` output cannot work on a YAML map, because a whole-line pattern
+  matches one line at a time. `Host.validate` instead rejects a pattern that
+  matches a rendered sample of the comment form, which would overlap the
+  built-in entry, or any single line of the rendered map.
 - The `foreign` reasons keep their wording; the one that says "a `<host>`
   stamp pkgskills did not write" now covers a mangled map as well as a mangled
   line.
 
-### The dispatcher's subcommand list becomes a table
+### Relation to plan 012
 
-The same release turns the bulleted `Subcommands (N):` list in a dispatcher
-stub into a table with a version column:
-
-```
-| Subcommand | Version | Description |
-|---|---|---|
-| `add` | 1.0.0 | Scaffold a new plan file. Use when … |
-| `implement` | 1.0.0 | Start implementing a plan — … |
-```
-
-- The version is the source's own `metadata.version` (plan 004's key), read
-  from each source's frontmatter the same way the description is today. A
-  source that declares none gets an empty cell, never a fallback to the host
-  release, for 004's reason: one column meaning two things is the ambiguity
-  that plan removed.
-- This is the first place a per-skill version becomes *visible* after
-  install; today a dispatcher's sources carry it only in the package. It is
-  body text, so a version bump in one source drifts the stub as 004 intends,
-  and `mask_versions` leaves it alone.
-- A single-source stub is unchanged: its version already rides in the lifted
-  frontmatter block.
-- The "map to `/<skill> <sub>`" sentence and the `skill --list` fallback stay
-  as they are, below the table.
+Plan 012 lands first and builds the legacy list and the rule that a recognized
+stamp counts as generated. This plan adds one entry to that list and retargets
+that plan's validation.
 
 ### Out of scope
 
+- The dispatcher's subcommand table, moved to plan 016. It has nothing to do
+  with the stamp and need not wait for this migration.
 - Any change to what `metadata` means or to source-declared versions (004).
 - Recording the harness adapter in the stamp (`docs/design.md` lists it as a
   future idea; it is one more key in the same map when that day comes, which
@@ -155,23 +152,23 @@ stub into a table with a version column:
 
 ### Implementation order
 
-1. `stamp.py`: new renderer and parsers over the frontmatter block, legacy
-   alias for the comment line, `mask_versions` over the map. Update the module
-   docstring, which currently describes the comment as the sole home.
+1. `stamp.py`: new renderer and parsers over the frontmatter block, the built-in
+   comment entry in plan 012's list, `stamped_by`'s comment fallback,
+   `mask_versions` over the map. Update the module docstring, which currently
+   describes the comment as the sole home. `host.py`: the retargeted validation.
 2. `rendering.py`: `stub_frontmatter` and `render_copy` splice the map;
    `place_stamp` callers adjust. A single-source stub still lifts the source's
-   block byte for byte and appends the map after it. The dispatcher tail
-   renders the subcommand table, reading `metadata.version` per source.
+   block byte for byte and appends the map after it.
 3. `spec.py`: confirm the top-level `pkgskills` key is not a violation; add the
    source-declares-`pkgskills` check.
-4. Tests: `test_stamp.py`, `test_render.py`, `test_artifacts.py` fixtures move
-   to the new form; add legacy-alias cases (comment-stamped file reads
-   `drifted`, refreshes on bare `install`, and reads `foreign` once the alias
-   is gone, behind a flag or a dated skip).
+4. Tests: `test_render.py` and `test_install.py` fixtures move to the new form;
+   add comment-stamp cases (reads `drifted` in either mode, refreshes on bare
+   `install`, is cleared by `remove_stale_local` and `remove_previous`), and
+   keep every `test_foreign_shapes` row and reason unchanged.
 5. Docs: `docs/frontmatter.md` ("Where the release provenance lives"),
    `docs/design.md` ("One contract"), the README's stamp sentences, and the
-   host-facing adoption notes. Changelog under `[Unreleased]` with the
-   one-release alias called out for host maintainers.
+   host-facing adoption notes. Changelog under `[Unreleased]`, telling host
+   maintainers that comment-stamped files keep refreshing on a bare `install`.
 6. Host follow-up: the first host release that pins the new `pkgskills` lower
    bound will regenerate its files; its changelog should tell users a bare
    `install` (no `--force`) is enough this time.

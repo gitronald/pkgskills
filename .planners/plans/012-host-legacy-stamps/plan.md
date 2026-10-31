@@ -57,58 +57,67 @@ rejects a pattern without the `mode` group, and a pattern that matches the
 current `render_stamp` output for either mode (it would hide pkgskills' own
 stamp).
 
-**`classify` consults it before the foreign branch.** When `is_stamped` is
-false and a declared pattern matches a line of the file:
+**A declared stamp counts as generated everywhere.** `is_stamped` also accepts
+a line a declared pattern matches, so every caller agrees: `guard` lets a bare
+`install` through (it tests `is_generated`, not `classify`), `remove_stale_local`
+and `remove_previous` can clear the file, and the leftovers scan does not report
+it as hand-written. `classify` then gives it one of two `drifted` reasons:
 
-- The recorded `mode` equals the mode being installed: `drifted`, reason
+- The recorded `mode` equals the mode being installed: reason
   `stamped by <dist> before it adopted pkgskills`. A bare `install` rewrites
   it, and `install --check` reports it with the drifted remedy.
-- The recorded mode differs: `foreign`, as today. A legacy global file found
-  where a local install is going is not the file this install would write,
-  and pkgskills' own cross-mode handling (`stale_local`, the mode-mismatch
-  `drifted` reason) assumes a stamp it can parse.
+- The recorded mode differs: today's reason,
+  `rendered for mode=<recorded>, installed where mode=<mode>`. That is how a
+  current stamp in the wrong mode reads, and one rule keeps this one mechanism
+  when plan 010 adds pkgskills' own comment form to it.
 
 Nothing else changes. A different dist's stamp, no stamp, and the three
 same-dist shapes in `test_foreign_shapes` all stay `foreign` with today's
 reasons, unless the host's own pattern matches one of them. That is the
 host's declaration and the host's call.
 
-**Edits under a legacy stamp are overwritten.** This is the tradeoff, and it
-matches how a current stamp is treated. Document it on the field: declare a
-pattern only for a stamp that also told readers not to edit the file.
+**Edits under a legacy stamp are overwritten, and the file can be deleted.** A
+bare `install` rewrites it in place, and removes it as a stale local copy or at
+a previous name. This is the tradeoff, and it matches how a current stamp is
+treated. Document it on the field: declare a pattern only for a stamp that also
+told readers not to edit the file.
 
-**`stamped_mode` and `mask_versions`** are not extended. A legacy file never
-reads `ok`: its stamp line differs from the current render, so it is always
-`drifted` until rewritten. The masking only has to stop a routine version
-bump from drifting an unchanged file, and a legacy file is changed by
-definition.
+**`stamped_mode`** reads the declared patterns, so the mode reason above works.
+**`mask_versions`** is not extended. A legacy file never reads `ok`: its stamp
+line differs from the current render, so it is always `drifted` until rewritten.
+The masking only has to stop a routine version bump from drifting an unchanged
+file, and a legacy file is changed by definition.
 
 ### Relation to plan 010
 
 Plan 010 (draft) needs the same seam for pkgskills' own cutover. When the
 stamp moves into frontmatter, files carrying the current comment line should
-read `drifted`, not `foreign`, for one release. That is a legacy stamp that
-pkgskills declares for itself rather than one a host declares.
+read `drifted`, not `foreign`. That is a legacy stamp that pkgskills declares
+for itself rather than one a host declares.
 
-Build one mechanism, not two. `classify` checks a single list: the host's
-`legacy_stamps`, plus, while 010's alias lasts, a built-in pattern for
-pkgskills' comment form. Whichever plan lands first introduces the list, and
-the other adds an entry. If 010 lands first, this plan adds only the `Host`
-field and its validation.
+Build one mechanism, not two, and land this plan first: it is the smaller one,
+and it can build the seam against today's stamp. The stamp module holds a single
+list of entries, each a pattern with its own `drifted` reason. This plan fills
+it from the host's `legacy_stamps`. Plan 010 then adds a built-in entry for the
+comment form, with a reason of its own, since the reason above would be false
+for a stamp pkgskills wrote. It also retargets the validation below, because its
+current-stamp check cannot apply to a YAML map.
 
 ### Implementation order
 
 1. `Host.legacy_stamps`, with validation: missing `mode` group, a pattern
    that matches the current stamp.
-2. `stamp.legacy_mode(text, host) -> Mode | None`, which returns the mode the
-   first matching declared pattern recorded, anchored per line like
-   `_line_re`.
-3. `classify`: the legacy branch ahead of the same-dist foreign branch.
+2. `stamp.py`: the entry list, and a lookup that returns the recorded mode and
+   reason of the first matching entry, anchored per line like `_line_re`.
+   `is_stamped` and `stamped_mode` consult it.
+3. `classify`: the legacy reason, after the mode-mismatch reason.
 4. Tests in `tests/test_install.py`:
    - A legacy line in the matching mode reads `drifted`, and a bare `install`
-     rewrites it to the current stamp.
+     passes `guard` and rewrites it to the current stamp.
    - The same line with an edited body is also rewritten.
-   - A legacy line in the other mode stays `foreign`.
+   - A legacy line in the other mode reads `drifted` with the mode reason.
+   - `remove_stale_local` and `remove_previous` clear a legacy file, and the
+     leftovers scan does not report it.
    - A host that declares nothing keeps every `test_foreign_shapes` row
      unchanged.
    - Validation rejects each bad pattern.
@@ -120,7 +129,7 @@ field and its validation.
 ### Risks
 
 - **A loose pattern** turns a hand-written file into one a bare `install`
-  overwrites. The whole-line anchor and the validation narrow this; the
+  overwrites or deletes. The whole-line anchor and the validation narrow this; the
   docstring says to match the old stamp exactly, version token included as
   `\S+`.
 - **A pattern that outlives its use.** A host can drop its declaration once
