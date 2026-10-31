@@ -5,7 +5,7 @@ status: active
 branch: feature/frontmatter-provenance
 created: 2026-09-12T16:42:22-07:00
 concluded:
-pr:
+pr: https://github.com/gitronald/pkgskills/pull/28
 ---
 
 # Move the provenance stamp into frontmatter
@@ -195,3 +195,4 @@ that plan's validation.
     - Keys: `pkgskills-host`, `pkgskills-host-version`, `pkgskills-version`, `pkgskills-mode`, all quoted strings. They join a source's `metadata` after its own keys, and the same keys go in a rule or agent.
     - The cost the Plan named comes back: tool provenance and author metadata share a map, so a source declaring a `pkgskills-` key under `metadata` is a violation, covering rules and agents as well as skills.
     - A dispatcher stub now has a `metadata` block, holding only those keys.
+- **2026-10-31T16:30:16-07:00** — PR opened: https://github.com/gitronald/pkgskills/pull/28
