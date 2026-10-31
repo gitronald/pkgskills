@@ -501,12 +501,82 @@ def test_after_install_hook_sees_force(box: Sandbox) -> None:
 def test_no_stale_removal_when_repo_root_is_home(box: Sandbox) -> None:
     os.chdir(box.home)
     (box.home / ".git").mkdir()
-    inst.install(SOLO, box.home, "local")
+    # Written directly, since a local install at home is refused.
+    inst.write_artifact(SOLO, SOLO.skills[0], "local", box.home, CLAUDE_CODE)
     report = inst.install(SOLO, box.home, "global")
     assert report.removed == ()
     assert inst.artifact_path(
         SOLO, SOLO.skills[0], "global", box.home, CLAUDE_CODE
     ).exists()
+
+
+def test_a_global_install_keeps_its_files_under_a_symlinked_home(
+    box: Sandbox, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The root is resolved and the global base is not, so comparing built paths
+    # took the file just written for a leftover local copy and deleted it.
+    (box.home / ".git").mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(box.home)
+    monkeypatch.setenv("HOME", str(link))
+    monkeypatch.chdir(link)
+    root = inst.find_repo_root(harnesses=SOLO.harnesses)
+    assert root == box.home
+
+    report = inst.install(SOLO, root, "global")
+    assert report.removed == ()
+    assert all(path.is_file() for path in report.written)
+    assert {row.status for row in inst.check(SOLO, root)} == {"ok"}
+
+
+def test_root_is_home(
+    box: Sandbox, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert inst.root_is_home(box.home)
+    assert not inst.root_is_home(box.repo)
+    link = tmp_path / "link"
+    link.symlink_to(box.home)
+    assert inst.root_is_home(link)
+
+    def no_home() -> Path:
+        raise RuntimeError("could not determine home directory")
+
+    monkeypatch.setattr(inst, "global_base", no_home)
+    assert not inst.root_is_home(box.home)
+
+
+def test_local_install_at_home_is_refused_before_any_write(box: Sandbox) -> None:
+    with pytest.raises(ValueError, match="same files"):
+        inst.install(EXAMPLE, box.home, "local")
+    assert not (box.home / ".claude").exists()
+
+
+def test_a_local_only_host_keeps_its_one_location_at_home(box: Sandbox) -> None:
+    assert inst.location_modes(MULTI, box.home) == ("local",)
+    report = inst.install(MULTI, box.home, "local")
+    assert report.written
+    assert {row.status for row in inst.check(MULTI, box.home)} == {"ok"}
+
+
+def test_a_local_first_host_at_home_resolves_to_global(box: Sandbox) -> None:
+    host = dataclasses.replace(SOLO, modes=("local", "global"))
+    assert inst.printing_mode(host, box.home) == "global"
+    rows = inst.check(host, box.home)
+    assert {(row.mode, row.status) for row in rows} == {("global", "missing")}
+
+    inst.install(host, box.home, "global")
+    assert inst.installed_mode(host, box.home) == "global"
+    assert {(r.mode, r.status) for r in inst.check(host, box.home)} == {
+        ("global", "ok")
+    }
+
+
+def test_stub_paths_at_home_list_each_file_once(box: Sandbox) -> None:
+    rows = inst.skill_stub_paths(SOLO, box.home)
+    assert [path for *_, path in rows] == [
+        box.home / ".claude/skills/use-solo/SKILL.md",
+        box.home / ".agents/skills/use-solo/SKILL.md",
+    ]
 
 
 # -- lines -------------------------------------------------------------------

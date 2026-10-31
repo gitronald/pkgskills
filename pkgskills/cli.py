@@ -216,7 +216,9 @@ def run_check(host: Host, root: Path, mode: Mode | None) -> bool:
     # The same scope as the rows above: one mode when asked, else every mode.
     leftover = [
         path
-        for m in ((mode,) if mode is not None else host.modes)
+        for m in (
+            (mode,) if mode is not None else install_mod.location_modes(host, root)
+        )
         for path in install_mod.leftover_previous(host, m, root)
     ]
     for path in leftover:
@@ -329,17 +331,19 @@ def _install_command(host: Host) -> typer.Typer:
     ) -> None:
         """Materialize the generated files the harness reads, or check them."""
         root = install_mod.find_repo_root(harnesses=host.harnesses)
+        # A flagless check on a two-mode host judges every occupied location,
+        # since the harness loads from both. With one mode, or with a flag, there
+        # is one location to judge, and it has to be one that exists at this root.
+        scoped = local is not None or one_mode
         try:
             mode = _requested_mode(host, local)
+            if scoped or not check:
+                install_mod.require_mode(host, root, mode)
         except ValueError as exc:
             _err(str(exc))
             raise typer.Exit(1) from None
         if check:
-            # A flagless check on a two-mode host judges every occupied
-            # location, since the harness loads from both. With one mode, or
-            # with a flag, there is one location to judge.
-            scope = mode if local is not None or one_mode else None
-            ok = run_check(host, root, scope)
+            ok = run_check(host, root, mode if scoped else None)
             raise typer.Exit(0 if ok else 1)
         run_install(host, root, mode, force=force)
 
