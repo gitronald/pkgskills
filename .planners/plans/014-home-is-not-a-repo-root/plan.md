@@ -122,6 +122,15 @@ one exists on at least one development machine.
   - Worktree: `.worktrees/014-home-is-not-a-repo-root`
   - PR: pending
 - **2026-10-31T14:33:20-07:00** — PR opened: https://github.com/gitronald/pkgskills/pull/26
+- **2026-10-31T14:35:45-07:00** — Implemented all four steps. Departures from the spec, and what running it showed:
+  - **Second cause of the same class, not in the plan.** The guards compared built paths, a resolved root with an unresolved home. Under a symlinked `$HOME` holding `.git`, they did not fire: run against the code before this plan, a global install deleted the four stubs it had just written and reported them as stale local copies. `root_is_home` resolves both sides and replaces the three comparisons, and a regression test pins it. Reproduce it with a home that is a symlink to a directory holding `.git`, then a global install from there.
+  - **Coincidence is decided on the root, not per path.** Both modes share one relative layout, so a root at home makes all of a host's paths coincide or none. `location_modes(host, root)` is the single answer, used by `check`, `installed_mode`, `printing_mode`, `skill_stub_paths`, and the leftover notes. `require_mode` carries the refusal for `install` and the CLI.
+  - **A flagless install on a local-first host is refused at home too.** Decision 2 names `--local`. A bare `install` on a host declaring `modes=("local", "global")` means local, so it would have done the same overwrite. It gets the refusal, which names `--global`. Its flagless check is not refused. `check`'s `missing` fallback now uses the first location mode, since the host's default would have produced no row there.
+  - **`check(host, root, "local")` called directly is unchanged at home.** An explicit mode judges that one location, as it always has. The CLI refuses before reaching it.
+  - **The fixture is renamed `no_outer_markers` and moved to `tests/conftest.py`.** The plan's `no_outer_git` hid only `.git`, and the first run of the new tests stopped at a stray harness directory above the temporary directory. It now hides `.git`, `.claude`, and `.codex` above it.
+  - **Docs beyond the plan's list:** README's Modes section said the two locations never collide, and the `[Unreleased]` line saying the walk can stop at `$HOME` was no longer true. Both are corrected.
+  - **Verified:** full suite, 391 passed, coverage 98.69%, with ruff and pyrefly clean. The plan's reproduction also ran as real processes with a sandboxed `$HOME`: from a directory under home the check exits 0 with `ok` rows only, `install --local` writes under that directory and leaves the global stub at `mode=global`, and from home `--local` and `--local --check` both exit 1. With `.git` added at home, the check from a fresh subdirectory exits 0 and `--local` is refused.
+  - **Not changed:** a harness directory above home still marks a root, as any other directory's does. This only arises on a machine with such a directory in a parent of home.
 
 ## Handoff
 
