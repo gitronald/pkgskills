@@ -327,6 +327,36 @@ def test_the_comment_form_counts_only_as_a_whole_line() -> None:
             'metadata: {a: "b",k: "v"}\n',
             id="flow with a trailing comma",
         ),
+        pytest.param(
+            '---\nmetadata: {\n  a: "b",\n}\n---\n',
+            'metadata: {\n  a: "b",\n  k: "v",\n}\n',
+            id="multi-line flow with a trailing comma",
+        ),
+        pytest.param(
+            '---\nmetadata: {\n    a: "b"\n}\nname: x\n---\n',
+            'metadata: {\n    a: "b",\n    k: "v"\n}\nname: x\n',
+            id="multi-line flow owing a comma, at the source's indent",
+        ),
+        pytest.param(
+            '---\nmetadata: {\n  a: "b" # one, two\n}\n---\n',
+            'metadata: {\n  a: "b", # one, two\n  k: "v"\n}\n',
+            id="multi-line flow, a comment's comma is not YAML's",
+        ),
+        pytest.param(
+            "---\nmetadata: {\n  a: 1, # one\n}\n---\n",
+            'metadata: {\n  a: 1, # one\n  k: "v",\n}\n',
+            id="multi-line flow, a trailing comma before a comment",
+        ),
+        pytest.param(
+            "---\nmetadata: {\n}\n---\n",
+            'metadata: {\n  k: "v"\n}\n',
+            id="empty multi-line flow",
+        ),
+        pytest.param(
+            '---\nmetadata: {\n  a: "b"}\n---\n',
+            'metadata: {\n  a: "b", k: "v"}\n',
+            id="multi-line flow with the brace on the last key's line",
+        ),
     ],
 )
 def test_place_stamp_keeps_the_source_block_and_adds_the_keys(
@@ -363,6 +393,18 @@ def test_a_block_closed_without_a_newline_still_ends_in_one() -> None:
     assert place_stamp("---\nname: x\n---", 'k: "v"', "body\n") == (
         '---\nname: x\nmetadata:\n  k: "v"\n---\n\nbody\n'
     )
+
+
+def test_a_multi_line_flow_map_takes_the_whole_stamp_a_line_each() -> None:
+    stamp = render_stamp(SOLO, "local")
+    placed = place_stamp('---\nmetadata: {\n  version: "2"\n}\n---\n', stamp, "body\n")
+    assert placed.startswith('---\nmetadata: {\n  version: "2",\n')
+    assert "".join(f"  {line},\n" for line in stamp.splitlines()[:-1]) in placed
+    assert f"  {stamp.splitlines()[-1]}\n}}\n---\n" in placed
+    assert stamped_mode(placed, SOLO) == "local"
+    masked = mask_versions(placed, SOLO)
+    assert '  pkgskills-host-version: "*",\n  pkgskills-version: "*",\n' in masked
+    assert '  version: "2",\n' in masked
 
 
 def test_every_stamp_shape_masks_only_its_two_versions() -> None:

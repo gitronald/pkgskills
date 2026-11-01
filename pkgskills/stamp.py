@@ -306,21 +306,45 @@ def _block_end(inner: str, node: yaml.MappingNode) -> int:
     return end
 
 
+def _splice_flow(inner: str, node: yaml.MappingNode, lines: list[str]) -> str:
+    """``inner`` with the stamp's keys inside the braces of a flow ``metadata``.
+
+    The keys follow the map's own form. Where the closing brace has a line to
+    itself they take a line each, at the last key's indent and matching its
+    trailing comma, and a last key with no comma gains the one it now needs.
+    Anywhere else they join the brace's line.
+    """
+    close = node.end_mark.index - 1
+    close_line = inner.rfind("\n", 0, close) + 1
+    if inner[close_line:close].strip():
+        head = inner[:close].rstrip()
+        sep = "" if head.endswith(("{", ",")) else ", "
+        return f"{head}{sep}{', '.join(lines)}{inner[close:]}"
+    own = node.value
+    indent = " " * (own[-1][0].start_mark.column if own else close - close_line + 2)
+    last = own[-1][1].end_mark.index if own else close_line
+    # A comment after the last key can hold a comma that is not YAML's.
+    trailing = "," in re.sub(r"#.*", "", inner[last:close])
+    head = inner[:close_line]
+    if own and not trailing:
+        head = f"{inner[:last]},{inner[last:close_line]}"
+    added = ",\n".join(f"{indent}{line}" for line in lines)
+    return f"{head}{added}{',' if trailing else ''}\n{inner[close_line:]}"
+
+
 def _splice(inner: str, stamp: str) -> str:
     """``inner`` with the stamp's keys after the ones in its ``metadata``.
 
-    A source's own lines stay byte for byte, whichever form its map takes. A flow
-    map takes the keys inside its braces, and any other block gains a new map.
+    A source's own lines stay byte for byte, whichever form its map takes, but for
+    the comma :func:`_splice_flow` can owe a flow map's last key. A flow map takes
+    the keys inside its braces, and any other block gains a new map.
     """
     lines = stamp.splitlines()
     node = _metadata_node(inner)
     if node is None:
         return inner + "metadata:\n" + "".join(f"  {line}\n" for line in lines)
     if node.flow_style:
-        close = node.end_mark.index - 1
-        head = inner[:close].rstrip()
-        sep = "" if head.endswith(("{", ",")) else ", "
-        return f"{head}{sep}{', '.join(lines)}{inner[close:]}"
+        return _splice_flow(inner, node, lines)
     indent = " " * node.value[0][0].start_mark.column
     end = _block_end(inner, node)
     added = "".join(f"{indent}{line}\n" for line in lines)
