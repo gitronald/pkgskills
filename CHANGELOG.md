@@ -59,7 +59,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `Host.harness` is replaced by `Host.harnesses`, defaulting to
   `(CLAUDE_CODE, CODEX)`, with no compatibility alias. `harnesses_for(kind)`
   selects supported targets in declared order; validation rejects empty or
-  duplicate harness names and artifacts no declared harness supports.
+  duplicate harness names and artifacts no declared harness supports. Host
+  maintainers: a machine installed before this release has no Codex stubs, so
+  `install --check` reads `missing` until a bare `install` writes them. A host
+  that targets only Claude Code sets `harnesses=(CLAUDE_CODE,)`.
 - `artifact_path` and `previous_paths` require an explicit `harness` argument.
   The per-location helpers `check_artifact`, `write_artifact`, and
   `stale_local` also require it. `find_repo_root` accepts a sequence of
