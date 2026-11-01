@@ -86,14 +86,74 @@ def test_dispatcher_stub_holds_only_the_stamp() -> None:
     assert set(_metadata(stub)) == STAMP_KEYS
 
 
-def test_dispatcher_stub_lifts_nothing_from_a_source_declaring_metadata() -> None:
-    source, _ = split_frontmatter(MULTI.read("audit/SKILL.md"))
-    assert source is not None and "metadata" in source.fields  # not vacuous
+def _bundle_stub() -> str:
+    """A dispatcher over one source declaring a version and one declaring none."""
     bundle = Skill(name="bundle", sources=("audit/SKILL.md", "tidy/SKILL.md"))
     host = dataclasses.replace(MULTI, artifacts=(bundle,))
-    stub = render_stub(host, bundle, MULTI.default_mode)
+    return render_stub(host, bundle, MULTI.default_mode)
+
+
+def test_dispatcher_frontmatter_lifts_nothing_from_a_source_declaring_metadata() -> (
+    None
+):
+    source, _ = split_frontmatter(MULTI.read("audit/SKILL.md"))
+    assert source is not None and "metadata" in source.fields  # not vacuous
+    stub = _bundle_stub()
     assert set(_metadata(stub)) == STAMP_KEYS
     assert '"2.1"' not in stub
+
+
+def test_dispatcher_table_shows_a_source_version_and_no_fallback() -> None:
+    tidy, _ = split_frontmatter(MULTI.read("tidy/SKILL.md"))
+    assert tidy is not None and tidy.metadata_field("version") is None  # not vacuous
+    rows = {
+        line.split(" | ")[0]: line.split(" | ")[1]
+        for line in _bundle_stub().splitlines()
+        if line.startswith("| `")
+    }
+    assert rows == {"| `audit`": "2.1", "| `tidy`": ""}
+    assert MULTI.version != "2.1"
+
+
+def test_dispatcher_table_sits_above_the_slash_sentence() -> None:
+    stub = render_stub(EXAMPLE, EXAMPLE.skills[0], "global")
+    header = (
+        "Subcommands (2):\n\n| Subcommand | Version | Description |\n|---|---|---|\n"
+    )
+    assert header in stub
+    assert stub.index(header) < stub.index("These map to `/example add`")
+    assert "examplehost skill --list" in stub
+    assert "\n- `" not in stub
+
+
+def test_a_single_source_stub_has_no_subcommand_table() -> None:
+    assert "| Subcommand |" not in render_stub(SOLO, SOLO.skills[0], "global")
+    audit = next(skill for skill in MULTI.skills if skill.name == "audit")
+    stub = render_stub(MULTI, audit, MULTI.default_mode)
+    assert "| Subcommand |" not in stub
+    assert _metadata(stub)["version"] == "2.1"
+
+
+@pytest.mark.parametrize(
+    ("source", "row"),
+    [
+        ("# no block\n", "| `add` |  |  |\n"),
+        ("---\ndescription: Do a|b.\n---\n", "| `add` |  | Do a\\|b. |\n"),
+        ("---\ndescription: >\n  Two\n  lines.\n---\n", "| `add` |  | Two lines. |\n"),
+        (
+            '---\ndescription: D.\nmetadata:\n  version: "1|2"\n---\n',
+            "| `add` | 1\\|2 | D. |\n",
+        ),
+    ],
+)
+def test_dispatcher_table_row_stays_one_row(monkeypatch, source: str, row: str) -> None:
+    monkeypatch.setattr(Host, "read", lambda self, path: source)
+    assert row in render_stub(EXAMPLE, EXAMPLE.skills[0], "global")
+
+
+def test_mask_versions_leaves_a_dispatcher_table_version_alone() -> None:
+    stub = _bundle_stub()
+    assert "| `audit` | 2.1 |" in mask_versions(stub, MULTI)
 
 
 def test_single_skill_stub_holds_no_instructions() -> None:
@@ -131,8 +191,8 @@ def test_dispatcher_stub_lists_subcommands_with_descriptions() -> None:
     stub = render_stub(EXAMPLE, EXAMPLE.skills[0], "local")
     assert stub.startswith('---\nname: "example"\ndescription: ')
     assert "Subcommands: add, close." in stub
-    assert "- `add` - Add a thing." in stub
-    assert "- `close` - Close a thing when the work is done." in stub
+    assert "\n| `add` |  | Add a thing. " in stub
+    assert "\n| `close` |  | Close a thing when the work is done. " in stub
     assert "`/example add`, `/example close`" in stub
     assert "uv run examplehost skill <subcommand>" in stub
     assert "ADD-BODY-SENTINEL" not in stub
@@ -514,7 +574,9 @@ def test_subcommand_description_preserves_trailing_hyphens(monkeypatch) -> None:
     monkeypatch.setattr(
         Host, "read", lambda self, source: "---\ndescription: 'Use --'\n---\n"
     )
-    assert "- `add` - Use --\n" in render_stub(EXAMPLE, EXAMPLE.skills[0], "global")
+    assert "| `add` |  | Use -- |\n" in render_stub(
+        EXAMPLE, EXAMPLE.skills[0], "global"
+    )
 
 
 def test_a_rule_warns_that_install_overwrites_edits() -> None:

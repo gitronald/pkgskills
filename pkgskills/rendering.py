@@ -92,9 +92,22 @@ def stub_frontmatter(host: Host, skill: Skill) -> str:
     return raw
 
 
-def _subcommand_description(host: Host, source: str) -> str:
+def _cell(text: str) -> str:
+    """``text`` made safe for one markdown table cell."""
+    return _single_line(text).replace("|", "\\|")
+
+
+def _subcommand_row(host: Host, subcommand: str, source: str) -> str:
+    """One row of a dispatcher's subcommand table, read from the source's block.
+
+    The version is the source's own ``metadata.version``. A source declaring
+    none gets an empty cell: the host's release is not a stand-in, because a
+    column meaning two things could not be read.
+    """
     front, _ = split_frontmatter(host.read(source))
-    return _single_line(front.get("description") or "") if front else ""
+    version = (front.metadata_field("version") or "") if front else ""
+    description = (front.get("description") or "") if front else ""
+    return f"| `{_cell(subcommand)}` | {_cell(version)} | {_cell(description)} |"
 
 
 def render_stub(host: Host, skill: Skill, mode: Mode) -> str:
@@ -119,10 +132,9 @@ Anything other than `ok` means this stub predates the installed package: run
 `{repair}`, then start a fresh context before continuing.
 """
     if skill.dispatches:
-        subs = "\n".join(
-            f"- `{sub}`" + (f" - {description}" if description else "")
+        rows = "\n".join(
+            _subcommand_row(host, sub, source)
             for sub, source in zip(skill.subcommands, skill.sources, strict=True)
-            for description in [_subcommand_description(host, source)]
         )
         slash = ", ".join(f"`/{skill.name} {sub}`" for sub in skill.subcommands)
         tail = f"""
@@ -134,7 +146,9 @@ Anything other than `ok` means this stub predates the installed package: run
 
 Subcommands ({len(skill.subcommands)}):
 
-{subs}
+| Subcommand | Version | Description |
+|---|---|---|
+{rows}
 
 These map to {slash}. If the subcommand is missing or unrecognized, run
 `{inv} skill --list` and ask the user which one they want.

@@ -98,8 +98,9 @@ and adds the [stamp](#the-stamp-and-the-check) after it (see
 *skill's* name — `<cli> skill use-solo` — so the source need not be named
 after it. A skill with several sources becomes a dispatcher: each source's
 name — its directory, or its stem for a flat file — is a subcommand, and the
-stub tells the agent to run `<cli> skill <subcommand>`. Its stub's `metadata` holds
-only the stamp, so a `metadata.version` on a dispatcher's source stays in the package.
+stub tells the agent to run `<cli> skill <subcommand>`. Its stub lists the subcommands
+in a table, with each source's `description` and its `metadata.version`, or an empty
+cell for a source that declares none. The stub's `metadata` holds only the stamp.
 The two namespaces share one argument, so a dispatcher subcommand may not collide
 with another skill's name; `Host` rejects that at construction, as it rejects a
 `Skill.name` outside the spec's grammar.

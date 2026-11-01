@@ -1,11 +1,11 @@
 ---
 id: 16
 slug: subcommand-version-table
-status: active
+status: done
 branch: feature/subcommand-version-table
 created: 2026-10-31T15:51:53-07:00
-concluded:
-pr:
+concluded: 2026-10-31T16:57:56-07:00
+pr: https://github.com/gitronald/pkgskills/pull/29
 ---
 
 # Add a version column to the dispatcher's subcommand table
@@ -57,3 +57,16 @@ a version column:
   - Base: `dev` at `16a8a12`
   - Worktree: `.worktrees/016-subcommand-version-table`
   - PR: pending
+- **2026-10-31T16:58:03-07:00** — PR opened: https://github.com/gitronald/pkgskills/pull/29
+- **2026-10-31T16:58:04-07:00** — Implemented: 3 commits ahead of `dev`.
+- **2026-10-31T17:02:20-07:00** — Rendered the dispatcher's subcommand list as a table with a Version column, read from each source's `metadata.version` through a new `Frontmatter.metadata_field`; a source declaring none gets an empty cell. Docs and changelog revised, including an `[Unreleased]` line the change made false.
+  - Beyond the spec: `_cell` escapes `|` so a description cannot break its row.
+  - Review follow-up: medium review, no confirmed defects. Three plausible findings kept as conscious no-ops, posted on the PR: another copy of the unresolved-YAML load and guard (the older copies cannot be imported here without a cycle), a literal backslash-pipe in a description (not run against a GFM parser), and a second parse per source (about 65 microseconds against a 1.55 ms render on the two-source fixture).
+  - Checks: ruff check, ruff format, pyrefly, and pytest pass locally (488 tests, 98.71% coverage); CI passes on Python 3.11 through 3.14.
+
+## Retrospective
+
+- The spec held, and "read the same way the description is" was the one line that did not. The flat `fields` view blanks nested values, so the version needed its own reader on `Frontmatter`.
+- A table adds a failure a bullet list did not have: a `|` in trigger text splits the row. The spec did not mention it, and the escaping and its test came from thinking about what a description can contain.
+- The change made an `[Unreleased]` changelog line false, not only the docs the plan named. A plan that reverses earlier behavior should search the unreleased entries as well as the docs.
+- Every dispatcher stub drifts on the release that carries this, so the changelog says so. A render change like this one reaches every host, and is worth stating when it is planned.

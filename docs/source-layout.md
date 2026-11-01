@@ -215,7 +215,8 @@ metadata:
 parses the raw frontmatter with YAML itself and reads the mapping from there. `pkgskills` adds only its `pkgskills-*` stamp keys to `metadata`: a single-source
 stub lifts whatever the source declares, `version` included, byte for byte, and a
 dispatcher stub [declares none of its own](frontmatter.md#a-dispatchers-sources). The check
-still covers a dispatcher's sources, because a linter reads them too.
+still covers a dispatcher's sources, because its table shows their `version` and a
+linter reads them too.
 
 Which bare versions pass, and why to quote them anyway, is in
 [Frontmatter](frontmatter.md#what-a-stub-carries).

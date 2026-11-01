@@ -14,7 +14,7 @@ from solohost.cli import HOST as SOLO
 
 from pkgskills import artifacts as inst
 from pkgskills.harness import CLAUDE_CODE, CODEX
-from pkgskills.host import Host, Line, Mode
+from pkgskills.host import Host, Line, Mode, Skill
 from pkgskills.rendering import render
 from pkgskills.stamp import render_comment_stamp
 from pkgskills.testing import Sandbox
@@ -1283,3 +1283,23 @@ def test_a_source_version_bump_drifts_but_a_package_bump_does_not(box: Sandbox) 
     path.write_text(path.read_text().replace('version: "2.1"', 'version: "2.2"'))
     row = next(row for row in inst.check(MULTI, box.repo) if row.path == path)
     assert row.status == "drifted"
+
+
+def test_a_dispatcher_source_version_bump_drifts_but_a_package_bump_does_not(
+    box: Sandbox, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundle = Skill(name="bundle", sources=("audit/SKILL.md", "tidy/SKILL.md"))
+    host = dataclasses.replace(MULTI, artifacts=(bundle,))
+    path = inst.install(host, box.repo, "local").written[0]
+    assert "| `audit` | 2.1 |" in path.read_text()
+    bumped = dataclasses.replace(host, version="9.9.9")
+    assert {row.status for row in inst.check(bumped, box.repo)} == {"ok"}
+
+    read = Host.read
+    monkeypatch.setattr(
+        Host, "read", lambda self, source: read(self, source).replace("2.1", "2.2")
+    )
+    assert {row.status for row in inst.check(host, box.repo)} == {"drifted"}
+    inst.install(host, box.repo, "local")
+    assert "| `audit` | 2.2 |" in path.read_text()
+    assert {row.status for row in inst.check(host, box.repo)} == {"ok"}
