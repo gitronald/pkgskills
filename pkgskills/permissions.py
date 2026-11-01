@@ -69,9 +69,6 @@ class Level(StrEnum):
 # Lowest to highest. Each level is a superset of the ones before it.
 LEVELS: tuple[Level, ...] = (Level.none, Level.assist, Level.confirm, Level.full)
 
-# The personal, git-ignored per-repo settings file (local mode) vs. the user-wide
-# one (global mode). Local scopes a broad grant to one checkout and is never
-# committed for collaborators.
 SETTINGS_GLOBAL_REL = Path(".claude/settings.json")
 SETTINGS_LOCAL_REL = Path(".claude/settings.local.json")
 

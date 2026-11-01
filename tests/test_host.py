@@ -84,8 +84,6 @@ def test_skill_bodies_are_keyed_by_source_name_only_when_dispatching() -> None:
     assert set(MULTI.skill_sources()) == {"tidy", "audit"}
     # A single-source skill answers to the skill's name whatever its source is
     # called, so a host that has not moved to `<name>/SKILL.md` keeps working.
-    # Every fixture is conformant now, so the unmigrated shape is declared here
-    # rather than shipped on disk.
     flat = Host(
         dist="d",
         cli="c",

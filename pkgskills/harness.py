@@ -4,9 +4,8 @@ A harness is the tool that loads prompts off the filesystem. Claude Code
 reads skills from ``.claude/skills/<name>/SKILL.md``, rules
 from ``.claude/rules/<name>.md``, and subagents from ``.claude/agents/<name>.md``,
 each under either the user's home directory (global) or a repository root
-(local). The relative layout is identical at both bases, so a global install
-and a local install never collide on one file. Codex reads skills from
-``.agents/skills/<name>/SKILL.md`` at those same bases.
+(local). The relative layout is identical at both bases. Codex reads skills
+from ``.agents/skills/<name>/SKILL.md`` at those same bases.
 
 Keeping the layout in one object is what lets another harness land once for
 every host: a new :class:`Harness` value, no host changes.

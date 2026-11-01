@@ -13,18 +13,15 @@ subcommands are the source names. A :class:`Rule` and an :class:`Agent`
 are materialized as stamped *copies*, because the harness reads their full
 text off disk with no model in the loop.
 
-A :class:`Doc` is the fourth declared thing and the one that is *not* an
-artifact: it is printed by ``<cli> doc <name>`` and never written to disk. It
-exists because a skill body that says "read ``references/x.md`` first" has
-nowhere to read it from once the body is printed from a package — there is no
-skill directory next to the stub. Docs therefore live on :attr:`Host.docs`
-rather than in :attr:`Host.artifacts`, since an artifact here is something
-materialized at a location per mode and a doc has neither.
+A :class:`Doc` is *not* an artifact: it is printed by ``<cli> doc <name>`` and
+never written to disk. Docs live on :attr:`Host.docs` rather than in
+:attr:`Host.artifacts`, since an artifact here is something materialized at a
+location per mode and a doc has neither.
 
-A :class:`Line` is the fifth: one line the host needs in a file it does not
-own, such as a ``merge=union`` attribute for a generated index. It is neither
-rendered from a prompt nor stamped, and it lives in the repository whatever
-the install mode, so it sits on :attr:`Host.lines`.
+A :class:`Line` is not an artifact either: it is one line the host needs in a
+file it does not own, such as a ``merge=union`` attribute for a generated
+index. It is neither rendered from a prompt nor stamped, and it lives in the
+repository whatever the install mode, so it sits on :attr:`Host.lines`.
 """
 
 from __future__ import annotations
@@ -59,8 +56,7 @@ def source_name(source: str) -> str:
 
     A spec-conformant skill lives in its own directory as ``<name>/SKILL.md``,
     so the *directory* is what names it; every stem in that layout is the
-    literal ``SKILL``. Any other file is named by its stem, which is what a
-    flat source has always meant.
+    literal ``SKILL``. Any other file is named by its stem.
     """
     if SPEC.is_entry(source):
         return PurePosixPath(source).parent.name
@@ -226,7 +222,7 @@ class ExtraCheck:
     report without gating.
 
     ``status`` is the host's own vocabulary, not :data:`pkgskills.artifacts.Status`.
-    Two rules earned the hard way:
+    Two rules:
 
     * **Check the artifact, not a proxy for it.** Ask whether *this* host's
       thing is wired, not whether the mechanism that would run it exists — a
@@ -488,18 +484,14 @@ class Host:
     def default_mode(self) -> Mode:
         """The mode used when no mode flag is given, and the printing fallback.
 
-        For a two-mode host this is ``global``, which is what a bare ``install``
-        has always meant. For a single-mode host it is that mode, so the flag a
-        host with one mode has no use for is never required.
+        For a two-mode host this is the first it declares, ``global`` by default.
+        For a single-mode host it is that mode, so the flag a host with one mode
+        has no use for is never required.
         """
         return self.modes[0]
 
     def supports_mode(self, mode: Mode) -> bool:
-        """True when ``mode`` is one this host installs in.
-
-        Spelled out rather than ``supports`` because :class:`~pkgskills.harness.Harness`
-        already has one, over artifact kinds; the two answer different questions.
-        """
+        """True when ``mode`` is one this host installs in."""
         return mode in self.modes
 
     def invocation(self, mode: Mode) -> str:

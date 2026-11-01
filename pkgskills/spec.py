@@ -7,21 +7,11 @@ directories a skill may hold, the frontmatter fields and their limits, the
 :class:`SkillSpec`, and :data:`SPEC` is the singleton the rest of the package
 uses.
 
-The point of holding it as data rather than as scattered ``if`` statements is
-the error message. A host author who mis-stores a skill gets told which rule
-was broken, what the file actually says, and what to do about it — with the
-spec's own layout printed alongside — instead of a traceback from whichever
-renderer happened to touch it first. :meth:`SkillSpec.check_host` collects
-*every* violation rather than stopping at the first, because a source that is
-wrong in one way is usually wrong in two.
-
 ``metadata`` is checked too, though :func:`pkgskills.frontmatter.parse_fields`
 flattens it to an empty string: the spec calls it *a map from string keys to
 string values*, so the checks here re-read the block with YAML itself rather
 than the flat view, and judge the map-ness and the value types from what YAML
-actually resolved. The rule that earns its keep is the value one — the spec's
-own example writes ``version: "1.0"`` with the quotes because unquoted it is a
-float, and a single-source stub preserves that metadata unchanged.
+actually resolved.
 
 What is *not* checked is the spec's recommendations, as against its
 constraints: that a description name what the skill does *and* when to use it,
@@ -324,10 +314,9 @@ class SkillSpec:
         """Violations in where a source is stored.
 
         A flat source is a departure from the spec that ``install`` and ``render``
-        do not raise on, so hosts predating the layout keep working.
-        :func:`pkgskills.testing.assert_spec_conformant` does raise on it, since it
-        asserts the whole spec; the rule slug lets a caller filter it out of
-        :meth:`check_host`'s report instead.
+        do not raise on. :func:`pkgskills.testing.assert_spec_conformant` does
+        raise on it, since it asserts the whole spec; the rule slug lets a caller
+        filter it out of :meth:`check_host`'s report instead.
         """
         if self.is_entry(source):
             return []
@@ -649,8 +638,7 @@ class SpecError(ValueError):
     Carries the violations as data so a caller that wants to present them
     differently does not have to parse the message back apart. Deliberately a
     ``ValueError``: every declaration problem ``Host`` already rejects is one,
-    and a host author's ``except ValueError`` should not start missing cases
-    because the message got better.
+    and a host author's ``except ValueError`` should not start missing cases.
     """
 
     def __init__(

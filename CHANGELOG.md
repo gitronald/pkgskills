@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-11-01
+
+### Fixed
+
+- `precommit.wire` keeps each line's own ending in a config that mixes CRLF and LF,
+  instead of rewriting the whole file as CRLF. New lines take the ending of the
+  file's first line.
+
 ## [0.6.2] - 2026-11-01
 
 ### Added
