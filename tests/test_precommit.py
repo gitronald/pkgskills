@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 import yaml
 from examplehost.cli import HOST as EXAMPLE
+from pre_commit.clientlib import load_config
 from solohost.cli import HOST as SOLO
 
 from pkgskills import artifacts as inst
@@ -74,7 +75,8 @@ def test_hook_entry_is_derived_from_the_invocation() -> None:
     assert "pass_filenames: false" in text
     assert "name: 'solohost-index'" in text
     plain = VALIDATE.render("solohost")
-    assert "stages:" not in plain and "always_run" not in plain
+    # Declared even at the default stage: an omitted key means every stage.
+    assert "stages: [pre-commit]" in plain and "always_run" not in plain
     # pre-commit's default is to pass filenames, so a file-scoped hook says
     # nothing about it: an omitted key is the same as `true`.
     assert "pass_filenames" not in plain
@@ -162,6 +164,278 @@ def test_wire_seeds_repos_in_a_config_with_no_content(
         assert "\nrepos:\n  - repo: local\n" in "\n" + text
         parsed = yaml.safe_load(text)
         assert [h["id"] for h in parsed["repos"][0]["hooks"]] == list(report.added)
+
+
+_REPO = (
+    "  - repo: local\n    hooks:\n      - id: a\n"
+    "        name: a\n        entry: a\n        language: system\n"
+)
+
+# Configs the tool did not write, each a layout pre-commit accepts or, for the
+# bare key, one an earlier seed leaves behind.
+LAYOUTS = {
+    "indented": "repos:\n" + _REPO,
+    "no-final-newline": ("repos:\n" + _REPO).rstrip("\n"),
+    "empty-flow": "repos: []\n",
+    "empty-flow-commented": "# top\nrepos: []  # none yet\nfail_fast: true\n",
+    "bare-key-then-key": "repos:\nfail_fast: true\n",
+    "key-after": "repos:\n" + _REPO + "ci:\n  autofix_prs: false\n",
+    "comment-leads-next-key": (
+        "repos:\n" + _REPO + "\n# settings for the bot\nci:\n  autofix_prs: false\n"
+    ),
+    "key-before": "default_stages: [pre-commit]\nrepos:\n" + _REPO,
+    "unindented-two-space-hooks": (
+        "repos:\n- repo: local\n  hooks:\n  - id: a\n"
+        "    name: a\n    entry: a\n    language: system\n"
+    ),
+    "unindented-four-space-hooks": (
+        "repos:\n- repo: local\n  hooks:\n    - id: a\n"
+        "      name: a\n      entry: a\n      language: system\n"
+    ),
+    "four-space-items": "repos:\n    - repo: local\n      hooks: []\n",
+    # The shape `pre-commit sample-config` prints.
+    "sample-config": (
+        "# See https://pre-commit.com for more information\n"
+        "repos:\n-   repo: https://github.com/pre-commit/pre-commit-hooks\n"
+        "    rev: v3.2.0\n    hooks:\n    -   id: trailing-whitespace\n"
+        "    -   id: end-of-file-fixer\n"
+    ),
+}
+
+
+@pytest.mark.parametrize("before", LAYOUTS.values(), ids=LAYOUTS.keys())
+def test_wire_adds_to_any_layout_of_the_repos_list(
+    box: Sandbox, fake: tuple[str, ...], before: str
+) -> None:
+    config = box.repo / ".pre-commit-config.yaml"
+    config.write_text(before, encoding="utf-8")
+    original = yaml.safe_load(before)
+
+    report = pc.wire(_report(SOLO, box.repo, "local"), HOOKS, precommit=fake)
+
+    assert report.added == ("solohost-validate", "solohost-index")
+    assert not report.unsupported
+    text = config.read_text()
+    load_config(str(config))  # pre-commit's own schema check; raises when invalid
+    parsed = yaml.safe_load(text)
+    *kept, new = parsed.pop("repos")
+    assert kept == (original.pop("repos") or [])
+    assert parsed == original
+    assert new["repo"] == "local"
+    assert [(h["id"], h["stages"]) for h in new["hooks"]] == [
+        ("solohost-validate", ["pre-commit"]),
+        ("solohost-index", ["post-merge"]),
+    ]
+    for line in before.splitlines():
+        if line.lstrip().startswith("#"):
+            assert line in text.splitlines()
+
+    again = pc.wire(_report(SOLO, box.repo, "local"), HOOKS, precommit=fake)
+    assert not again.changed
+    assert config.read_text() == text
+
+
+def test_a_comment_leading_the_next_key_stays_with_it(
+    box: Sandbox, fake: tuple[str, ...]
+) -> None:
+    config = box.repo / ".pre-commit-config.yaml"
+    config.write_text(LAYOUTS["comment-leads-next-key"], encoding="utf-8")
+    pc.wire(_report(SOLO, box.repo, "local"), HOOKS, precommit=fake)
+    text = config.read_text()
+    assert text.endswith("\n# settings for the bot\nci:\n  autofix_prs: false\n")
+    assert text.index("solohost-index") < text.index("# settings for the bot")
+
+
+UNSUPPORTED = {
+    "non-empty-flow": "repos: [{repo: local, hooks: []}]\n",
+    "no-repos-key": "fail_fast: true\n",
+    "invalid-yaml": "repos:\n  - repo: local\n bad: [\n",
+    "not-a-mapping": "- just\n- a list\n",
+    "duplicate-repos": "repos: []\nrepos: []\n",
+    # A line that reads as a comment but is content of the block scalar.
+    "scalar-ends-in-hash": (
+        "repos:\n  - repo: local\n    hooks:\n      - id: a\n        name: a\n"
+        "        language: system\n        entry: |\n"
+        "          first\n          # kept\n"
+    ),
+    # Adding to the list would change the anchor's other use as well.
+    "aliased-list": "x-shared: &r\n  - repo: local\n    hooks: []\nrepos: *r\n",
+    # Parse failures that are not YAML errors.
+    "impossible-date": "repos: []\nx: 2001-13-45\n",
+    "self-referencing-alias": "repos: []\nx: &a [*a]\n",
+    "deep-nesting": "repos: []\nx: " + "[" * 3000 + "]" * 3000 + "\n",
+}
+
+
+@pytest.mark.parametrize("before", UNSUPPORTED.values(), ids=UNSUPPORTED.keys())
+def test_wire_leaves_a_config_it_cannot_safely_edit(
+    box: Sandbox, fake: tuple[str, ...], before: str
+) -> None:
+    config = box.repo / ".pre-commit-config.yaml"
+    config.write_text(before, encoding="utf-8")
+
+    report = pc.wire(_report(SOLO, box.repo, "local"), HOOKS, precommit=fake)
+
+    assert report.unsupported and not report.changed and report.added == ()
+    assert config.read_text() == before
+    assert set(report.activation) == {"pre-commit", "post-merge"}
+    rows = pc.checks(SOLO, box.repo, "local", (VALIDATE,), precommit=fake)
+    assert rows[0].status == "missing"
+    assert "add the entry by hand" in rows[0].note
+    assert "run `" not in rows[0].note
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        "- id: solohost-validate  # ours\n        entry: mine",
+        "- id: 'solohost-validate'\n        entry: mine",
+        '- id: "solohost-validate"\n        entry: mine',
+        "- entry: mine\n        id: solohost-validate",
+        "- {id: solohost-validate, entry: mine}",
+    ],
+)
+def test_a_hook_is_present_however_its_entry_is_written(
+    box: Sandbox, fake: tuple[str, ...], entry: str
+) -> None:
+    config = box.repo / ".pre-commit-config.yaml"
+    before = f"repos:\n  - repo: local\n    hooks:\n      {entry}\n"
+    config.write_text(before, encoding="utf-8")
+    report = pc.wire(_report(SOLO, box.repo, "local"), (VALIDATE,), precommit=fake)
+    assert report.added == () and not report.changed
+    assert config.read_text() == before
+    assert pc.hook_state(box.repo, VALIDATE) != "missing"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "repos: []\n# - id: solohost-validate\n",
+        "other:\n  - id: solohost-validate\nrepos: []\n",
+        "repos:\n  - repo: local\n    hooks:\n      - name: solohost-validate\n",
+        "repos:\n  - solohost-validate\n",
+        "repos:\n  - repo: local\n    hooks: solohost-validate\n",
+        "repos: solohost-validate\n",
+        "- id: solohost-validate\n",
+        "repos:\n  - repo: local\n bad: [\n",
+    ],
+)
+def test_a_mention_that_is_not_a_hook_entry_is_not_present(text: str) -> None:
+    assert pc.hook_state(Path("unused"), VALIDATE, config=text) == "missing"
+
+
+def test_a_block_is_resynced_at_the_indent_it_was_added(
+    box: Sandbox, fake: tuple[str, ...]
+) -> None:
+    config = box.repo / ".pre-commit-config.yaml"
+    config.write_text(LAYOUTS["unindented-two-space-hooks"], encoding="utf-8")
+    pc.wire(_report(SOLO, box.repo, "local"), (VALIDATE,), precommit=fake)
+    assert "\n      entry: uv run solohost validate\n" in config.read_text()
+    report = pc.wire(
+        _report(SOLO, box.repo, "global", previous="local"), (VALIDATE,), precommit=fake
+    )
+    assert report.resynced == ("solohost-validate",)
+    text = config.read_text()
+    assert "\n      entry: solohost validate\n" in text
+    assert "uv run solohost" not in text
+    load_config(str(config))
+
+
+def test_wire_keeps_the_configs_line_endings(
+    box: Sandbox, fake: tuple[str, ...]
+) -> None:
+    config = box.repo / ".pre-commit-config.yaml"
+    config.write_bytes(LAYOUTS["key-after"].replace("\n", "\r\n").encode())
+
+    report = pc.wire(_report(SOLO, box.repo, "local"), HOOKS, precommit=fake)
+    assert report.added == ("solohost-validate", "solohost-index")
+    raw = config.read_bytes()
+    assert raw.count(b"\r\n") == raw.count(b"\n")
+    load_config(str(config))
+
+    switched = pc.wire(
+        _report(SOLO, box.repo, "global", previous="local"), HOOKS, precommit=fake
+    )
+    assert switched.resynced == ("solohost-validate", "solohost-index")
+    raw = config.read_bytes()
+    assert raw.count(b"\r\n") == raw.count(b"\n")
+
+    config.write_bytes(LAYOUTS["indented"].encode())
+    pc.wire(_report(SOLO, box.repo, "local"), HOOKS, precommit=fake)
+    assert b"\r" not in config.read_bytes()
+
+
+@pytest.mark.parametrize("kind", ["symlink", "not-utf-8", "directory"])
+def test_checks_do_not_send_an_unreadable_config_to_install(
+    box: Sandbox, fake: tuple[str, ...], kind: str
+) -> None:
+    config = box.repo / ".pre-commit-config.yaml"
+    if kind == "symlink":
+        target = box.repo / "shared.yaml"
+        target.write_text("repos: []\n", encoding="utf-8")
+        config.symlink_to(target)
+    elif kind == "not-utf-8":
+        config.write_bytes(b"repos: []\n# \xff\n")
+    else:
+        config.mkdir()
+
+    report = pc.wire(_report(SOLO, box.repo, "local"), (VALIDATE,), precommit=fake)
+    assert report.unreadable and not report.changed
+
+    (row,) = pc.checks(SOLO, box.repo, "local", (VALIDATE,), precommit=fake)
+    assert row.status == "missing"
+    assert "not a readable plain file" in row.note
+    assert "add the entry by hand" in row.note
+    assert "run `" not in row.note
+
+
+@pytest.mark.parametrize(
+    "args",
+    [("x", "#y"), ("a: b",), ("--pick", "[one"), ("it's", "#1")],
+    ids=["hash", "colon", "bracket", "apostrophe"],
+)
+def test_args_yaml_would_misread_reach_the_entry_intact(
+    box: Sandbox, fake: tuple[str, ...], args: tuple[str, ...]
+) -> None:
+    config = box.repo / ".pre-commit-config.yaml"
+    hook = pc.Hook("solohost-odd", args=args)
+
+    report = pc.wire(_report(SOLO, box.repo, "local"), (hook,), precommit=fake)
+    assert report.created and report.added == ("solohost-odd",)
+    load_config(str(config))
+    (repo,) = yaml.safe_load(config.read_text())["repos"]
+    assert repo["hooks"][0]["entry"] == hook.entry("uv run solohost")
+
+    switched = pc.wire(
+        _report(SOLO, box.repo, "global", previous="local"), (hook,), precommit=fake
+    )
+    assert switched.resynced == ("solohost-odd",)
+    (repo,) = yaml.safe_load(config.read_text())["repos"]
+    assert repo["hooks"][0]["entry"] == hook.entry("solohost")
+
+
+def test_an_id_yaml_would_misread_is_still_found_on_a_rerun(
+    box: Sandbox, fake: tuple[str, ...]
+) -> None:
+    config = box.repo / ".pre-commit-config.yaml"
+    hook = pc.Hook("a: b")
+    assert pc.wire(_report(SOLO, box.repo, "local"), (hook,), precommit=fake).added
+    text = config.read_text()
+    assert "- id: 'a: b'\n" in text
+    again = pc.wire(_report(SOLO, box.repo, "local"), (hook,), precommit=fake)
+    assert again.added == () and config.read_text() == text
+
+
+def test_a_block_that_cannot_be_added_creates_no_config(
+    box: Sandbox, fake: tuple[str, ...]
+) -> None:
+    # A declared stage is written as is, so a bad one makes the block invalid.
+    hook = pc.Hook("solohost-odd", stage="]")
+    report = pc.wire(
+        _report(SOLO, box.repo, "local"), (hook,), activate=False, precommit=fake
+    )
+    assert report.unsupported and not report.created and not report.changed
+    assert not (box.repo / ".pre-commit-config.yaml").exists()
 
 
 def test_a_hook_id_is_matched_as_its_own_line(

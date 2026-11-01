@@ -1,7 +1,7 @@
 """Wire a host's commands into a repository's pre-commit hooks.
 
 A host that ships a ``validate`` or ``index`` command wants it to run as a git
-hook, and the mechanism is the same for every host: append a ``repo: local``
+hook, and the mechanism is the same for every host: add a ``repo: local``
 block naming the hooks to ``.pre-commit-config.yaml``, register each stage the
 block uses with ``pre-commit install``, and report — without gating — whether
 the hook is live in *this* clone. Only the hook declarations are host data.
@@ -37,6 +37,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 from typing import Literal
+
+import yaml
 
 from pkgskills.artifacts import InstallReport, occupied, printing_mode, read_plain
 from pkgskills.host import ExtraCheck, Host, Mode
@@ -83,6 +85,11 @@ HookState = Literal["active", "unregistered", "missing", "no_git_repo", "blocked
 # the same path does not, and is not our hook.
 _MARKER = "pre-commit"
 
+#: What parsing a config can raise. Beyond YAML's own errors, a scalar that
+#: resolves to an impossible date is a ``ValueError``, and deep nesting or a
+#: self-referencing alias passes the recursion limit.
+_UNPARSABLE = (yaml.YAMLError, ValueError, RecursionError)
+
 
 @dataclass(frozen=True)
 class Hook:
@@ -112,19 +119,23 @@ class Hook:
     def render(self, invocation: str) -> str:
         """The hook's YAML entry, indented for a ``repo: local`` block.
 
+        ``stages`` is written even for ``pre-commit``: without it the hook takes
+        the config's ``default_stages``, or every stage when that is unset, so
+        an ``always_run`` hook would also fire at a host's ``post-merge``.
+
         ``name`` and ``files`` are single-quoted: a regex or a display name is
         free text that may carry ``: `` or `` #``, which an unquoted scalar
-        would read as a mapping or a comment. The id and the entry are left
-        bare, since both are matched as text elsewhere and neither is free-form.
+        would read as a mapping or a comment. The id and the entry stay bare
+        unless YAML would read them differently, as it would an ``args`` value
+        holding `` #``, which would otherwise drop out of the command unnoticed.
         """
         lines = [
-            f"      - id: {self.id}",
+            f"      - id: {_scalar(self.id)}",
             f"        name: {_quote(self.name or self.id)}",
-            f"        entry: {self.entry(invocation)}",
+            f"        entry: {_scalar(self.entry(invocation))}",
             "        language: system",
+            f"        stages: [{self.stage}]",
         ]
-        if self.stage != "pre-commit":
-            lines.append(f"        stages: [{self.stage}]")
         if self.files is not None:
             lines.append(f"        files: {_quote(self.files)}")
         if self.always_run:
@@ -141,6 +152,9 @@ class HookReport:
     ``unreadable`` means the config is there but could not be read, so it was
     left alone and no hook was added to it; registration is still attempted,
     since the entry may well be in the text that could not be read.
+    ``unsupported`` means the config was read but no block could be added to it
+    with everything else in it preserved, so it was left alone and the missing
+    hooks need adding by hand; registration is still attempted.
     """
 
     config: Path
@@ -151,6 +165,7 @@ class HookReport:
         default_factory=lambda: MappingProxyType(dict[str, Activation]())
     )
     unreadable: bool = False
+    unsupported: bool = False
 
     @property
     def changed(self) -> bool:
@@ -175,6 +190,15 @@ def _quote(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
+def _scalar(value: str) -> str:
+    """``value`` bare when YAML reads it back unchanged, else single-quoted."""
+    try:
+        unchanged = yaml.safe_load(f"key: {value}") == {"key": value}
+    except _UNPARSABLE:
+        unchanged = False
+    return value if unchanged else _quote(value)
+
+
 def _block(hooks: Sequence[Hook], invocation: str) -> str:
     return "  - repo: local\n    hooks:\n" + "\n".join(
         hook.render(invocation) for hook in hooks
@@ -187,30 +211,108 @@ def _append(text: str, block: str) -> str:
     return text + block
 
 
+def _no_content(line: str) -> bool:
+    return not line.strip() or line.lstrip().startswith("#")
+
+
 def _bare(text: str) -> bool:
     """True when ``text`` has no content line: empty, blank, or comments only.
 
     Such a config has no ``repos:`` key for a block to hang under, so it is
     seeded like an absent one — appended to, since a comment is content.
     """
-    return all(
-        not line.strip() or line.lstrip().startswith("#") for line in text.splitlines()
-    )
+    return all(_no_content(line) for line in text.splitlines())
 
 
-def _names(text: str, hook_id: str) -> bool:
-    """True when ``text`` has a hook entry for ``hook_id``, as its own line.
+def _shifted(block: str, column: int) -> str:
+    """``block``, rendered at column 2, with its ``- repo`` moved to ``column``."""
+    return re.sub(r"^  ", " " * column, block, flags=re.MULTILINE)
 
-    Anchored to the ``- id:`` line rather than a substring search, so an id
-    that is a prefix of another (``x-index`` next to ``x-index-all``) is not
-    mistaken for present.
+
+def _content_end(text: str, end: int) -> int:
+    """Where the last content line before ``end`` stops.
+
+    A block sequence's end mark is the next token, past any blanks and comments.
+    Those lead into what follows, so a new item goes in ahead of them.
     """
-    pattern = rf"^\s*-\s*id:\s*{re.escape(hook_id)}\s*$"
-    return re.search(pattern, text, re.MULTILINE) is not None
+    lines = text[:end].splitlines(keepends=True)
+    while lines and _no_content(lines[-1]):
+        lines.pop()
+    return sum(map(len, lines))
 
 
-def _entry_line(hook: Hook, invocation: str) -> str:
-    return f"        entry: {hook.entry(invocation)}\n"
+def _spliced(text: str, block: str) -> str | None:
+    """``text`` with ``block`` added to its ``repos`` list, else ``None``.
+
+    A text edit, so the comments and formatting of a file the host does not own
+    survive, placed from YAML node positions, so any layout of the list works:
+    indented or not, with other keys after it, or empty. The result must then
+    parse to the original document plus the new repo and nothing else, which
+    catches what a parse alone would not, such as a block that lands inside the
+    previous repo. ``None`` means the file should be left alone: invalid YAML,
+    no ``repos`` list, a non-empty flow list, or a failed check.
+    """
+    if _bare(text):
+        text = _append(text, "repos:\n")
+    try:
+        document = yaml.safe_load(text)
+        root = yaml.compose(text, Loader=yaml.SafeLoader)
+    except _UNPARSABLE:
+        return None
+    if not isinstance(root, yaml.MappingNode):
+        return None
+    found = [(key, value) for key, value in root.value if key.value == "repos"]
+    if len(found) != 1:
+        return None
+    key, repos = found[0]
+    if isinstance(repos, yaml.SequenceNode) and repos.value and not repos.flow_style:
+        end = _content_end(text, repos.end_mark.index)
+        column = repos.start_mark.column
+    elif (isinstance(repos, yaml.SequenceNode) and not repos.value) or (
+        isinstance(repos, yaml.ScalarNode) and repos.value == ""
+    ):
+        # `repos: []` or a bare `repos:`: the block goes on the key's next line.
+        before = text[: repos.start_mark.index].rstrip()
+        text = before + text[repos.end_mark.index :]
+        newline = text.find("\n", key.end_mark.index)
+        end = len(text) if newline < 0 else newline + 1
+        column = 2
+    else:
+        return None
+    candidate = _append(text[:end], _shifted(block, column)) + text[end:]
+    existing = document.get("repos") or []
+    try:
+        expected = {**document, "repos": [*existing, *yaml.safe_load(block)]}
+        return candidate if yaml.safe_load(candidate) == expected else None
+    except _UNPARSABLE:
+        return None
+
+
+def _hook_ids(text: str) -> frozenset[str]:
+    """The id of every hook entry in ``text``; none when it is not valid YAML.
+
+    Parsed rather than matched as text, so an entry is found however it is
+    written (quoted, with a trailing comment, ``id`` not the first key) and a
+    mention elsewhere in the file is not an entry.
+    """
+    try:
+        document = yaml.safe_load(text)
+    except _UNPARSABLE:
+        return frozenset()
+    repos = document.get("repos") if isinstance(document, dict) else None
+    ids: set[str] = set()
+    for repo in repos if isinstance(repos, list) else ():
+        hooks = repo.get("hooks") if isinstance(repo, dict) else None
+        for hook in hooks if isinstance(hooks, list) else ():
+            if isinstance(hook, dict) and "id" in hook:
+                ids.add(str(hook["id"]))
+    return frozenset(ids)
+
+
+def _entry_line(hook: Hook, invocation: str) -> re.Pattern[str]:
+    """The ``entry`` line for ``invocation``, at whatever indent the config uses."""
+    entry = re.escape(_scalar(hook.entry(invocation)))
+    return re.compile(rf"^([ \t]*)entry: {entry}[ \t]*$", re.MULTILINE)
 
 
 def wire(
@@ -222,12 +324,13 @@ def wire(
 ) -> HookReport:
     """Put ``hooks`` in the config and register their stages.
 
-    Appends only what is missing, as one ``repo: local`` block per call — a
-    second block is valid pre-commit, and a text append needs no YAML parser
-    and cannot disturb an entry already committed. A hook already in the
-    config is keyed on its id, so a customized entry still counts as present.
-    Its ``entry`` is resynced only when the install switched modes and the
-    line names exactly the other mode's invocation.
+    Adds only what is missing, as one ``repo: local`` block per call — a second
+    block is valid pre-commit, and a text edit cannot disturb an entry already
+    committed. A config no block can safely be added to is left alone and
+    reported as ``unsupported``. A hook already in the config is keyed on its
+    id, so a customized entry still counts as present. Its ``entry`` is resynced
+    only when the install switched modes and the line names exactly the other
+    mode's invocation.
 
     ``activate`` off writes the config and registers nothing. ``precommit``
     overrides how ``pre-commit`` is invoked; the default is
@@ -245,12 +348,10 @@ def wire(
     unreadable = text is None and not created
     if text is None:
         text = "repos:\n"
-    elif _bare(text):
-        # Exists but holds nothing a block can hang under: seed the key.
-        text = _append(text, "repos:\n")
     missing: list[Hook] = []
     if not unreadable:
-        missing = [hook for hook in hooks if not _names(text, hook.id)]
+        present = _hook_ids(text)
+        missing = [hook for hook in hooks if hook.id not in present]
     resynced: list[str] = []
     switched = report.previous is not None and report.previous != mode
     if switched and not unreadable:
@@ -259,13 +360,23 @@ def wire(
             if hook in missing:
                 continue
             stale, fresh = _entry_line(hook, other), _entry_line(hook, invocation)
-            if fresh not in text and stale in text:
-                text = text.replace(stale, fresh)
+            if stale.search(text) and not fresh.search(text):
+                new_entry = _scalar(hook.entry(invocation))
+                text = stale.sub(lambda m: f"{m[1]}entry: {new_entry}", text)
                 resynced.append(hook.id)
+    unsupported = False
     if missing:
-        text = _append(text, _block(missing, invocation))
+        spliced = _spliced(text, _block(missing, invocation))
+        if spliced is None:
+            missing.clear()
+            unsupported = True
+            created = False
+        else:
+            text = spliced
     if created or missing or resynced:
-        config.write_text(text, encoding="utf-8")
+        # read_plain gave universal newlines; keep the file's own on the way out.
+        crlf = not created and b"\r\n" in config.read_bytes()
+        config.write_text(text, encoding="utf-8", newline="\r\n" if crlf else "\n")
     command = tuple(precommit) if precommit else precommit_command(host, mode)
     # One look at the clone for every stage: the hooks directory and
     # core.hooksPath are per-repository, and each costs a git subprocess.
@@ -280,6 +391,7 @@ def wire(
         tuple(resynced),
         MappingProxyType(activation),
         unreadable,
+        unsupported,
     )
 
 
@@ -430,7 +542,7 @@ def hook_state(
     judging several hooks read the clone and the config once.
     """
     text = (read_plain(root / CONFIG) or "") if config is None else config
-    if not _names(text, hook.id):
+    if hook.id not in _hook_ids(text):
         return "missing"
     if clone is None:
         clone = Clone.of(root)
@@ -462,7 +574,11 @@ def checks(
     command = " ".join(precommit or precommit_command(host, resolved))
     rows: list[ExtraCheck] = []
     clone = Clone.of(root) if hooks else None
-    config = read_plain(root / CONFIG) or ""
+    plain = read_plain(root / CONFIG)
+    config = plain or ""
+    # A symlink, a directory, or bytes that are not UTF-8: wire will not edit it,
+    # and the entry may well be in the text that could not be read.
+    unreadable = plain is None and occupied(root / CONFIG)
     for hook in hooks:
         state = hook_state(root, hook, clone=clone, config=config)
         note = ""
@@ -471,6 +587,16 @@ def checks(
                 f"no {hook.id} entry in {CONFIG}; "
                 f"run `{host.install_command(resolved)}`"
             )
+            if unreadable:
+                note = (
+                    f"{CONFIG} is not a readable plain file, so install cannot "
+                    f"add {hook.id} to it; add the entry by hand if it is missing"
+                )
+            elif _spliced(config, _block((hook,), host.invocation(resolved))) is None:
+                note = (
+                    f"no {hook.id} entry in {CONFIG}, and install cannot add one "
+                    "to this file safely; add the entry by hand"
+                )
         elif state == "unregistered":
             note = (
                 f"{hook.id} is not registered in this clone, so it never fires; "

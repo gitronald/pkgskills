@@ -22,7 +22,7 @@ from typer.testing import CliRunner
 from pkgskills import artifacts as inst
 from pkgskills.cli import typer_app
 from pkgskills.harness import CLAUDE_CODE, Kind
-from pkgskills.host import ExtraCheck, Host, Line, Mode
+from pkgskills.host import Agent, ExtraCheck, Host, Line, Mode, Rule
 from pkgskills.permissions import Level
 from pkgskills.rendering import render
 from pkgskills.stamp import render_comment_stamp, stamped_mode
@@ -135,6 +135,27 @@ def test_rule_and_agent_print_without_a_stamp(box: Sandbox) -> None:
     assert "AGENT-BODY-SENTINEL" in agent.output
     listing = runner.invoke(example_app, ["agent", "--list"])
     assert listing.output.strip() == "example-reviewer"
+
+
+@pytest.mark.parametrize(
+    ("kind", "extra"),
+    [
+        ("rule", Rule("second", "rules/examplehost.md")),
+        ("agent", Agent("second", "agents/example-reviewer.md")),
+    ],
+)
+def test_rule_and_agent_errors(box: Sandbox, kind: str, extra: Rule | Agent) -> None:
+    host = dataclasses.replace(EXAMPLE, artifacts=(*EXAMPLE.artifacts, extra))
+    app = typer_app(host)
+    first = next(art.name for art in host.of_kind(Kind(kind)))
+
+    unnamed = runner.invoke(app, [kind])
+    assert unnamed.exit_code == 1
+    assert f"ships 2 {kind}s; name one of: {first}, second" in unnamed.output
+
+    unknown = runner.invoke(app, [kind, "nope"])
+    assert unknown.exit_code == 1
+    assert f"unknown {kind} 'nope'; choose from: {first}, second" in unknown.output
 
 
 def test_single_skill_host_has_no_rule_or_agent_commands(box: Sandbox) -> None:

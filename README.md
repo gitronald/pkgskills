@@ -442,18 +442,26 @@ HOST = Host(
 )
 ```
 
-`wire` appends a `repo: local` block naming the hooks that are missing from
+`wire` adds a `repo: local` block naming the hooks that are missing from
 `.pre-commit-config.yaml` (creating the file when absent, and seeding `repos:`
 in one that is empty or comments only), and runs
 `pre-commit install --hook-type <stage>` for each distinct stage. Each hook's
 `entry` is the host's invocation for the install mode plus the hook's `args`,
-so it can only be mode-correct; `name` and `files` are single-quoted, so a
-regex or a display name may carry `: ` or ` #`. Three rules keep it from
+so it can only be mode-correct, and its `stages` is always written, so it runs
+only at the stage it declares; `name` and `files` are single-quoted, so a
+regex or a display name may carry `: ` or ` #`. Four rules keep it from
 clobbering repo content:
 
-- **A hook already present is keyed on its `- id:` line**, so a customized
-  entry counts as present and is not duplicated, and an id that is a prefix
-  of another (`x-index` next to `x-index-all`) is not mistaken for it.
+- **The block is a text edit, checked before it is written.** Comments,
+  formatting, and line endings survive, and any block layout of the `repos` list works, as does
+  `repos: []`, with other keys before or after it. The result must parse to the
+  original document plus the new repo. A config where that cannot hold (invalid
+  YAML, no `repos` key, a non-empty flow list) is left alone, and
+  `HookReport.unsupported` says so; the hooks then need adding by hand.
+- **A hook already present is keyed on its id**, read from the parsed config, so
+  a customized entry counts as present and is not duplicated however it is
+  written, and an id that is a prefix of another (`x-index` next to
+  `x-index-all`) is not mistaken for it.
 - **An entry naming the other mode is resynced only on a genuine switch** —
   when `InstallReport.previous`, the mode resolved before the write, differs
   from the mode being installed. A same-mode refresh leaves it: a host's own
