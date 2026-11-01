@@ -132,6 +132,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `assert_spec_conformant` fails them. A host that keeps them filters
   `Host.check_spec()` by rule.
 
+### Removed
+
+- `pkgskills.stamp.PREFIX`, the opening of the comment stamp, with no alias. Code
+  that imports it fails with `ImportError` on this release, and a pattern built
+  from it would not match the new stamp anyway.
+
 ### Fixed
 
 - `find_repo_root` no longer stops at `~/.claude` or `~/.codex`, which made
