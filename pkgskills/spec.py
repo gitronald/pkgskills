@@ -21,7 +21,7 @@ string values*, so the checks here re-read the block with YAML itself rather
 than the flat view, and judge the map-ness and the value types from what YAML
 actually resolved. The rule that earns its keep is the value one — the spec's
 own example writes ``version: "1.0"`` with the quotes because unquoted it is a
-float, and a generated stub preserves that metadata unchanged.
+float, and a single-source stub preserves that metadata unchanged.
 
 What is *not* checked is the spec's recommendations, as against its
 constraints: that a description name what the skill does *and* when to use it,
@@ -47,6 +47,10 @@ if TYPE_CHECKING:
 
 #: The reference validator the spec points at, named in the repair advice.
 VALIDATOR = "skills-ref validate"
+
+#: The ``metadata`` key prefix the provenance stamp is written under, so a source
+#: may not use it. :mod:`pkgskills.stamp` builds its keys from this.
+RESERVED_PREFIX = "pkgskills-"
 
 
 def _reads_as(value: object) -> str:
@@ -319,9 +323,11 @@ class SkillSpec:
     def check_layout(self, source: str) -> list[Violation]:
         """Violations in where a source is stored.
 
-        A flat source is a departure from the spec but not an error ``pkgskills``
-        raises on: hosts predating the layout keep working, and the rule slug
-        lets a caller decide how loudly to say so.
+        A flat source is a departure from the spec that ``install`` and ``render``
+        do not raise on, so hosts predating the layout keep working.
+        :func:`pkgskills.testing.assert_spec_conformant` does raise on it, since it
+        asserts the whole spec; the rule slug lets a caller filter it out of
+        :meth:`check_host`'s report instead.
         """
         if self.is_entry(source):
             return []
@@ -369,10 +375,8 @@ class SkillSpec:
                 )
             ]
         try:
-            parsed, written = self._views(
-                "".join(front.raw.splitlines(keepends=True)[1:-1])
-            )
-        except yaml.YAMLError as exc:
+            parsed, written = self._views(front.inner)
+        except (yaml.YAMLError, ValueError) as exc:  # ValueError: an impossible date
             return [
                 Violation(
                     source,
@@ -463,6 +467,99 @@ class SkillSpec:
                 )
         return out
 
+    def check_copy(self, source: str, front: Frontmatter | None) -> list[Violation]:
+        """Violations that stop a rule or agent source taking the stamp.
+
+        Not the skill rules: the spec does not govern these files, and any block
+        the harness accepts is fine so long as the stamp can join it. That needs a
+        YAML mapping, with a ``metadata`` that is a mapping if it is there and has
+        no key in the prefix the stamp uses. Read with ``BaseLoader``, since only
+        the block's shape matters here: a value ``safe_load`` cannot resolve, like
+        an impossible date, is the file's own business.
+        """
+        if front is None:
+            return []
+
+        def invalid(detail: str) -> list[Violation]:
+            return [
+                Violation(
+                    source,
+                    "frontmatter-invalid",
+                    detail,
+                    "use a YAML mapping, so the provenance stamp can join it",
+                )
+            ]
+
+        try:
+            view = yaml.load(front.inner, Loader=yaml.BaseLoader)
+        except yaml.YAMLError as exc:
+            return invalid(str(exc))
+        if view is None:
+            return []
+        if not isinstance(view, dict):
+            return invalid("frontmatter is not a YAML mapping")
+        metadata = view.get("metadata", {})
+        if not isinstance(metadata, dict):
+            return [
+                Violation(
+                    source,
+                    "metadata-not-a-mapping",
+                    f"`metadata` is {metadata!r}, not a mapping",
+                    "use a mapping, or drop the key; the provenance stamp goes in it",
+                )
+            ]
+        return self._stamp_violations(source, front.inner, metadata)
+
+    def check_stampable(self, source: str, front: Frontmatter) -> list[Violation]:
+        """Violations that stop the stamp joining a source's block.
+
+        Rules for a source that reaches an installed file, not the spec's: a key in
+        the stamp's prefix would be a duplicate in that file, or would pass for
+        provenance. So :meth:`check_parsed` leaves them out, and a stub, which holds
+        those keys by design, stays conformant. A block that is not a mapping, or
+        whose ``metadata`` is not one, is left to whichever check owns the file.
+        """
+        try:
+            view = yaml.load(front.inner, Loader=yaml.BaseLoader)
+        except yaml.YAMLError:
+            return []
+        metadata = view.get("metadata", {}) if isinstance(view, dict) else None
+        if not isinstance(metadata, dict):
+            return []
+        return self._stamp_violations(source, front.inner, metadata)
+
+    @staticmethod
+    def _stamp_violations(
+        source: str, inner: str, metadata: dict[object, object]
+    ) -> list[Violation]:
+        """The reserved keys in ``metadata``, and whether the stamp fits ``inner``."""
+        # Here rather than at the top of the module: stamp imports this module.
+        from pkgskills.stamp import stamp_fits
+
+        out = [
+            Violation(
+                where=source,
+                rule="metadata-key-reserved",
+                detail=f"`metadata.{key}` is in the prefix pkgskills stamps with",
+                fix=f"rename it; every `{RESERVED_PREFIX}` key is written at install",
+            )
+            for key in metadata
+            if isinstance(key, str) and key.startswith(RESERVED_PREFIX)
+        ]
+        if not stamp_fits(inner):
+            out.append(
+                Violation(
+                    where=source,
+                    rule="stamp-cannot-join",
+                    detail="adding the provenance stamp would change this block",
+                    fix=(
+                        "write the frontmatter as a plain block mapping, with no "
+                        "alias for `metadata` and no keep-chomped scalar at its end"
+                    ),
+                )
+            )
+        return out
+
     # -- whole declarations ------------------------------------------------
 
     def check_skill(self, host: Host, skill: Skill) -> list[Violation]:
@@ -485,6 +582,7 @@ class SkillSpec:
             out.extend(self.check_parsed(source, front))
             if not skill.dispatches and front is not None:
                 out.extend(self.check_skill_name(source, front, skill))
+                out.extend(self.check_stampable(source, front))
         return out
 
     def check_skill_name(
@@ -507,8 +605,17 @@ class SkillSpec:
         ]
 
     def check_host(self, host: Host) -> list[Violation]:
-        """Every violation across every skill ``host`` declares."""
-        return [v for skill in host.skills for v in self.check_skill(host, skill)]
+        """Every violation across ``host``'s skills, rules, and agents.
+
+        The skills against the spec, and the rules and agents only on whether
+        they can take the stamp.
+        """
+        out = [v for skill in host.skills for v in self.check_skill(host, skill)]
+        for art in (*host.rules, *host.agents):
+            if host.has_source(art.source):
+                front, _ = split_frontmatter(host.read(art.source))
+                out.extend(self.check_copy(art.source, front))
+        return out
 
 
 #: The spec as written, and what every caller in ``pkgskills`` uses.

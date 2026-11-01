@@ -24,7 +24,7 @@ from pkgskills.artifacts import (
 )
 from pkgskills.cli import register, typer_app
 from pkgskills.frontmatter import Frontmatter, split_frontmatter
-from pkgskills.harness import CLAUDE_CODE, Harness, Kind
+from pkgskills.harness import CLAUDE_CODE, CODEX, HARNESSES, Harness, Kind
 from pkgskills.host import (
     Agent,
     Artifact,
@@ -44,6 +44,8 @@ from pkgskills.spec import SPEC, Field, SkillSpec, SpecError, Violation
 
 __all__ = [
     "CLAUDE_CODE",
+    "CODEX",
+    "HARNESSES",
     "LOCATION_ENV",
     "SPEC",
     "Agent",

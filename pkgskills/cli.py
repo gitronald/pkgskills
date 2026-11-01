@@ -47,7 +47,7 @@ def _print_prompt(text: str) -> None:
 
 
 def _printing_mode(host: Host) -> Mode:
-    root = install_mod.find_repo_root(harness=host.harness)
+    root = install_mod.find_repo_root(harnesses=host.harnesses)
     return install_mod.printing_mode(host, root)
 
 
@@ -181,7 +181,7 @@ def run_check(host: Host, root: Path, mode: Mode | None) -> bool:
     """
     typer.echo(
         f"{host.dist} {host.resolved_version()} via pkgskills {pkgskills_version()}, "
-        f"harness {host.harness.name}"
+        f"harness {', '.join(h.name for h in host.harnesses)}"
     )
     rows = install_mod.check(host, root, mode)
     for row in rows:
@@ -216,7 +216,9 @@ def run_check(host: Host, root: Path, mode: Mode | None) -> bool:
     # The same scope as the rows above: one mode when asked, else every mode.
     leftover = [
         path
-        for m in ((mode,) if mode is not None else host.modes)
+        for m in (
+            (mode,) if mode is not None else install_mod.location_modes(host, root)
+        )
         for path in install_mod.leftover_previous(host, m, root)
     ]
     for path in leftover:
@@ -328,18 +330,20 @@ def _install_command(host: Host) -> typer.Typer:
         ),
     ) -> None:
         """Materialize the generated files the harness reads, or check them."""
-        root = install_mod.find_repo_root(harness=host.harness)
+        root = install_mod.find_repo_root(harnesses=host.harnesses)
+        # A flagless check on a two-mode host judges every occupied location,
+        # since the harness loads from both. With one mode, or with a flag, there
+        # is one location to judge, and it has to be one that exists at this root.
+        scoped = local is not None or one_mode
         try:
             mode = _requested_mode(host, local)
+            if scoped or not check:
+                install_mod.require_mode(host, root, mode)
         except ValueError as exc:
             _err(str(exc))
             raise typer.Exit(1) from None
         if check:
-            # A flagless check on a two-mode host judges every occupied
-            # location, since the harness loads from both. With one mode, or
-            # with a flag, there is one location to judge.
-            scope = mode if local is not None or one_mode else None
-            ok = run_check(host, root, scope)
+            ok = run_check(host, root, mode if scoped else None)
             raise typer.Exit(0 if ok else 1)
         run_install(host, root, mode, force=force)
 
@@ -399,13 +403,16 @@ def _permissions_command(host: Host) -> typer.Typer:
             "--apply",
             help="Merge the rules into settings.json (default: print them only).",
         ),
+        codex: bool = typer.Option(
+            False, "--codex", help="Print a Codex execution-policy rules fragment."
+        ),
     ) -> None:
         """Print or apply an automation-level permission profile.
 
         Higher levels pre-authorize more of what this tool's skills run, so
         fewer commands prompt. The default prints a paste-ready block; `--apply`
         merges it additively into settings.json, never downgrading an existing
-        deny/ask rule.
+        deny/ask rule. `--codex` prints execution-policy rules to paste by hand.
         """
         try:
             lvl = perms.parse_level(level)
@@ -417,8 +424,26 @@ def _permissions_command(host: Host) -> typer.Typer:
             raise typer.Exit(1) from None
 
         mode: Mode = "local" if local_ else "global"
-        root = install_mod.find_repo_root(harness=host.harness)
         rules = perms.rules_for(host, lvl, mode)
+
+        if codex:
+            target = (
+                f".codex/rules/{host.cli}.rules (loads only for a trusted project)"
+                if local_
+                else "~/.codex/rules/default.rules"
+            )
+            if apply:
+                _err(
+                    f"Codex rules are print-only; drop --apply and paste the "
+                    f"fragment into {target}."
+                )
+                raise typer.Exit(1)
+            typer.echo(f"# automation level: {lvl.value} ({mode})")
+            typer.echo(f"# target: {target}")
+            typer.echo(perms.render_codex_rules(rules), nl=False)
+            return
+
+        root = install_mod.find_repo_root(harnesses=host.harnesses)
         path = perms.settings_path(root, mode)
 
         if not apply:
@@ -459,7 +484,14 @@ def _permissions_command(host: Host) -> typer.Typer:
 
 
 def register(app: typer.Typer, host: Host) -> None:
-    """Add the shared commands for ``host`` to ``app``."""
+    """Add the shared commands for ``host`` to ``app``.
+
+    These commands anchor to the repository root, not the working directory. A
+    host's own commands on ``app`` do not inherit that, and nothing here can
+    impose it: they should call
+    ``find_repo_root(harnesses=host.harnesses)`` so both halves of the CLI agree
+    from any subdirectory.
+    """
     for sub in _commands(host):
         app.registered_commands.extend(sub.registered_commands)
 
@@ -543,6 +575,6 @@ def _check() -> None:
         raise typer.Exit(1)
     ok = True
     for host in found:
-        root = install_mod.find_repo_root(harness=host.harness)
+        root = install_mod.find_repo_root(harnesses=host.harnesses)
         ok = run_check(host, root, None) and ok
     raise typer.Exit(0 if ok else 1)

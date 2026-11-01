@@ -3,16 +3,16 @@
 Ship prompts inside a CLI package and install thin, version-stamped stubs
 where the harness reads them.
 
-A *host* is a Python package that bundles its Claude Code skills, rules, and
-subagent definitions as package data. `pkgskills` gives that package three
-things:
+A *host* is a Python package that bundles skills, rules, and subagent
+definitions as package data for Claude Code and Codex. `pkgskills` gives that
+package three things:
 
 - a `skill` command that prints a bundled prompt on demand, so the text an
   agent reads always comes from the installed version and there is no copy to
   go stale;
 - an `install` command that materializes the files the harness must read off
-  disk, each stamped with the host and `pkgskills` versions, the install mode,
-  and the command that regenerates it;
+  disk, each stamped in its frontmatter with the host and `pkgskills` versions
+  and the install mode;
 - an `install --check` that tells a current file from a drifted, missing, or
   foreign one and exits non-zero unless everything is `ok`.
 
@@ -21,7 +21,25 @@ when to fire, plus an instruction to run `<cli> skill <name>` and follow the
 output.
 Rules and agents are installed as *copies*, because the harness reads their
 full text with no model in the loop. Both carry the same stamp and the same
-drift check. Reference *documents* are the fourth thing a host declares and
+drift check. By default, every supported harness receives each artifact kind:
+
+| Harness | Skills | Rules | Agents |
+|---|---|---|---|
+| Claude Code | `.claude/skills/<name>/SKILL.md` | `.claude/rules/<name>.md` | `.claude/agents/<name>.md` |
+| Codex | `.agents/skills/<name>/SKILL.md` | Not installed | Not installed |
+
+These paths are relative to `$HOME` for global mode or the repository root
+for local mode. Codex discovers repo skills in `.agents/skills` from the
+working directory up to the repository root, and user skills in
+`~/.agents/skills`. It loads global and local skills with the same name as
+separate entries; they are neither merged nor shadowed. Codex custom agents
+use TOML rather than these Markdown definitions, and its `.rules` files are
+execution policy rather than prompt rules, so neither kind is installed.
+`Host.harnesses` defaults to `(CLAUDE_CODE, CODEX)`; set it explicitly to
+restrict the target tools. An artifact installs only where its kind is
+supported, and a declaration no harness supports is rejected.
+
+Reference *documents* are the fourth thing a host declares and
 the one that is never installed at all: they are printed by `<cli> doc <name>`,
 which is how a body defers detail to a sidecar it can no longer reach by path.
 
@@ -68,20 +86,23 @@ holding the skill's `references/` and `scripts/` too — so the `prompts/` tree
 passes a skills linter as it stands. The `skills/` group above is a
 convenience, not a requirement: `pkgskills` reads only the last two components
 of the path, so a host that ships nothing but skills can drop it and write
-`sources=("add/SKILL.md",)`. A flat `skills/add.md` still works and may be
-mixed in. `assert_spec_conformant(HOST)` reports anything misfiled, naming the
-rule and the fix — see
+`sources=("add/SKILL.md",)`. A flat `skills/add.md` still installs and may be
+mixed in, but `assert_spec_conformant(HOST)` reports it, along with anything else
+misfiled, naming the rule and the fix — see
 [docs/source-layout.md](docs/source-layout.md).
 
 A skill with one source lifts that file's frontmatter into the stub byte for
-byte — including a `metadata.version` the source declares as the skill's own
-(see [docs/frontmatter.md](docs/frontmatter.md)). Its body is addressed by the
+byte — including a `metadata.version` the source declares as the skill's own —
+and adds the [stamp](#the-stamp-and-the-check) after it (see
+[docs/frontmatter.md](docs/frontmatter.md)). Its body is addressed by the
 *skill's* name — `<cli> skill use-solo` — so the source need not be named
 after it. A skill with several sources becomes a dispatcher: each source's
 name — its directory, or its stem for a flat file — is a subcommand, and the
-stub tells the agent to run `<cli> skill <subcommand>`. The two namespaces
-share one argument, so a dispatcher subcommand may not collide with another
-skill's name; `Host` rejects that at construction, as it rejects a
+stub tells the agent to run `<cli> skill <subcommand>`. Its stub lists the subcommands
+in a table, with each source's `description` and its `metadata.version`, or an empty
+cell for a source that declares none. The stub's `metadata` holds only the stamp.
+The two namespaces share one argument, so a dispatcher subcommand may not collide
+with another skill's name; `Host` rejects that at construction, as it rejects a
 `Skill.name` outside the spec's grammar.
 
 A body must not point at a file by a path relative to the stub: after
@@ -112,28 +133,68 @@ yourtool = "yourtool.cli:HOST"
 | `yourtool doc [NAME] [--list]` | Print a reference document (only when the host ships docs). |
 | `yourtool rule [NAME] [--list]` | Print a rule (only when the host ships rules). |
 | `yourtool agent [NAME] [--list]` | Print an agent definition (only when the host ships agents). |
-| `yourtool install` | Write every artifact for the host's default mode — under `~/.claude/` unless the host restricts its `modes`. |
-| `yourtool install --local` / `--global` | Write them under the enclosing repository, or under `~/.claude/`. Naming a mode the host does not declare is an error. |
+| `yourtool install` | Write every artifact for the host's default mode — under `~/.claude/` and `~/.agents/` unless the host restricts its `modes`. |
+| `yourtool install --local` / `--global` | Write them under the enclosing repository, or under `~/.claude/` and `~/.agents/`. Naming a mode the host does not declare is an error. |
 | `yourtool install --check` | Report `ok`, `drifted`, `stale`, `missing`, or `foreign` per file (and `unreadable` per declared line); exit 1 unless all ok. |
 | `yourtool install --force` | Replace files the host did not generate. |
-| `yourtool permissions [--level L] [--global] [--apply]` | Print or apply an automation-level allow-rule profile (only when the host declares one). |
+| `yourtool permissions [--level L] [--global] [--apply] [--codex]` | Print or apply an automation-level allow-rule profile; `--codex` prints a Codex rules fragment and refuses `--apply` (only when the host declares one). |
 
 The enclosing repository is the nearest ancestor of the working directory
-holding `.git` or `.claude/`, so a local install from a subdirectory still
-lands where the harness loads from.
+holding `.git`, `.claude/`, or `.codex/`, so a local install from a subdirectory
+still lands where the harness loads from. Home's own `.claude/` and `.codex/` do
+not count, since that is where a global install lives. `~/.git` does, so a
+dotfiles repository keeps its root.
+
+### Your own commands
+
+A command you write beside these does not inherit that walk. One that reaches
+for `Path.cwd()` writes under whatever subdirectory it ran in, while
+`install --local` on the same CLI writes at the root. `pkgskills` cannot enforce
+this from `Host` or `register`, so resolve the root the way the mounted commands
+do:
+
+```python
+from pkgskills import find_repo_root
+
+
+@app.command()
+def index() -> None:
+    root = find_repo_root(harnesses=HOST.harnesses)
+    ...
+```
+
+Pass `harnesses`. Without it only `.git` marks a root, so in a repository whose
+subdirectory holds `.claude/` or `.codex/`, the two halves of the CLI pick
+different directories.
+
+The walk always returns a directory, and outside a repository that directory is
+rarely the one you want. With no marker at all it returns where it started,
+including under a home with a `~/.claude` or `~/.codex`, which the walk does not
+stop at. A command that should not write outside a repository checks for one:
+
+```python
+root = find_repo_root(harnesses=HOST.harnesses)
+if not any((d / ".git").exists() for d in (root, *root.parents)):
+    raise SystemExit("run this inside a git repository")
+```
 
 ## Modes
 
 **Global** (default) puts one copy under `$HOME` that serves every repository;
 the CLI is on `PATH` and invoked bare. **Local** puts the copy under the
 repository root and invokes the CLI through `uv run`. The relative layout is
-the same at both bases, so the two never collide.
+the same at both bases, so the two collide only where the root is `$HOME`
+itself: from `$HOME`, or under a home that holds `.git`. The paths then name one
+set of files, which serve every repository, so they count as global. `--check`
+judges each file once, and `--local` is refused. A host that installs only
+locally is exempt, since it has no global copy to overwrite.
 
 A file's mode is the one its location implies. A stub rendered for local mode
 and carried to the global path reads as drifted, because the commands inside
 it are wrong where it sits. When both a global and a local copy of a skill
-exist, the global one is what the harness loads; `install` and `--check` say
-so.
+exist, Claude Code loads the global one; `install` and `--check` say so.
+Codex loads both, so its local copy is reported as `stale` once a global
+install resolves.
 
 ### A host that supports only one
 
@@ -195,19 +256,27 @@ Resolving it any other way prints commands that do not run.
 
 ## The stamp and the check
 
-Every generated file carries one HTML comment after its frontmatter (or on
-the first line when there is none):
+Every generated file carries five keys under its frontmatter's `metadata`, and a
+rule or agent whose source has no frontmatter gains a block to hold them:
 
-```
-<!-- generated by yourtool 1.4.0 via pkgskills 0.1.0 (mode=local); do not edit. Regenerate with: uv run yourtool install --local --force -->
+```yaml
+---
+metadata:
+  pkgskills-host: "yourtool"
+  pkgskills-host-version: "1.4.0"
+  pkgskills-version: "0.1.0"
+  pkgskills-mode: "local"
+  pkgskills-note: "generated; install overwrites edits"
+---
 ```
 
-That comment is the only place those releases are recorded. `pkgskills` writes
-nothing into a stub's frontmatter, so `metadata.version` stays free to mean the
-skill's own version, declared by the source.
+Those keys are the only place the releases are recorded. They join whatever
+`metadata` the source declares, after its own keys, so `metadata.version` stays
+free to mean the skill's own version. The `pkgskills-` prefix is reserved: a source
+declaring a key in it fails `assert_spec_conformant` and cannot be rendered.
 
 `install --check` re-renders each artifact and compares, with the stamp's two
-version tokens masked, so upgrading either package never flags a file whose
+version values masked, so upgrading either package never flags a file whose
 content did not change. What sits at the path decides the verdict:
 
 | At the path | Status | Reason reported |
@@ -215,6 +284,8 @@ content did not change. What sits at the path decides the verdict:
 | nothing | `missing` | not installed |
 | our render, any versions | `ok` | |
 | our stamp, different content | `drifted` | content differs, or rendered for the other mode |
+| the HTML comment an earlier `pkgskills` wrote | `drifted` | the stamp now lives in frontmatter, or rendered for the other mode |
+| a stamp the host declared in `legacy_stamps` | `drifted` | stamped before the host adopted pkgskills, or rendered for the other mode |
 | a local copy a global install superseded | `stale` | still loaded; remove it |
 | a file with no stamp | `foreign` | hand-written or from an older release |
 | another package's stamp | `foreign` | generated by that package |
@@ -228,6 +299,36 @@ half-installed skill behind. With `--force`, a symlink is replaced by a plain
 file rather than written through. A fresh global install removes per-repo
 copies the host generated earlier; a local install never deletes the global
 copy that serves other repositories.
+
+### Migrating from your own stamps
+
+A host that stamped its generated files before adopting pkgskills leaves those
+files on every machine that installed an earlier release, and they read
+`foreign` until someone passes `--force`. Declare the old stamp and a bare
+`install` upgrades them:
+
+```python
+Host(
+    ...,
+    legacy_stamps=(
+        re.compile(r"<!-- yourtool \S+ \((?P<mode>global|local)\); do not edit -->"),
+    ),
+)
+```
+
+Each pattern has to match a whole line and capture the recorded mode as a named
+group `mode`, so a stamp that recorded no mode cannot be declared. Construction
+rejects a pattern with no such group, and one that matches a stamp `pkgskills`
+wrote itself: any line of the current map, or the HTML comment of earlier releases,
+which is recognized without a declaration.
+
+A matching file counts as generated everywhere. It reads `drifted`, a bare
+`install` overwrites it, edits included, and it is removed as a stale local copy
+or at a previous name. That is how a current stamp is treated, so declare a
+pattern only for a stamp that also told readers not to edit the file, and match
+it exactly, with any version token as `\S+`. A loose pattern hands `install` a
+hand-written file. Drop a pattern once no supported upgrade starts from a release
+that wrote it; pkgskills cannot tell when that is.
 
 ### Renaming an artifact
 
@@ -247,16 +348,17 @@ left alone, mentioned in a note, and never gates. A single-source skill's stub
 lifts the source's `name`, so renaming one means renaming the source's
 frontmatter as well; a dispatcher renames from the declaration alone.
 
-`stale` is the asymmetric case. The harness auto-loads rules and agents from
+`stale` is the asymmetric case. Claude Code auto-loads rules and agents from
 the global *and* the local location at once, so a per-repo copy left behind
 after a switch to global is an extra file live in context whatever its content
 says. The verdict therefore outranks both `ok` and `drifted`: the check gates on
 it and says `remove:`, not `repair:` — rewriting the file is not the fix, and a
-reinstall would only recreate it. Skills are exempt, because a
-global skill shadows the local stub rather than loading alongside it; which
-kinds load from both bases is declared on the `Harness`. A *global* copy during
-a local install is never flagged: it is shared infrastructure serving every
-other repository.
+reinstall would only recreate it. Claude Code skills are exempt, because a
+global skill shadows the local stub rather than loading alongside it. Codex
+skills load from both bases, so its leftover local stubs are `stale` too;
+which kinds load from both bases is declared on each `Harness`. A *global*
+copy during a local install is never flagged: it is shared infrastructure
+serving every other repository.
 
 ## One line in a file the host does not own
 
@@ -423,6 +525,41 @@ with `--global`). The merge is additive and never downgrades: a rule already on
 is a no-op, and an apply with nothing to add leaves the file untouched. So the
 command is safe to run blind.
 
+### Codex sandbox
+
+In Codex's `workspace-write` sandbox, the workspace and `/tmp` are writable,
+with protected directories inside those roots:
+
+- Every command that writes git state (`git commit`, `git branch`,
+  `git worktree add`, `git merge`, `git tag`, and similar operations) fails
+  because `.git` is read-only, whether it is a directory or a pointer file.
+  In a linked worktree, the resolved git directory is protected too.
+- `install --local` fails when the `.agents/` directory already exists:
+  Codex keeps it read-only recursively even inside the workspace. `.codex/`
+  and `.aws/` directories are protected the same way.
+- A global `install` writes under `~/.claude/` and `~/.agents/`, outside the
+  workspace, so it also needs permission to run outside the sandbox.
+- `install --check` and `skill`/`doc` printing are read-only and run sandboxed.
+
+Approve the escalation when prompted with the `on-request` approval policy,
+grant the needed command prefixes with `yourtool permissions --codex`, or run
+the command outside Codex. `--codex` prints a paste-ready execution-policy
+fragment for the requested level. Its target is
+`.codex/rules/yourtool.rules` locally (loaded only for a trusted project), or
+`~/.codex/rules/default.rules` with `--global`.
+
+An `allow` rule runs matching commands **outside the sandbox without
+prompting**. Codex also accepts `prompt` and `forbidden`; the most restrictive
+matching decision wins. Translation covers `Bash(<words>:*)` and
+`Bash(<words> *)` with a trailing ` *`, splitting the words the way a shell
+would into a command prefix. An exact `Bash(<words>)` is not translated:
+Codex matches by prefix only, so the rule would grant every extension of the
+command as well. A rule with shell syntax (`&&`, `|`, `;`, a redirection, a
+`$` expansion, a leading `~`) is not translated either: Codex matches the
+parsed argv, which never contains those tokens. Exact rules, shell syntax,
+other wildcards, and non-Bash tools appear as `# not translated:` comments. Review the fragment and paste it into the target file;
+`--codex --apply` is refused, and pkgskills never writes Codex `.rules` files.
+
 ## The `pkgskills` script
 
 ```bash
@@ -434,10 +571,10 @@ pkgskills check    # run each host's drift check from the current repository
 
 `pkgskills.testing.sandbox(tmp_path, monkeypatch)` pins `$HOME` and the working
 directory to fresh directories, so a suite never touches the developer's real
-`~/.claude`. `pkgskills.testing.wheel_files(project_root, out_dir)` builds a
-wheel in-process and lists its contents, which is the only way to prove the
-prompts ship: an editable install resolves package data straight to the
-checkout.
+`~/.claude` or `~/.agents`.
+`pkgskills.testing.wheel_files(project_root, out_dir)` builds a wheel
+in-process and lists its contents, which is the only way to prove the prompts
+ship: an editable install resolves package data straight to the checkout.
 
 `pkgskills.testing.assert_spec_conformant(host)` checks every skill the host
 ships against the
@@ -449,6 +586,16 @@ for (an unquoted `version: 1.0` is a float, not a string), and that no field
 runs past its limit. Every
 violation is reported at once, each naming the rule it breaks and the fix — see
 [docs/source-layout.md](docs/source-layout.md#checking-a-host-against-the-spec).
+
+That includes the layout, so a host that adopts the helper as written uses
+`<name>/SKILL.md` for every source, a dispatcher's included. A host that keeps
+flat sources on purpose filters the report instead
+([why](docs/source-layout.md#flat-sources-still-work)):
+
+```python
+violations = [v for v in HOST.check_spec() if v.rule != "entry-file"]
+assert not violations, "\n".join(map(str, violations))
+```
 
 `pkgskills.testing.assert_prompt_commands(host, app)` closes the loop the whole
 pattern exists for. `pkgskills` renders `{cli}`, but nothing otherwise checks

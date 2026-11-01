@@ -121,3 +121,31 @@ def test_invalid_or_nonmapping_fields_do_not_break_splitting(text: str) -> None:
     front, body = split_frontmatter(doc)
     assert front is not None and front.fields == {}
     assert front.raw + body == doc
+
+
+def _metadata_field(block: str, key: str = "version") -> str | None:
+    front, _ = split_frontmatter(f"---\n{block}\n---\nbody")
+    assert front is not None
+    return front.metadata_field(key)
+
+
+def test_metadata_field_reads_a_scalar_as_written() -> None:
+    assert _metadata_field('metadata:\n  version: "2.1"') == "2.1"
+    assert _metadata_field("metadata:\n  version: 1.0") == "1.0"
+    assert _metadata_field("metadata:\n  other: x\n  version: 1", "other") == "x"
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        "name: x",
+        "version: 1.0",  # top level is not metadata
+        "metadata: 1.0",
+        "metadata:\n  other: x",
+        "metadata:\n  version:\n    nested: 1",
+        "[broken",
+        "- item",
+    ],
+)
+def test_metadata_field_is_none_for_every_other_shape(block: str) -> None:
+    assert _metadata_field(block) is None

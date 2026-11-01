@@ -7,6 +7,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-31
+
+### Added
+
+- Codex harness (`CODEX`) and the default `HARNESSES` tuple. Skills install
+  under `.agents/skills/<name>/SKILL.md` alongside Claude Code's stubs,
+  globally or locally. Codex loads both copies, so leftover local stubs are
+  reported as stale under a resolved global install.
+- `permissions --codex` prints a paste-ready execution-policy fragment for
+  the selected automation level. `codex_rules` and `render_codex_rules`
+  translate prefix-form Bash rules and report the rest, exact
+  rules and shell syntax included, as comments. Applying
+  Codex rules is refused; the command names the file to paste into.
+- `Host.legacy_stamps` lets a host declare the stamp lines it wrote before it
+  adopted pkgskills. A matching file reads `drifted` instead of `foreign`, so a
+  bare `install` upgrades it without `--force`, edits included, and it can be
+  removed as a stale local copy or at a previous name. The field is optional,
+  so no host changes behavior until it declares a pattern.
+
+### Changed
+
+- A dispatcher stub lists its subcommands in a table with a Version column, in
+  place of the bulleted list. The version is each source's own `metadata.version`,
+  and a source that declares none gets an empty cell, never the host's release.
+  It is body text, so bumping a source's version drifts the stub. Every dispatcher
+  stub reads `drifted` once a host picks this up, and a bare `install` refreshes it.
+- The provenance stamp moved from an HTML comment into the frontmatter, as five
+  quoted keys under `metadata`: `pkgskills-host`, `pkgskills-host-version`,
+  `pkgskills-version`, `pkgskills-mode`, and `pkgskills-note`, a fixed warning that
+  `install` overwrites edits. Rules and agents carry them too, and
+  one whose source has no frontmatter gains a block. `pkgskills` no longer writes
+  the comment, and the regenerate command is no longer in the file, except that a
+  stub's body still prints it. Host maintainers: comment-stamped files read
+  `drifted` and keep refreshing on a bare `install`, with no `--force`, so say that
+  in the changelog of the first release that pins this version. An older
+  `pkgskills` does not recognize the new stamp, so a downgrade needs `--force` once.
+- The `pkgskills-` prefix under `metadata` is reserved. A single-source skill, rule,
+  or agent source declaring such a key fails `assert_spec_conformant`
+  (`metadata-key-reserved`) and cannot be rendered. `SkillSpec.check_host` now also
+  reads rule and agent sources, for whether they can take the stamp, and installing
+  one whose frontmatter cannot take it now fails rather than writing the file. A
+  block the keys cannot join without changing what it says, such as an aliased
+  `metadata`, fails the same check (`stamp-cannot-join`).
+- A skill source with a value YAML cannot resolve, such as an impossible date, now
+  reports `frontmatter-invalid` rather than raising `ValueError`.
+- A `Host.legacy_stamps` pattern is rejected when it matches the HTML comment form
+  or a line of the stamp's map. The error now reads `matches pkgskills' own stamp`.
+- A line that begins like a current stamp and goes on to say something else no
+  longer counts as one. The comment form has to match its whole line.
+- `Host.harness` is replaced by `Host.harnesses`, defaulting to
+  `(CLAUDE_CODE, CODEX)`, with no compatibility alias. `harnesses_for(kind)`
+  selects supported targets in declared order; validation rejects empty or
+  duplicate harness names and artifacts no declared harness supports. Host
+  maintainers: a machine installed before this release has no Codex stubs, so
+  `install --check` reads `missing` until a bare `install` writes them. A host
+  that targets only Claude Code sets `harnesses=(CLAUDE_CODE,)`.
+- `artifact_path` and `previous_paths` require an explicit `harness` argument.
+  The per-location helpers `check_artifact`, `write_artifact`, and
+  `stale_local` also require it. `find_repo_root` accepts a sequence of
+  `harnesses` instead of one `harness` and recognizes any config directory.
+- `Check.harness` identifies the harness for each verdict.
+  `skill_stub_paths` returns `(skill, mode, harness, path)` tuples.
+- The host guide now says how a host's own commands should find the repository
+  root (`find_repo_root(harnesses=HOST.harnesses)`), and how to refuse to write
+  outside a repository, since the walk can return a directory outside one.
+- The docs now say that a dispatcher stub's `metadata` holds only the stamp, and
+  that a bare `1.0.0` passes the check while a bare `1.0` does not.
+- The docs now agree about flat sources: they install, but
+  `assert_spec_conformant` fails them. A host that keeps them filters
+  `Host.check_spec()` by rule.
+
+### Fixed
+
+- `find_repo_root` no longer stops at `~/.claude` or `~/.codex`, which made
+  `$HOME` the root of every directory under it. From such a directory, a healthy
+  global install failed `install --check`, and the repair it printed,
+  `install --local --force`, overwrote the global stubs with ones that told every
+  repository to run `uv run <cli>`. A directory under home now resolves as any
+  other directory does. `~/.git` still marks a root. An install clobbered this way
+  reads `drifted` in a flagless `install --check`, and the global install it prints
+  as the repair restores it.
+- Where the root really is `$HOME`, local and global paths now count as one global
+  location. A flagless check judges each file once, `--local` is refused for
+  `install` and `install --check`, and `pkgskills.install` raises `ValueError`. A
+  local-only host is exempt.
+- A global install under a symlinked `$HOME` holding `.git` no longer deletes the
+  stubs it just wrote. The guard compared a resolved root with an unresolved home,
+  so it took each new file for a leftover local copy.
+
 ## [0.5.1] - 2026-09-12
 
 ### Fixed

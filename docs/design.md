@@ -35,8 +35,8 @@ not justify a package: the extraction was conditioned on a fourth host or a
 second harness actually appearing, on the reasoning that three hand-kept copies
 are cheaper than a library nothing new exercises, with a written contract plus a
 conformance suite as the fallback if the shared code stayed thin and every host
-still needed overrides. A fourth host has since adopted it, which is the
-condition being met.
+still needed overrides. A fourth host has since adopted it, and Codex is now
+the second harness, meeting both conditions.
 
 ## Decisions
 
@@ -50,20 +50,55 @@ grammar on the host's own typer app so extra host commands sit beside the
 shared ones. An entry-point group (`pkgskills.hosts`) lets the standalone
 `pkgskills` script check every host at once.
 
-**One contract.** The stamp is an HTML comment after the frontmatter naming
-both versions, the mode, and the repair command. Drift masks both of its
-version tokens. It is the *only* home of that provenance: `pkgskills` writes
-nothing into a stub's frontmatter, leaving `metadata.version` to mean the
-skill's own version, declared by the source and passed through verbatim (see
-[frontmatter.md](frontmatter.md)). Anything at the path that is not a plain file this host generated is
+**One contract.** The stamp is five `pkgskills-*` keys under the frontmatter's
+`metadata`, naming the host, both versions, and the mode, with a note that
+`install` overwrites edits. Drift masks both
+version values. It is the *only* home of that provenance. A prefix rather than a
+top-level key, because the Agent Skills spec keeps extra properties in that map
+and its reference validator rejects others; a prefix rather than plain keys, so
+`metadata.version` still means the skill's own version, declared by the source and
+passed through verbatim (see [frontmatter.md](frontmatter.md)). Anything at the path that is not a plain file this host generated is
 foreign and is never replaced without `--force`. Mode is inferred from
 location, never from the stamp: a stub carried to the other location reads as
 drifted because its embedded commands are wrong there.
 
+**A stamp from before adoption.** From the line alone, pkgskills cannot tell a
+host's pre-adoption stamp from a pkgskills stamp that a formatter wrapped or
+whose mode was corrupted, so all three read `foreign`. The host can tell, since
+it wrote the old format, and `Host.legacy_stamps` lets it say so. A matching line
+counts as the host's stamp through `is_stamped`, so `guard`, the stale and
+previous-name removals, and the leftovers scan agree without knowing about it,
+and the file reads `drifted`. That follows the policy for a current stamp: a
+generated file is the tool's to rewrite, so a bare `install` does, edits included.
+A pattern has to capture the mode so that a file in the wrong location reads the
+same mode reason a current stamp does. Versions stay
+unmasked, because a file under an old stamp is changed by definition and only
+masking keeps an unchanged file `ok`. The entries live in one list in `stamp.py`,
+each a pattern with its own reason. A declarative field covers this without a
+pre-install hook, which would give hosts a write path ahead of the foreign check.
+
+**The comment stamp is one of those entries.** Until the stamp moved into
+frontmatter, `pkgskills` wrote it as an HTML comment, so every file installed by an
+earlier release carries that line. The list holds a built-in entry for it, with its
+own reason. The entry matches the whole line, so a comment that a formatter wrapped
+or whose mode was corrupted stays `foreign`. It has no scheduled removal: a machine
+that skipped the release dropping it would read `foreign` on every file. If it is
+ever dropped, that release states the oldest version a bare `install` can upgrade
+from. `stamped_by` reads the comment permanently, since a host on an older
+`pkgskills` keeps writing it and a foreign reason has to name that host. A declared
+pattern may not match the comment form or any line of the rendered map.
+
 **Kinds behind an adapter.** Skills, rules, and agents each have a location
-per mode, held in one `Harness` value. Claude Code is the only adapter until
-a second harness is actually in use; the seam exists so that landing one is a
-new value, not a redesign.
+per mode and supporting harness, held in `Harness` values. `Host.harnesses`
+defaults to `(CLAUDE_CODE, CODEX)` and each artifact installs in every harness
+that supports its kind. Claude Code reads `.claude/skills/<name>/SKILL.md`,
+`.claude/rules/<name>.md`, and `.claude/agents/<name>.md`. Codex reads skills
+from `.agents/skills/<name>/SKILL.md`; its TOML agents need a different renderer,
+and its `.rules` files are execution policy, so it gets no agent or prompt-rule
+location. Paths are relative to `$HOME` or the repo root. Claude Code's global
+skills shadow local copies, while Codex loads both, even with the same name.
+Thus leftover local Codex skills are stale under a resolved global install.
+Rendering stays shared: both harnesses receive byte-identical stubs.
 
 **Stubs versus copies.** A skill is a stub because the harness loads it and a
 model then runs the CLI. A rule or agent is a copy because the harness reads
@@ -96,9 +131,22 @@ skipped. Distinct from the project-level mode declaration under "Not yet": that
 is a per-repository setting, this is a per-host constraint.
 
 **Anchoring.** Mode-derived locations anchor to `$HOME` or to the repository
-root found by walking up to `.git` or the harness config directory. Nothing
-anchors to the working directory, which is how a local install from a
-subdirectory ends up where the harness loads from.
+root found by walking up to `.git` or any declared harness config directory
+(`.claude` or `.codex` by default). Nothing anchors to the working directory,
+which is how a local install from a
+subdirectory ends up where the harness loads from. A harness directory in `$HOME`
+is not a marker: `~/.claude` is the global install's own location, and treating it
+as one made home the root of everything under it, where local and global paths
+name the same files. `~/.git` still marks a root, so that coincidence remains
+possible and has its own rule: there is one location, it is the global one, and
+asking for the other is an error rather than a redirect, as it is for a mode the
+host does not support. A local-only host is exempt, having no global copy to
+overwrite. A host's own commands sit
+outside this: `find_repo_root` is public so they can anchor the same way, and the
+host guide tells them to, but nothing on `Host` or in `register` can make them. A
+callback mounted by `register` could hand every command a root, at the price of
+the one callback slot Typer gives an app, which a host may want for itself. The
+call it would replace is one line.
 
 **Version coupling.** A change to `pkgskills`'s rendered text would flip every
 host's files to drifted with no host change. Masking both versions removes
@@ -147,7 +195,8 @@ CLI prints, and each has a test.
 
 ## Not yet
 
-- A second harness adapter.
+- A second harness adapter: done with Codex skills; agent TOML rendering and
+  prompt rules through `AGENTS.md` remain out of scope.
 - A project-level declaration of expected mode and harness, so a CI check
   needs no flags.
 - Reserving `<host>.md` for generated rules and steering hand-written repo

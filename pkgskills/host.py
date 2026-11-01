@@ -29,6 +29,7 @@ the install mode, so it sits on :attr:`Host.lines`.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from importlib import metadata, resources
@@ -36,7 +37,7 @@ from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Literal
 
-from pkgskills.harness import CLAUDE_CODE, Harness, Kind
+from pkgskills.harness import HARNESSES, Harness, Kind
 from pkgskills.permissions import LEVELS, Level
 from pkgskills.spec import SPEC, SpecError, Violation
 
@@ -268,6 +269,8 @@ class Host:
     * ``render_cli`` is the default for every artifact and doc that leaves its
       own ``render_cli`` unset. A host whose every body uses ``{cli}`` sets it
       once here instead of repeating the flag on each declaration.
+    * ``harnesses`` are the target tools, in declared order. Each artifact
+      installs in every harness that supports its kind.
     * ``modes`` are the install modes this host supports, in preference order;
       the first is what the CLI uses when given no mode flag. A host whose
       skills only mean anything inside one repository declares
@@ -288,6 +291,18 @@ class Host:
       allow-rules that level *adds* over the one below it; declaring any of
       them mounts the ``permissions`` command. See :mod:`pkgskills.permissions` for
       what the ladder's rungs mean.
+    * ``legacy_stamps`` describes the stamp lines the host wrote before it
+      adopted ``pkgskills``. Each pattern has to match a whole line and capture
+      the recorded mode, ``global`` or ``local``, as a named group ``mode``. A
+      file with such a line counts as generated: it reads ``drifted``, a bare
+      ``install`` overwrites it, edits included, and it is deleted as a stale
+      local copy or at a previous name. So declare a pattern only for a stamp
+      that also told readers not to edit the file, and match that stamp exactly,
+      with any version token as ``\\S+``: a loose pattern hands ``install`` a
+      hand-written file. A pattern cannot claim a stamp ``pkgskills`` wrote: the
+      HTML comment of earlier releases is already recognized, and the current
+      stamp is frontmatter. A host can drop a pattern once no supported upgrade
+      starts from a release that wrote it; ``pkgskills`` cannot tell when.
     """
 
     dist: str
@@ -299,7 +314,7 @@ class Host:
     render_cli: bool = False
     modes: tuple[Mode, ...] = MODES
     local_prefix: str = "uv run"
-    harness: Harness = CLAUDE_CODE
+    harnesses: tuple[Harness, ...] = HARNESSES
     version: str | None = None
     after_install: Callable[[InstallReport], None] | None = None
     extra_checks: Callable[[Host, Path, Mode | None], Sequence[ExtraCheck]] | None = (
@@ -308,6 +323,7 @@ class Host:
     permissions: Mapping[Level, tuple[str, ...]] = field(
         default_factory=lambda: MappingProxyType(dict[Level, tuple[str, ...]]())
     )
+    legacy_stamps: tuple[re.Pattern[str], ...] = ()
 
     def __post_init__(self) -> None:
         self.validate()
@@ -325,11 +341,16 @@ class Host:
                 )
         if len(set(self.modes)) != len(self.modes):
             raise ValueError("Host declares an install mode twice")
+        if not self.harnesses:
+            raise ValueError("Host must support at least one harness")
+        if len({h.name for h in self.harnesses}) != len(self.harnesses):
+            raise ValueError("Host declares duplicate harness names")
         seen: set[tuple[Kind, str]] = set()
         for art in self.artifacts:
-            if not self.harness.supports(art.kind):
+            if not self.harnesses_for(art.kind):
+                harness_names = ", ".join(h.name for h in self.harnesses)
                 raise ValueError(
-                    f"harness {self.harness.name!r} cannot install "
+                    f"harnesses {harness_names!r} cannot install "
                     f"{art.kind.value} {art.name!r}"
                 )
             key = (art.kind, art.name)
@@ -415,6 +436,35 @@ class Host:
         # ladder's floor a lie, since every higher level inherits it.
         if self.permissions.get(Level.none):
             raise ValueError("permission level 'none' must grant nothing")
+        self._validate_legacy_stamps()
+
+    def _validate_legacy_stamps(self) -> None:
+        """Reject a legacy pattern that records no mode or takes in a pkgskills stamp.
+
+        A pattern matches one line, so it is tried on the comment form, which would
+        overlap the built-in entry, and on each line of the rendered map, bare and
+        as a block map indents it.
+        """
+        if not self.legacy_stamps:
+            return
+        # Here rather than at the top of the module: stamp imports this module,
+        # and only a host that declares a pattern needs a render at construction.
+        from pkgskills.stamp import render_comment_stamp, render_stamp
+
+        own: list[str] = []
+        for mode in MODES:
+            own.append(render_comment_stamp(self, mode))
+            for line in render_stamp(self, mode).splitlines():
+                own += [line, f"  {line}"]
+        for pattern in self.legacy_stamps:
+            if "mode" not in pattern.groupindex:
+                raise ValueError(
+                    f"legacy stamp {pattern.pattern!r} captures no group named 'mode'"
+                )
+            if any(pattern.fullmatch(line) for line in own):
+                raise ValueError(
+                    f"legacy stamp {pattern.pattern!r} matches pkgskills' own stamp"
+                )
 
     # -- identity ----------------------------------------------------------
 
@@ -496,7 +546,8 @@ class Host:
     def check_spec(self) -> list[Violation]:
         """Every way this host's skills depart from the Agent Skills spec.
 
-        Reads each source, so it is a deliberate call rather than something
+        Also any rule or agent source the provenance stamp cannot join. Reads each
+        source, so it is a deliberate call rather than something
         :meth:`validate` does on import. A host's own test suite is where this
         belongs — see :func:`pkgskills.testing.assert_spec_conformant`.
         """
@@ -512,6 +563,18 @@ class Host:
         return self.render_cli if art.render_cli is None else art.render_cli
 
     # -- artifact lookup ---------------------------------------------------
+
+    def harnesses_for(self, kind: Kind) -> tuple[Harness, ...]:
+        """The harnesses that support ``kind``, in declared order."""
+        return tuple(h for h in self.harnesses if h.supports(kind))
+
+    def placements(self) -> tuple[tuple[Artifact, Harness], ...]:
+        """Supported pairs in artifact order, then declared harness order."""
+        return tuple(
+            (art, harness)
+            for art in self.artifacts
+            for harness in self.harnesses_for(art.kind)
+        )
 
     def of_kind(self, kind: Kind) -> tuple[Artifact, ...]:
         return tuple(art for art in self.artifacts if art.kind is kind)

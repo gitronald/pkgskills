@@ -56,7 +56,8 @@ def stub_frontmatter(host: Host, skill: Skill) -> str:
     text -- and any ``metadata`` the source declares, its own ``version``
     included -- has one home. A dispatcher generates its own block from
     ``description`` or from the subcommand list; it has no source to carry a
-    version, so it declares no ``metadata`` at all.
+    version, so it declares no ``metadata`` of its own. The stamp joins either
+    block afterwards, in :func:`render_stub`.
     """
     if not skill.dispatches:
         source = skill.sources[0]
@@ -69,6 +70,7 @@ def stub_frontmatter(host: Host, skill: Skill) -> str:
         if front is None:
             raise SpecError(violations, header=header)
         violations.extend(SPEC.check_skill_name(source, front, skill))
+        violations.extend(SPEC.check_stampable(source, front))
         if violations:
             raise SpecError(violations, header=header)
         return front.raw
@@ -90,9 +92,22 @@ def stub_frontmatter(host: Host, skill: Skill) -> str:
     return raw
 
 
-def _subcommand_description(host: Host, source: str) -> str:
+def _cell(text: str) -> str:
+    """``text`` made safe for one markdown table cell."""
+    return _single_line(text).replace("|", "\\|")
+
+
+def _subcommand_row(host: Host, subcommand: str, source: str) -> str:
+    """One row of a dispatcher's subcommand table, read from the source's block.
+
+    The version is the source's own ``metadata.version``. A source declaring
+    none gets an empty cell: the host's release is not a stand-in, because a
+    column meaning two things could not be read.
+    """
     front, _ = split_frontmatter(host.read(source))
-    return _single_line(front.get("description") or "") if front else ""
+    version = (front.metadata_field("version") or "") if front else ""
+    description = (front.get("description") or "") if front else ""
+    return f"| `{_cell(subcommand)}` | {_cell(version)} | {_cell(description)} |"
 
 
 def render_stub(host: Host, skill: Skill, mode: Mode) -> str:
@@ -117,10 +132,9 @@ Anything other than `ok` means this stub predates the installed package: run
 `{repair}`, then start a fresh context before continuing.
 """
     if skill.dispatches:
-        subs = "\n".join(
-            f"- `{sub}`" + (f" - {description}" if description else "")
+        rows = "\n".join(
+            _subcommand_row(host, sub, source)
             for sub, source in zip(skill.subcommands, skill.sources, strict=True)
-            for description in [_subcommand_description(host, source)]
         )
         slash = ", ".join(f"`/{skill.name} {sub}`" for sub in skill.subcommands)
         tail = f"""
@@ -132,7 +146,9 @@ Anything other than `ok` means this stub predates the installed package: run
 
 Subcommands ({len(skill.subcommands)}):
 
-{subs}
+| Subcommand | Version | Description |
+|---|---|---|
+{rows}
 
 These map to {slash}. If the subcommand is missing or unrecognized, run
 `{inv} skill --list` and ask the user which one they want.
@@ -156,9 +172,10 @@ environment; install it first.
 def render_copy(
     host: Host, art: Rule | Agent, mode: Mode, *, stamp: bool = True
 ) -> str:
-    """The installed text of a rule or agent: the source, stamped after any frontmatter.
+    """The installed text of a rule or agent: the source, with the stamp in frontmatter.
 
-    With ``stamp`` off, the same text minus the stamp line, for printing.
+    A source with no block gains one. With ``stamp`` off, the source's own block
+    and body, for printing.
     """
     text = host.read(art.source)
     front, body = split_frontmatter(text)
@@ -168,6 +185,11 @@ def render_copy(
     body = body.strip() + "\n"
     if not stamp:
         return f"{raw}\n{body}" if raw else body
+    violations = SPEC.check_copy(art.source, front)
+    if violations:
+        raise SpecError(
+            violations, header=f"{art.kind.value} {art.name!r} cannot be rendered"
+        )
     return place_stamp(raw, render_stamp(host, mode), body)
 
 
