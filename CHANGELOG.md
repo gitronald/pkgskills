@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-11-01
+
 ### Added
 
 - `HookReport.unsupported`: the config was read, but no block could be added with
