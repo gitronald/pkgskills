@@ -51,7 +51,7 @@ def _printing_mode(host: Host) -> Mode:
     return install_mod.printing_mode(host, root)
 
 
-def _skill_command(host: Host) -> typer.Typer:
+def _skill_command(app: typer.Typer, host: Host) -> None:
     def skill(
         name: str | None = typer.Argument(
             None,
@@ -80,12 +80,10 @@ def _skill_command(host: Host) -> typer.Typer:
             raise typer.Exit(1) from None
         _print_prompt(skill_body(host, skill_, source, _printing_mode(host)))
 
-    app = typer.Typer()
     app.command("skill")(skill)
-    return app
 
 
-def _doc_command(host: Host) -> typer.Typer:
+def _doc_command(app: typer.Typer, host: Host) -> None:
     def doc(
         name: str | None = typer.Argument(
             None, help="Document to print; omit when the host ships exactly one."
@@ -115,12 +113,10 @@ def _doc_command(host: Host) -> typer.Typer:
             raise typer.Exit(1) from None
         _print_prompt(doc_body(host, declared, _printing_mode(host)))
 
-    app = typer.Typer()
     app.command("doc")(doc)
-    return app
 
 
-def _copy_command(host: Host, kind: Kind) -> typer.Typer:
+def _copy_command(app: typer.Typer, host: Host, kind: Kind) -> None:
     arts = host.of_kind(kind)
 
     def show(
@@ -152,9 +148,7 @@ def _copy_command(host: Host, kind: Kind) -> typer.Typer:
         _print_prompt(render_copy(host, art, _printing_mode(host), stamp=False))
 
     show.__doc__ = f"Print a bundled {kind.value} definition."
-    app = typer.Typer()
     app.command(kind.value)(show)
-    return app
 
 
 def _relative(path: Path, root: Path) -> Path:
@@ -355,7 +349,7 @@ def _requested_mode(host: Host, local: bool | None) -> Mode:
     return mode
 
 
-def _install_command(host: Host) -> typer.Typer:
+def _install_command(app: typer.Typer, host: Host) -> None:
     one_mode = len(host.modes) == 1
     # Both halves name the host's own default, since which mode a bare
     # `install` means is the host's to declare, not always global.
@@ -395,9 +389,7 @@ def _install_command(host: Host) -> typer.Typer:
             raise typer.Exit(0 if ok else 1)
         run_install(host, root, mode, force=force)
 
-    app = typer.Typer()
     app.command("install")(install)
-    return app
 
 
 def _read_settings(path: Path) -> dict[str, object]:
@@ -431,7 +423,7 @@ def _report_merge(result: perms.MergeResult) -> None:
         _err(f"  ! {rule} skipped ({reason})")
 
 
-def _permissions_command(host: Host) -> typer.Typer:
+def _permissions_command(app: typer.Typer, host: Host) -> None:
     def permissions(
         level: str = typer.Option(
             "assist",
@@ -526,9 +518,7 @@ def _permissions_command(host: Host) -> typer.Typer:
         typer.echo(f"wrote {_relative(path, root)} (level {lvl.value}, {mode})")
         _report_merge(result)
 
-    app = typer.Typer()
     app.command("permissions")(permissions)
-    return app
 
 
 def register(app: typer.Typer, host: Host) -> None:
@@ -540,21 +530,16 @@ def register(app: typer.Typer, host: Host) -> None:
     ``find_repo_root(harnesses=host.harnesses)`` so both halves of the CLI agree
     from any subdirectory.
     """
-    for sub in _commands(host):
-        app.registered_commands.extend(sub.registered_commands)
-
-
-def _commands(host: Host) -> list[typer.Typer]:
-    apps = [_skill_command(host), _install_command(host)]
+    _skill_command(app, host)
+    _install_command(app, host)
     if host.docs:
-        apps.append(_doc_command(host))
+        _doc_command(app, host)
     if host.rules:
-        apps.append(_copy_command(host, Kind.RULE))
+        _copy_command(app, host, Kind.RULE)
     if host.agents:
-        apps.append(_copy_command(host, Kind.AGENT))
+        _copy_command(app, host, Kind.AGENT)
     if host.permissions:
-        apps.append(_permissions_command(host))
-    return apps
+        _permissions_command(app, host)
 
 
 def typer_app(host: Host) -> typer.Typer:
