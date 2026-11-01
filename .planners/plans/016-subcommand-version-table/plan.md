@@ -59,3 +59,7 @@ a version column:
   - PR: pending
 - **2026-10-31T16:58:03-07:00** — PR opened: https://github.com/gitronald/pkgskills/pull/29
 - **2026-10-31T16:58:04-07:00** — Implemented: 3 commits ahead of `dev`.
+- **2026-10-31T17:02:20-07:00** — Rendered the dispatcher's subcommand list as a table with a Version column, read from each source's `metadata.version` through a new `Frontmatter.metadata_field`; a source declaring none gets an empty cell. Docs and changelog revised, including an `[Unreleased]` line the change made false.
+  - Beyond the spec: `_cell` escapes `|` so a description cannot break its row.
+  - Review follow-up: medium review, no confirmed defects. Three plausible findings kept as conscious no-ops, posted on the PR: another copy of the unresolved-YAML load and guard (the older copies cannot be imported here without a cycle), a literal backslash-pipe in a description (not run against a GFM parser), and a second parse per source (about 65 microseconds against a 1.55 ms render on the two-source fixture).
+  - Checks: ruff check, ruff format, pyrefly, and pytest pass locally (488 tests, 98.71% coverage); CI passes on Python 3.11 through 3.14.
