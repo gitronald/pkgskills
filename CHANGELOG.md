@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `HookReport.unsupported`: the config was read, but no block could be added with
+  everything else in it preserved, so it was left alone. The `missing` row from
+  `precommit.checks` then says to add the entry by hand instead of naming an install
+  that would refuse.
+
+### Changed
+
+- `Hook.render` always writes `stages`, including `stages: [pre-commit]`. A hook at
+  the default stage used to take the config's `default_stages`, or every stage when
+  that was unset. Only newly added entries change; existing ones are left as they are.
+
+### Fixed
+
+- `precommit.wire` no longer breaks a valid config. It appended a block at a fixed
+  indent, which failed pre-commit's validation for `repos: []`, a key after `repos`,
+  an unindented list, and the output of `pre-commit sample-config`. It now places the
+  block from YAML node positions and checks the result before writing.
+- A hook entry is now found however it is written. A quoted id, a trailing comment, or
+  `id` not being the first key used to read as missing and added a duplicate entry.
+- The mode-switch resync matches an `entry` line at any indent.
+
 ## [0.6.1] - 2026-10-31
 
 ### Changed
