@@ -85,6 +85,11 @@ HookState = Literal["active", "unregistered", "missing", "no_git_repo", "blocked
 # the same path does not, and is not our hook.
 _MARKER = "pre-commit"
 
+#: What parsing a config can raise. Beyond YAML's own errors, a scalar that
+#: resolves to an impossible date is a ``ValueError``, and deep nesting or a
+#: self-referencing alias passes the recursion limit.
+_UNPARSABLE = (yaml.YAMLError, ValueError, RecursionError)
+
 
 @dataclass(frozen=True)
 class Hook:
@@ -242,7 +247,7 @@ def _spliced(text: str, block: str) -> str | None:
     try:
         document = yaml.safe_load(text)
         root = yaml.compose(text, Loader=yaml.SafeLoader)
-    except yaml.YAMLError:
+    except _UNPARSABLE:
         return None
     if not isinstance(root, yaml.MappingNode):
         return None
@@ -265,13 +270,12 @@ def _spliced(text: str, block: str) -> str | None:
     else:
         return None
     candidate = _append(text[:end], _shifted(block, column)) + text[end:]
-    try:
-        parsed = yaml.safe_load(candidate)
-    except yaml.YAMLError:
-        return None
     existing = document.get("repos") or []
-    expected = {**document, "repos": [*existing, *yaml.safe_load(block)]}
-    return candidate if parsed == expected else None
+    try:
+        expected = {**document, "repos": [*existing, *yaml.safe_load(block)]}
+        return candidate if yaml.safe_load(candidate) == expected else None
+    except _UNPARSABLE:
+        return None
 
 
 def _hook_ids(text: str) -> frozenset[str]:
@@ -283,7 +287,7 @@ def _hook_ids(text: str) -> frozenset[str]:
     """
     try:
         document = yaml.safe_load(text)
-    except yaml.YAMLError:
+    except _UNPARSABLE:
         return frozenset()
     repos = document.get("repos") if isinstance(document, dict) else None
     ids: set[str] = set()

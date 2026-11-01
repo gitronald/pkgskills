@@ -260,6 +260,10 @@ UNSUPPORTED = {
     ),
     # Adding to the list would change the anchor's other use as well.
     "aliased-list": "x-shared: &r\n  - repo: local\n    hooks: []\nrepos: *r\n",
+    # Parse failures that are not YAML errors.
+    "impossible-date": "repos: []\nx: 2001-13-45\n",
+    "self-referencing-alias": "repos: []\nx: &a [*a]\n",
+    "deep-nesting": "repos: []\nx: " + "[" * 3000 + "]" * 3000 + "\n",
 }
 
 
