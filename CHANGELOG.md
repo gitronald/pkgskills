@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-31
+
 ### Added
 
 - Codex harness (`CODEX`) and the default `HARNESSES` tuple. Skills install
