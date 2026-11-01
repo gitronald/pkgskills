@@ -250,7 +250,7 @@ wheels = [
 
 [[package]]
 name = "pkgskills"
-version = "0.6.3a0"
+version = "0.6.3"
 source = { editable = "." }
 dependencies = [
     { name = "pyyaml" },
