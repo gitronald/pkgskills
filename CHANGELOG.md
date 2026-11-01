@@ -29,6 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - A hook entry is now found however it is written. A quoted id, a trailing comment, or
   `id` not being the first key used to read as missing and added a duplicate entry.
 - The mode-switch resync matches an `entry` line at any indent.
+- `Hook` args that YAML would misread now reach the entry intact. A value holding ` #`
+  used to drop out of the command unnoticed, and one holding `: ` made `wire` report
+  the consumer's config as `unsupported`. The entry and id stay bare otherwise.
 
 ## [0.6.1] - 2026-10-31
 

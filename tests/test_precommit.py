@@ -341,6 +341,55 @@ def test_a_block_is_resynced_at_the_indent_it_was_added(
     load_config(str(config))
 
 
+@pytest.mark.parametrize(
+    "args",
+    [("x", "#y"), ("a: b",), ("--pick", "[one"), ("it's", "#1")],
+    ids=["hash", "colon", "bracket", "apostrophe"],
+)
+def test_args_yaml_would_misread_reach_the_entry_intact(
+    box: Sandbox, fake: tuple[str, ...], args: tuple[str, ...]
+) -> None:
+    config = box.repo / ".pre-commit-config.yaml"
+    hook = pc.Hook("solohost-odd", args=args)
+
+    report = pc.wire(_report(SOLO, box.repo, "local"), (hook,), precommit=fake)
+    assert report.created and report.added == ("solohost-odd",)
+    load_config(str(config))
+    (repo,) = yaml.safe_load(config.read_text())["repos"]
+    assert repo["hooks"][0]["entry"] == hook.entry("uv run solohost")
+
+    switched = pc.wire(
+        _report(SOLO, box.repo, "global", previous="local"), (hook,), precommit=fake
+    )
+    assert switched.resynced == ("solohost-odd",)
+    (repo,) = yaml.safe_load(config.read_text())["repos"]
+    assert repo["hooks"][0]["entry"] == hook.entry("solohost")
+
+
+def test_an_id_yaml_would_misread_is_still_found_on_a_rerun(
+    box: Sandbox, fake: tuple[str, ...]
+) -> None:
+    config = box.repo / ".pre-commit-config.yaml"
+    hook = pc.Hook("a: b")
+    assert pc.wire(_report(SOLO, box.repo, "local"), (hook,), precommit=fake).added
+    text = config.read_text()
+    assert "- id: 'a: b'\n" in text
+    again = pc.wire(_report(SOLO, box.repo, "local"), (hook,), precommit=fake)
+    assert again.added == () and config.read_text() == text
+
+
+def test_a_block_that_cannot_be_added_creates_no_config(
+    box: Sandbox, fake: tuple[str, ...]
+) -> None:
+    # A declared stage is written as is, so a bad one makes the block invalid.
+    hook = pc.Hook("solohost-odd", stage="]")
+    report = pc.wire(
+        _report(SOLO, box.repo, "local"), (hook,), activate=False, precommit=fake
+    )
+    assert report.unsupported and not report.created and not report.changed
+    assert not (box.repo / ".pre-commit-config.yaml").exists()
+
+
 def test_a_hook_id_is_matched_as_its_own_line(
     box: Sandbox, fake: tuple[str, ...]
 ) -> None:

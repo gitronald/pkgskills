@@ -125,16 +125,17 @@ class Hook:
 
         ``name`` and ``files`` are single-quoted: a regex or a display name is
         free text that may carry ``: `` or `` #``, which an unquoted scalar
-        would read as a mapping or a comment. The id and the entry are left
-        bare, since both are matched as text elsewhere and neither is free-form.
+        would read as a mapping or a comment. The id and the entry stay bare
+        unless YAML would read them differently, as it would an ``args`` value
+        holding `` #``, which would otherwise drop out of the command unnoticed.
         """
         lines = [
-            f"      - id: {self.id}",
+            f"      - id: {_scalar(self.id)}",
             f"        name: {_quote(self.name or self.id)}",
-            f"        entry: {self.entry(invocation)}",
+            f"        entry: {_scalar(self.entry(invocation))}",
             "        language: system",
+            f"        stages: [{self.stage}]",
         ]
-        lines.append(f"        stages: [{self.stage}]")
         if self.files is not None:
             lines.append(f"        files: {_quote(self.files)}")
         if self.always_run:
@@ -187,6 +188,15 @@ def precommit_command(host: Host, mode: Mode) -> tuple[str, ...]:
 def _quote(value: str) -> str:
     """``value`` as a single-quoted YAML scalar; only ``'`` needs doubling."""
     return "'" + value.replace("'", "''") + "'"
+
+
+def _scalar(value: str) -> str:
+    """``value`` bare when YAML reads it back unchanged, else single-quoted."""
+    try:
+        unchanged = yaml.safe_load(f"key: {value}") == {"key": value}
+    except _UNPARSABLE:
+        unchanged = False
+    return value if unchanged else _quote(value)
 
 
 def _block(hooks: Sequence[Hook], invocation: str) -> str:
@@ -301,7 +311,7 @@ def _hook_ids(text: str) -> frozenset[str]:
 
 def _entry_line(hook: Hook, invocation: str) -> re.Pattern[str]:
     """The ``entry`` line for ``invocation``, at whatever indent the config uses."""
-    entry = re.escape(hook.entry(invocation))
+    entry = re.escape(_scalar(hook.entry(invocation)))
     return re.compile(rf"^([ \t]*)entry: {entry}[ \t]*$", re.MULTILINE)
 
 
@@ -351,7 +361,7 @@ def wire(
                 continue
             stale, fresh = _entry_line(hook, other), _entry_line(hook, invocation)
             if stale.search(text) and not fresh.search(text):
-                new_entry = hook.entry(invocation)
+                new_entry = _scalar(hook.entry(invocation))
                 text = stale.sub(lambda m: f"{m[1]}entry: {new_entry}", text)
                 resynced.append(hook.id)
     unsupported = False
@@ -360,6 +370,7 @@ def wire(
         if spliced is None:
             missing.clear()
             unsupported = True
+            created = False
         else:
             text = spliced
     if created or missing or resynced:
