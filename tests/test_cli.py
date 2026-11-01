@@ -242,7 +242,7 @@ def test_local_only_host_checks_against_the_repo_alone(box: Sandbox) -> None:
     before = runner.invoke(multi_app, ["install", "--check"])
     assert before.exit_code == 1
     assert "missing local  .claude/skills/tidy/SKILL.md" in before.output
-    assert "repair: uv run multihost install --local --force" in before.output
+    assert "repair: uv run multihost install --local" in before.output
     assert " global " not in before.output
 
     runner.invoke(multi_app, ["install"])
@@ -265,7 +265,7 @@ def test_check_reports_each_status_and_exit_codes(box: Sandbox) -> None:
     before = runner.invoke(solo_app, ["install", "--check"])
     assert before.exit_code == 1
     assert "missing" in before.output
-    assert "repair: solohost install --force" in before.output
+    assert "repair: solohost install" in before.output
 
     runner.invoke(solo_app, ["install", "--local"])
     ok = runner.invoke(solo_app, ["install", "--check"])
@@ -278,7 +278,7 @@ def test_check_reports_each_status_and_exit_codes(box: Sandbox) -> None:
     drifted = runner.invoke(solo_app, ["install", "--check"])
     assert drifted.exit_code == 1
     assert "drifted" in drifted.output
-    assert "repair: uv run solohost install --local --force" in drifted.output
+    assert "repair: uv run solohost install --local" in drifted.output
 
 
 def test_check_gates_on_a_stale_local_copy_and_points_at_removal(
@@ -579,7 +579,11 @@ def test_lines_share_the_check_table_and_gate(box: Sandbox) -> None:
         "drifted        .gitattributes  (gives `docs/README.md merge=ours`, "
         "not `docs/README.md merge=union`)"
     ) in result.output
-    assert "repair: uv run solohost install --local --force" in result.output
+    assert "repair:" not in result.output
+    assert (
+        "overwrite: uv run solohost install --local --force  "
+        "(rewrites a line in .gitattributes)"
+    ) in result.output
     assert result.exit_code == 1
     runner.invoke(app, ["install", "--local", "--force"])
     assert path.read_text() == "docs/README.md merge=union\n"
@@ -775,7 +779,7 @@ def test_a_local_stamp_at_home_reads_drifted_with_the_global_repair(
     assert result.exit_code == 1
     assert "drifted global .claude/rules/examplehost.md" in result.output
     assert "rendered for mode=local, installed where mode=global" in result.output
-    assert "repair: examplehost install --force" in result.output
+    assert "repair: examplehost install" in result.output
     assert "--local" not in result.output
 
     assert runner.invoke(example_app, ["install", "--force"]).exit_code == 0
@@ -828,7 +832,7 @@ def test_a_local_first_host_at_home_is_pointed_at_global(at_home: Path) -> None:
     # A flagless check judges what is there, and is not refused.
     missing = runner.invoke(app, ["install", "--check"])
     assert missing.exit_code == 1
-    assert "repair: solohost install --global --force" in missing.output
+    assert "repair: solohost install --global" in missing.output
 
     assert runner.invoke(app, ["install", "--global"]).exit_code == 0
     assert runner.invoke(app, ["install", "--check"]).exit_code == 0
@@ -878,7 +882,7 @@ def test_a_legacy_stamp_upgrades_on_a_bare_install(box: Sandbox) -> None:
 
     result = runner.invoke(app, ["install", "--check", "--local"])
     assert "stamped by solohost before it adopted pkgskills" in result.output
-    assert "repair: uv run solohost install --local --force" in result.output
+    assert "repair: uv run solohost install --local" in result.output
     assert result.exit_code == 1
 
     result = runner.invoke(app, ["install", "--local"])
@@ -903,3 +907,91 @@ def test_a_comment_stamp_upgrades_on_a_bare_install(box: Sandbox) -> None:
     assert result.exit_code == 0
     assert "the old body" not in path.read_text()
     assert runner.invoke(app, ["install", "--check", "--local"]).exit_code == 0
+
+
+def _hints(output: str) -> list[str]:
+    """The advice lines at the end of a failed ``install --check``."""
+    return [
+        line
+        for line in output.splitlines()
+        if line.startswith(("repair:", "overwrite:"))
+    ]
+
+
+def test_a_foreign_file_gets_no_plain_repair_and_is_named(box: Sandbox) -> None:
+    stub = box.repo / ".claude/skills/use-solo/SKILL.md"
+    stub.parent.mkdir(parents=True)
+    stub.write_text("hand-written\n")
+
+    result = runner.invoke(solo_app, ["install", "--check", "--local"])
+    assert result.exit_code == 1
+    # The plain install refuses here, so offering it would send the reader round.
+    assert _hints(result.output) == [
+        "overwrite: uv run solohost install --local --force  "
+        "(replaces .claude/skills/use-solo/SKILL.md)"
+    ]
+    assert runner.invoke(solo_app, ["install", "--local"]).exit_code == 1
+    assert stub.read_text() == "hand-written\n"
+
+
+def test_a_plain_repair_clears_a_drifted_file_and_a_missing_line(box: Sandbox) -> None:
+    line = Line(".gitattributes", "docs/README.md", "merge=union")
+    app = typer_app(dataclasses.replace(SOLO, lines=(line,)))
+    runner.invoke(solo_app, ["install", "--local"])
+    stub = box.repo / ".claude/skills/use-solo/SKILL.md"
+    stub.write_text(stub.read_text() + "tampered\n")
+
+    result = runner.invoke(app, ["install", "--check", "--local"])
+    assert _hints(result.output) == ["repair: uv run solohost install --local"]
+    assert runner.invoke(app, ["install", "--local"]).exit_code == 0
+    assert runner.invoke(app, ["install", "--check", "--local"]).exit_code == 0
+
+
+def test_a_drifted_line_offers_the_plain_repair_for_the_rest(box: Sandbox) -> None:
+    line = Line(".gitattributes", "docs/README.md", "merge=union")
+    app = typer_app(dataclasses.replace(SOLO, lines=(line,)))
+    runner.invoke(app, ["install", "--local"])
+    stub = box.repo / ".claude/skills/use-solo/SKILL.md"
+    stub.write_text(stub.read_text() + "tampered\n")
+    attributes = box.repo / ".gitattributes"
+    attributes.write_text("docs/README.md merge=ours\n")
+
+    result = runner.invoke(app, ["install", "--check", "--local"])
+    assert _hints(result.output) == [
+        "repair: uv run solohost install --local",
+        "overwrite: uv run solohost install --local --force  "
+        "(rewrites a line in .gitattributes)",
+    ]
+    # The plain command keeps the deliberate line while refreshing the stub.
+    assert runner.invoke(app, ["install", "--local"]).exit_code == 0
+    assert attributes.read_text() == "docs/README.md merge=ours\n"
+    assert "tampered" not in stub.read_text()
+
+
+def test_force_advice_is_per_mode_and_names_every_line_it_reaches(
+    box: Sandbox,
+) -> None:
+    line = Line(".gitattributes", "docs/README.md", "merge=union")
+    app = typer_app(dataclasses.replace(EXAMPLE, lines=(line,)))
+    runner.invoke(app, ["install", "--global"])
+    (box.repo / ".gitattributes").write_text("docs/README.md merge=ours\n")
+    rule = inst.artifact_path(
+        EXAMPLE, EXAMPLE.rules[0], "global", box.repo, CLAUDE_CODE
+    )
+    rule.write_text(rule.read_text() + "tampered\n")
+    stub = inst.artifact_path(
+        EXAMPLE, EXAMPLE.skills[0], "local", box.repo, CLAUDE_CODE
+    )
+    stub.parent.mkdir(parents=True)
+    stub.write_text("hand-written\n")
+
+    result = runner.invoke(app, ["install", "--check"])
+    hints = _hints(result.output)
+    assert "repair: examplehost install" in hints
+    local = [hint for hint in hints if "--local" in hint]
+    # The foreign file is local and the line belongs to the global install, yet
+    # --force writes lines in every mode, so the local hint has to say so.
+    assert len(local) == 1
+    assert local[0].startswith("overwrite: uv run examplehost install --local --force")
+    assert "rewrites a line in .gitattributes" in local[0]
+    assert ".claude/skills" in local[0]

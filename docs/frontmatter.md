@@ -82,7 +82,7 @@ In the stamp, and only there. Every generated file carries five keys under
 
 It is what `install --check` matches on. The command that repairs a file is not
 in it, because that follows from the host and the mode: a stub's body prints it,
-and `install --check` prints it on any row that is not `ok`.
+and `install --check` prints what each row that is not `ok` needs.
 
 They are under `metadata`, not in a top-level key of their own, because the
 specification leaves that map for "additional properties not defined by the

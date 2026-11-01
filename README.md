@@ -136,7 +136,7 @@ yourtool = "yourtool.cli:HOST"
 | `yourtool install` | Write every artifact for the host's default mode — under `~/.claude/` and `~/.agents/` unless the host restricts its `modes`. |
 | `yourtool install --local` / `--global` | Write them under the enclosing repository, or under `~/.claude/` and `~/.agents/`. Naming a mode the host does not declare is an error. |
 | `yourtool install --check` | Report `ok`, `drifted`, `stale`, `missing`, or `foreign` per file (and `unreadable` per declared line); exit 1 unless all ok. |
-| `yourtool install --force` | Replace files the host did not generate. |
+| `yourtool install --force` | Replace files the host did not generate, and rewrite drifted lines. |
 | `yourtool permissions [--level L] [--global] [--apply] [--codex]` | Print or apply an automation-level allow-rule profile; `--codex` prints a Codex rules fragment and refuses `--apply` (only when the host declares one). |
 
 The enclosing repository is the nearest ancestor of the working directory
@@ -299,6 +299,12 @@ half-installed skill behind. With `--force`, a symlink is replaced by a plain
 file rather than written through. A fresh global install removes per-repo
 copies the host generated earlier; a local install never deletes the global
 copy that serves other repositories.
+
+`install --check` ends with what to run. `repair:` is the plain `install`, which
+touches only generated files and appends missing lines. `overwrite:` is the
+`--force` form and names what it would replace; it appears for a foreign file or
+a drifted line, either of which may be deliberate. A mode holding a foreign file
+gets no `repair:`, since a plain install there refuses.
 
 ### Migrating from your own stamps
 

@@ -172,6 +172,58 @@ def _leftover_note(path: Path, root: Path) -> str:
     )
 
 
+def _repair_hints(
+    host: Host,
+    root: Path,
+    mode: Mode | None,
+    rows: list[install_mod.Check],
+    lines: list[install_mod.LineCheck],
+) -> list[str]:
+    """The install commands that answer a failed check, one or two per mode.
+
+    ``repair:`` is the plain command, which touches only what this host generated
+    and appends missing lines, so it is safe to run as printed. ``overwrite:`` is
+    the ``--force`` form. It names what it would replace, because a foreign file
+    or a drifted line may be deliberate, and running it is a decision. A mode with
+    a foreign file gets no ``repair:``, since a plain install there refuses.
+
+    A stale row is answered by removal, not by an install that recreates it. A
+    line is repaired by the install of whichever mode the repo is in, and an
+    unreadable file by no install at all, which its row already says.
+    """
+    pending = [row for row in rows if row.status != "stale"]
+    fixable = [found for found in lines if found.status in ("missing", "drifted")]
+    # Every install writes the lines, so --force in any mode rewrites a drifted
+    # one, and every overwrite hint has to say so.
+    drifted = [found.path for found in fixable if found.status == "drifted"]
+    line_mode = mode or install_mod.printing_mode(host, root)
+    modes = {row.mode for row in pending}
+    if fixable:
+        modes.add(line_mode)
+    hints: list[str] = []
+    for m in sorted(modes):
+        rows_here = [row for row in pending if row.mode == m]
+        foreign = [row.path for row in rows_here if row.status == "foreign"]
+        missing = m == line_mode and any(f.status == "missing" for f in fixable)
+        if not foreign and (rows_here or missing):
+            hints.append(f"repair: {host.install_command(m)}")
+        if foreign or (m == line_mode and drifted):
+            reach: list[str] = []
+            if foreign:
+                named = ", ".join(str(_relative(path, root)) for path in foreign)
+                reach.append(f"replaces {named}")
+            if drifted:
+                named = ", ".join(
+                    str(_relative(path, root)) for path in dict.fromkeys(drifted)
+                )
+                reach.append(f"rewrites a line in {named}")
+            hints.append(
+                f"overwrite: {host.install_command(m, force=True)}"
+                f"  ({'; '.join(reach)})"
+            )
+    return hints
+
+
 def run_check(host: Host, root: Path, mode: Mode | None) -> bool:
     """Print the drift table for ``host`` and return whether all rows are ok.
 
@@ -229,15 +281,9 @@ def run_check(host: Host, root: Path, mode: Mode | None) -> bool:
     for row in bad:
         if row.status == "stale":
             _err(f"remove: {_relative(row.path, root)}")
-    hinted = {row.mode for row in bad if row.status != "stale"}
     bad_lines = [found for found in lines if not found.ok]
-    # A line is repaired by the install of whichever mode the repo is in — the
-    # --force form, since that is what rewrites a drifted one. An unreadable
-    # file is repaired by no install at all, and its row already says so.
-    if any(found.status in ("missing", "drifted") for found in bad_lines):
-        hinted.add(mode or install_mod.printing_mode(host, root))
-    for m in sorted(hinted):
-        _err(f"repair: {host.install_command(m, force=True)}")
+    for hint in _repair_hints(host, root, mode, bad, bad_lines):
+        _err(hint)
     return not bad and not bad_lines and not any(extra.gates for extra in extras)
 
 
@@ -326,7 +372,9 @@ def _install_command(host: Host) -> typer.Typer:
             False, "--check", help="Report drift without writing; exit 1 unless ok."
         ),
         force: bool = typer.Option(
-            False, "--force", help="Replace files this host did not generate."
+            False,
+            "--force",
+            help="Replace files this host did not generate, and rewrite drifted lines.",
         ),
     ) -> None:
         """Materialize the generated files the harness reads, or check them."""

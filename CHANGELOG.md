@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- `install --check` and the generated stub no longer recommend `--force` for what
+  a plain `install` fixes. `repair:` now prints the plain command, and a new
+  `overwrite:` line prints the `--force` form only for a foreign file or a drifted
+  line, naming what it would replace. A mode holding a foreign file gets no
+  `repair:`, since a plain install there refuses. Every stub reads `drifted` once a
+  host picks this up, and a bare `install` refreshes it.
+- A host's `after_install` hook now usually sees `force=False` during a repair, since
+  the advice no longer adds the flag.
+- The `--force` help and the README now say it also rewrites drifted lines.
+
 ## [0.6.0] - 2026-10-31
 
 ### Added
