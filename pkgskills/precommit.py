@@ -205,9 +205,14 @@ def _block(hooks: Sequence[Hook], invocation: str) -> str:
     )
 
 
+def _eol(text: str) -> str:
+    """The ending of the first line of ``text``, for lines added to it."""
+    return "\r\n" if text.partition("\n")[0].endswith("\r") else "\n"
+
+
 def _append(text: str, block: str) -> str:
     if text and not text.endswith("\n"):
-        text += "\n"
+        text += _eol(text)
     return text + block
 
 
@@ -252,8 +257,10 @@ def _spliced(text: str, block: str) -> str | None:
     previous repo. ``None`` means the file should be left alone: invalid YAML,
     no ``repos`` list, a non-empty flow list, or a failed check.
     """
+    eol = _eol(text)
+    block = block.replace("\n", eol)
     if _bare(text):
-        text = _append(text, "repos:\n")
+        text = _append(text, f"repos:{eol}")
     try:
         document = yaml.safe_load(text)
         root = yaml.compose(text, Loader=yaml.SafeLoader)
@@ -312,7 +319,7 @@ def _hook_ids(text: str) -> frozenset[str]:
 def _entry_line(hook: Hook, invocation: str) -> re.Pattern[str]:
     """The ``entry`` line for ``invocation``, at whatever indent the config uses."""
     entry = re.escape(_scalar(hook.entry(invocation)))
-    return re.compile(rf"^([ \t]*)entry: {entry}[ \t]*$", re.MULTILINE)
+    return re.compile(rf"^([ \t]*)entry: {entry}[ \t]*(\r?)$", re.MULTILINE)
 
 
 def wire(
@@ -339,7 +346,7 @@ def wire(
     host, root, mode = report.host, report.root, report.mode
     invocation = host.invocation(mode)
     config = root / CONFIG
-    text = read_plain(config)
+    text = read_plain(config, newline="")
     created = text is None and not occupied(config)
     # Occupied but unreadable: a symlink, a directory, bad permissions, or
     # bytes that are not UTF-8. Every edit below appends to or amends text
@@ -362,7 +369,7 @@ def wire(
             stale, fresh = _entry_line(hook, other), _entry_line(hook, invocation)
             if stale.search(text) and not fresh.search(text):
                 new_entry = _scalar(hook.entry(invocation))
-                text = stale.sub(lambda m: f"{m[1]}entry: {new_entry}", text)
+                text = stale.sub(lambda m: f"{m[1]}entry: {new_entry}{m[2]}", text)
                 resynced.append(hook.id)
     unsupported = False
     if missing:
@@ -374,9 +381,7 @@ def wire(
         else:
             text = spliced
     if created or missing or resynced:
-        # read_plain gave universal newlines; keep the file's own on the way out.
-        crlf = not created and b"\r\n" in config.read_bytes()
-        config.write_text(text, encoding="utf-8", newline="\r\n" if crlf else "\n")
+        config.write_text(text, encoding="utf-8", newline="")
     command = tuple(precommit) if precommit else precommit_command(host, mode)
     # One look at the clone for every stage: the hooks directory and
     # core.hooksPath are per-repository, and each costs a git subprocess.

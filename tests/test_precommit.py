@@ -365,6 +365,32 @@ def test_wire_keeps_the_configs_line_endings(
     assert b"\r" not in config.read_bytes()
 
 
+def test_wire_keeps_each_lines_ending_in_a_mixed_config(
+    box: Sandbox, fake: tuple[str, ...]
+) -> None:
+    config = box.repo / ".pre-commit-config.yaml"
+    head = b"repos:\r\n  - repo: https://example.com/a\n    rev: v1\r\n    hooks: []\n"
+    config.write_bytes(head + b"default_stages: [pre-commit]\n")
+
+    pc.wire(_report(SOLO, box.repo, "local"), HOOKS, precommit=fake)
+    raw = config.read_bytes()
+    assert raw.startswith(head)
+    assert raw.endswith(b"\r\ndefault_stages: [pre-commit]\n")
+    block = raw[len(head) : -len(b"default_stages: [pre-commit]\n")]
+    assert block.count(b"\r\n") == block.count(b"\n") > 0
+    load_config(str(config))
+
+    switched = pc.wire(
+        _report(SOLO, box.repo, "global", previous="local"), HOOKS, precommit=fake
+    )
+    assert switched.resynced == ("solohost-validate", "solohost-index")
+    resynced = config.read_bytes()
+    assert resynced.startswith(head)
+    assert resynced.endswith(b"\r\ndefault_stages: [pre-commit]\n")
+    block = resynced[len(head) : -len(b"default_stages: [pre-commit]\n")]
+    assert block.count(b"\r\n") == block.count(b"\n") > 0
+
+
 @pytest.mark.parametrize("kind", ["symlink", "not-utf-8", "directory"])
 def test_checks_do_not_send_an_unreadable_config_to_install(
     box: Sandbox, fake: tuple[str, ...], kind: str

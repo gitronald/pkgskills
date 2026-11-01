@@ -261,12 +261,16 @@ def occupied(path: Path) -> bool:
     return path.is_symlink() or path.exists()
 
 
-def read_plain(path: Path) -> str | None:
-    """The text of a readable plain file, else ``None``. Never raises."""
+def read_plain(path: Path, *, newline: str | None = None) -> str | None:
+    """The text of a readable plain file, else ``None``. Never raises.
+
+    ``newline`` is as for :func:`open`: ``""`` keeps the file's line endings.
+    """
     if path.is_symlink() or not path.is_file():
         return None
     try:
-        return path.read_text(encoding="utf-8")
+        with path.open(encoding="utf-8", newline=newline) as file:
+            return file.read()
     except (OSError, UnicodeDecodeError):
         return None
 
