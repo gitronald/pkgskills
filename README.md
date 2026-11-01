@@ -452,8 +452,8 @@ only at the stage it declares; `name` and `files` are single-quoted, so a
 regex or a display name may carry `: ` or ` #`. Four rules keep it from
 clobbering repo content:
 
-- **The block is a text edit, checked before it is written.** Comments and
-  formatting survive, and any block layout of the `repos` list works, as does
+- **The block is a text edit, checked before it is written.** Comments,
+  formatting, and line endings survive, and any block layout of the `repos` list works, as does
   `repos: []`, with other keys before or after it. The result must parse to the
   original document plus the new repo. A config where that cannot hold (invalid
   YAML, no `repos` key, a non-empty flow list) is left alone, and

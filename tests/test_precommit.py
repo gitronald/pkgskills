@@ -341,6 +341,30 @@ def test_a_block_is_resynced_at_the_indent_it_was_added(
     load_config(str(config))
 
 
+def test_wire_keeps_the_configs_line_endings(
+    box: Sandbox, fake: tuple[str, ...]
+) -> None:
+    config = box.repo / ".pre-commit-config.yaml"
+    config.write_bytes(LAYOUTS["key-after"].replace("\n", "\r\n").encode())
+
+    report = pc.wire(_report(SOLO, box.repo, "local"), HOOKS, precommit=fake)
+    assert report.added == ("solohost-validate", "solohost-index")
+    raw = config.read_bytes()
+    assert raw.count(b"\r\n") == raw.count(b"\n")
+    load_config(str(config))
+
+    switched = pc.wire(
+        _report(SOLO, box.repo, "global", previous="local"), HOOKS, precommit=fake
+    )
+    assert switched.resynced == ("solohost-validate", "solohost-index")
+    raw = config.read_bytes()
+    assert raw.count(b"\r\n") == raw.count(b"\n")
+
+    config.write_bytes(LAYOUTS["indented"].encode())
+    pc.wire(_report(SOLO, box.repo, "local"), HOOKS, precommit=fake)
+    assert b"\r" not in config.read_bytes()
+
+
 @pytest.mark.parametrize("kind", ["symlink", "not-utf-8", "directory"])
 def test_checks_do_not_send_an_unreadable_config_to_install(
     box: Sandbox, fake: tuple[str, ...], kind: str

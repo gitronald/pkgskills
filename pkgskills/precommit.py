@@ -374,7 +374,9 @@ def wire(
         else:
             text = spliced
     if created or missing or resynced:
-        config.write_text(text, encoding="utf-8")
+        # read_plain gave universal newlines; keep the file's own on the way out.
+        crlf = not created and b"\r\n" in config.read_bytes()
+        config.write_text(text, encoding="utf-8", newline="\r\n" if crlf else "\n")
     command = tuple(precommit) if precommit else precommit_command(host, mode)
     # One look at the clone for every stage: the hooks directory and
     # core.hooksPath are per-repository, and each costs a git subprocess.

@@ -34,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   the consumer's config as `unsupported`. The entry and id stay bare otherwise.
 - The `missing` row from `precommit.checks` no longer says to run install for a config
   that is a symlink, a directory, or not UTF-8, since install will not edit one.
+- `precommit.wire` keeps a config's CRLF line endings instead of rewriting the file
+  with LF.
 
 ## [0.6.1] - 2026-10-31
 
