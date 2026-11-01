@@ -1,17 +1,8 @@
 """Subprocess calls pinned to a repo root, immune to git's location variables.
 
-``pkgskills`` itself runs no subprocesses. :attr:`Host.after_install
-<pkgskills.host.Host.after_install>` exists so a host can, and the motivating case —
-wiring a pre-commit hook — shells out to git. Every host that does hits the same
-hazard, so the guard belongs here rather than in each of them.
-
-Passing ``cwd=root`` is not enough to say which repository a command is about.
-Git's location variables — ``GIT_DIR`` and friends — outrank ``cwd``, so an
-inherited one silently redirects the command to a different repository: files land
-in the tree the user was looking at while the commit lands in someone else's
-history. That is a reachable state, not a hypothetical. Git exports ``GIT_DIR`` to
-every hook it runs, so a host CLI invoked from a hook, a wrapper script, or a shell
-where an earlier command left the variable set inherits it. Nothing warns.
+Passing ``cwd=root`` is not enough to say which repository a command is about:
+git's location variables — ``GIT_DIR`` and friends — outrank ``cwd``, and git
+exports ``GIT_DIR`` to every hook it runs.
 
 **An ambient ``GIT_DIR`` is never honored here, deliberately.** The target
 repository is named by ``root``, and only by ``root``. Honoring the variable would

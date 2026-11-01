@@ -121,12 +121,7 @@ class _LegacyStamp:
 
 
 def _legacy_entries(host: Host) -> tuple[_LegacyStamp, ...]:
-    """Every older stamp form ``host``'s files may carry, in lookup order.
-
-    The comment entry has no scheduled removal. A machine that skipped the release
-    dropping it would read ``foreign`` on every file. If it ever goes, that
-    release states the oldest version a bare-``install`` upgrade can start from.
-    """
+    """Every older stamp form ``host``'s files may carry, in lookup order."""
     return (
         _LegacyStamp(_comment_re(host.dist), _COMMENT_REASON),
         *(
@@ -243,9 +238,8 @@ def is_stamped(text: str, host: Host) -> bool:
 def stamped_by(text: str) -> str | None:
     """The distribution ``text``'s stamp names, if any.
 
-    Falls back to a comment line permanently, not only for the migration: a host
-    on an older ``pkgskills`` keeps writing comments, and a foreign reason has to
-    name that distribution.
+    Falls back to a comment line: a host on an older ``pkgskills`` keeps writing
+    comments, and a foreign reason has to name that distribution.
     """
     named = _recorded(text).get(HOST_KEY)
     if named:

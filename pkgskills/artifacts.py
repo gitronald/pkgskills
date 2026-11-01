@@ -289,12 +289,7 @@ def classify(path: Path, host: Host, expected: str, mode: Mode) -> tuple[Status,
 
     A file that cannot be read (bad permissions, not UTF-8) folds into
     ``foreign``, and the CLI points at ``--force``. That is honest only because
-    every write here is wholesale: ``--force`` genuinely fixes it. The rule the
-    status set obeys is that **a status must not imply a remedy the tool cannot
-    perform** — which is why a :class:`~pkgskills.host.Line`, edited in place
-    rather than rewritten, has its own :data:`LineStatus` with ``unreadable``
-    in it. There, an installer that cannot read the file refuses to write it,
-    and both ``foreign`` and ``missing`` would send the user in a circle.
+    every write here is wholesale: ``--force`` genuinely fixes it.
     """
     if not occupied(path):
         return "missing", "not installed"
@@ -308,11 +303,6 @@ def classify(path: Path, host: Host, expected: str, mode: Mode) -> tuple[Status,
     if not is_stamped(text, host):
         other = stamped_by(text)
         if other == host.dist:
-            # Only that the stamp names this dist and is not one pkgskills
-            # wrote. Which of the two it is -- a release predating adoption, or
-            # a stamp pkgskills wrote that something later mangled -- the line
-            # no longer records, so the reason claims neither. The remedy is
-            # the same either way, and the CLI appends it.
             return (
                 "foreign",
                 f"a {host.dist} stamp pkgskills did not write; hand-edited, or "

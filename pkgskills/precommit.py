@@ -383,8 +383,6 @@ def wire(
     if created or missing or resynced:
         config.write_text(text, encoding="utf-8", newline="")
     command = tuple(precommit) if precommit else precommit_command(host, mode)
-    # One look at the clone for every stage: the hooks directory and
-    # core.hooksPath are per-repository, and each costs a git subprocess.
     clone = Clone.of(root)
     activation: dict[str, Activation] = {}
     for stage in dict.fromkeys(hook.stage for hook in hooks):

@@ -2,9 +2,8 @@
 
 A host calls :func:`register` once and gains ``skill``, ``install``, and, when
 it declares them, ``doc``, ``rule``, ``agent``, and ``permissions``. Hosts with
-extra needs keep writing
-their own commands on top of :mod:`pkgskills.artifacts`; the grammar here is the part
-that should read the same across every tool.
+extra needs write their own commands on top of :mod:`pkgskills.artifacts`; the
+grammar here is the part that should read the same across every tool.
 
 The ``pkgskills`` console script is the cross-host view: it discovers installed
 hosts through the ``pkgskills.hosts`` entry-point group and checks them all.
