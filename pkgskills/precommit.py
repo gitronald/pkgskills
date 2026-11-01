@@ -572,7 +572,11 @@ def checks(
     command = " ".join(precommit or precommit_command(host, resolved))
     rows: list[ExtraCheck] = []
     clone = Clone.of(root) if hooks else None
-    config = read_plain(root / CONFIG) or ""
+    plain = read_plain(root / CONFIG)
+    config = plain or ""
+    # A symlink, a directory, or bytes that are not UTF-8: wire will not edit it,
+    # and the entry may well be in the text that could not be read.
+    unreadable = plain is None and occupied(root / CONFIG)
     for hook in hooks:
         state = hook_state(root, hook, clone=clone, config=config)
         note = ""
@@ -581,7 +585,12 @@ def checks(
                 f"no {hook.id} entry in {CONFIG}; "
                 f"run `{host.install_command(resolved)}`"
             )
-            if _spliced(config, _block((hook,), host.invocation(resolved))) is None:
+            if unreadable:
+                note = (
+                    f"{CONFIG} is not a readable plain file, so install cannot "
+                    f"add {hook.id} to it; add the entry by hand if it is missing"
+                )
+            elif _spliced(config, _block((hook,), host.invocation(resolved))) is None:
                 note = (
                     f"no {hook.id} entry in {CONFIG}, and install cannot add one "
                     "to this file safely; add the entry by hand"

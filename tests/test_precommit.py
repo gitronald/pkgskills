@@ -341,6 +341,30 @@ def test_a_block_is_resynced_at_the_indent_it_was_added(
     load_config(str(config))
 
 
+@pytest.mark.parametrize("kind", ["symlink", "not-utf-8", "directory"])
+def test_checks_do_not_send_an_unreadable_config_to_install(
+    box: Sandbox, fake: tuple[str, ...], kind: str
+) -> None:
+    config = box.repo / ".pre-commit-config.yaml"
+    if kind == "symlink":
+        target = box.repo / "shared.yaml"
+        target.write_text("repos: []\n", encoding="utf-8")
+        config.symlink_to(target)
+    elif kind == "not-utf-8":
+        config.write_bytes(b"repos: []\n# \xff\n")
+    else:
+        config.mkdir()
+
+    report = pc.wire(_report(SOLO, box.repo, "local"), (VALIDATE,), precommit=fake)
+    assert report.unreadable and not report.changed
+
+    (row,) = pc.checks(SOLO, box.repo, "local", (VALIDATE,), precommit=fake)
+    assert row.status == "missing"
+    assert "not a readable plain file" in row.note
+    assert "add the entry by hand" in row.note
+    assert "run `" not in row.note
+
+
 @pytest.mark.parametrize(
     "args",
     [("x", "#y"), ("a: b",), ("--pick", "[one"), ("it's", "#1")],

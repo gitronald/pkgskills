@@ -32,6 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `Hook` args that YAML would misread now reach the entry intact. A value holding ` #`
   used to drop out of the command unnoticed, and one holding `: ` made `wire` report
   the consumer's config as `unsupported`. The entry and id stay bare otherwise.
+- The `missing` row from `precommit.checks` no longer says to run install for a config
+  that is a symlink, a directory, or not UTF-8, since install will not edit one.
 
 ## [0.6.1] - 2026-10-31
 
