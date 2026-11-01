@@ -114,7 +114,7 @@ def render_stub(host: Host, skill: Skill, mode: Mode) -> str:
     """The generated ``SKILL.md`` stub for ``skill`` in ``mode``."""
     inv = host.invocation(mode)
     check = host.check_command(mode)
-    repair = host.install_command(mode, force=True)
+    repair = host.install_command(mode)
     head = f"""\
 # {skill.name}
 
@@ -128,8 +128,11 @@ the installed version.
 {check}
 ```
 
-Anything other than `ok` means this stub predates the installed package: run
-`{repair}`, then start a fresh context before continuing.
+Anything other than `ok` means the installed files are out of step with the
+package: run `{repair}`, then start a fresh context before continuing. A
+`remove:` line in the check's output names a file to delete instead. An
+`overwrite:` line, or a refusal from that install, concerns content this package
+did not write, so ask before using `--force`.
 """
     if skill.dispatches:
         rows = "\n".join(

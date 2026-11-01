@@ -170,7 +170,9 @@ def test_single_skill_stub_names_mode_correct_commands(mode: str, prefix: str) -
     assert f"\n{prefix} skill use-solo\n" in stub
     local = " --local" if mode == "local" else ""
     assert f"{prefix} install{local} --check" in stub
-    assert f"{prefix} install{local} --force" in stub
+    assert f"`{prefix} install{local}`" in stub
+    assert "--force`" in stub  # only the warning about it, never a command
+    assert f"{prefix} install{local} --force" not in stub
 
 
 def test_every_stub_on_a_multi_skill_host_names_its_own_body() -> None:
