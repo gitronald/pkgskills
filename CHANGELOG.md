@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-11-13
+
+### Changed
+
+- Maintenance: upgraded the project tooling to repotemplates 0.15.0 (CI workflow and
+  Dependabot updates, the ruff pre-commit hook at v0.17.3, a relocked ruff). No change
+  to the package's behavior.
+
 ## [0.6.3] - 2026-11-01
 
 ### Fixed
@@ -131,6 +139,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The docs now agree about flat sources: they install, but
   `assert_spec_conformant` fails them. A host that keeps them filters
   `Host.check_spec()` by rule.
+
+### Removed
+
+- `pkgskills.stamp.PREFIX`, the opening of the comment stamp, with no alias. Code
+  that imports it fails with `ImportError` on this release, and a pattern built
+  from it would not match the new stamp anyway.
 
 ### Fixed
 
