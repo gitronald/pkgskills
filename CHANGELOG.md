@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Maintenance: upgraded the project tooling to repotemplates 0.15.0 (CI workflow and
+  Dependabot updates, the ruff pre-commit hook at v0.17.3, a relocked ruff). No change
+  to the package's behavior.
+
 ## [0.6.3] - 2026-11-01
 
 ### Fixed
