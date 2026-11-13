@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-11-13
+
 ### Changed
 
 - Maintenance: upgraded the project tooling to repotemplates 0.15.0 (CI workflow and
